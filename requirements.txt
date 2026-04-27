@@ -1,0 +1,24 @@
+# Project Tír - Python dependencies
+# Install: pip install -r requirements.txt
+
+# --- Needed now (database layer + tests) ---
+pytest
+
+# --- Needed for web UI (current) ---
+fastapi
+uvicorn
+
+# --- Needed for ChromaDB + embeddings (Phase 1 Step 3) ---
+chromadb
+requests
+
+# --- Needed for skill registry (Phase 3) ---
+pyyaml
+jsonschema
+
+# --- Needed for web adapter (Phase 3) ---
+flask
+argon2-cffi
+
+# --- Needed for web search + fetch tools (Phase 3) ---
+trafilatura

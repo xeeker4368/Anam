@@ -1,0 +1,28 @@
+2026-04-26 17:31:45,136 [tir.api.routes] INFO: Tír API started
+2026-04-26 17:31:48,404 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 9 chunks
+2026-04-26 17:35:02,256 [tir.api.routes] INFO: Tír API started
+2026-04-26 17:35:21,641 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 9 chunks
+2026-04-26 17:35:25,703 [tir.api.routes] INFO: Started conversation f34a48be for Lyle
+2026-04-26 17:38:45,495 [tir.memory.chunking] INFO: Live chunk 0 created for conversation f34a48be (10 messages)
+2026-04-26 17:42:16,670 [tir.memory.chunking] INFO: Live chunk 1 created for conversation f34a48be (10 messages)
+2026-04-26 17:42:42,954 [tir.api.routes] INFO: Started conversation 167d8cdc for Lyle
+2026-04-26 17:42:55,268 [tir.api.routes] INFO: Tír API started
+2026-04-26 17:43:13,920 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 11 chunks
+2026-04-26 17:43:18,180 [tir.api.routes] INFO: Started conversation fe240f61 for Lyle
+2026-04-26 17:45:51,576 [tir.api.routes] INFO: Started conversation 1a4ccbef for Lyle
+2026-04-26 17:46:01,700 [tir.api.routes] INFO: Tír API started
+2026-04-26 17:46:17,157 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 11 chunks
+2026-04-26 17:47:56,447 [tir.api.routes] INFO: Tír API started
+2026-04-26 17:47:58,663 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 11 chunks
+2026-04-26 17:48:07,754 [tir.api.routes] INFO: Started conversation 6ae830bc for Lyle
+2026-04-26 17:52:38,395 [tir.api.routes] INFO: Tír API started
+2026-04-26 17:52:41,246 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 11 chunks
+2026-04-26 17:53:05,782 [tir.api.routes] INFO: Tír API started
+2026-04-26 17:53:11,239 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 11 chunks
+2026-04-26 18:02:39,691 [tir.api.routes] INFO: Started conversation e6920110 for Lyle
+2026-04-26 18:15:07,156 [tir.api.routes] INFO: Started conversation 026a1a5e for Lyle
+2026-04-26 18:29:57,866 [tir.api.routes] INFO: Started conversation 0dbcee6a for Lyle
+2026-04-26 18:33:58,783 [tir.api.routes] INFO: Started conversation ace9d989 for Lyle
+2026-04-26 18:42:15,420 [tir.api.routes] INFO: Started conversation 9a0e8c0f for Lyle
+2026-04-26 18:42:52,694 [tir.api.routes] INFO: Started conversation 8571cf36 for Lyle
+2026-04-26 18:45:36,617 [tir.api.routes] INFO: Started conversation db0b0071 for Lyle
