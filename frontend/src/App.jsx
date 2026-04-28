@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Chat from './components/Chat'
 import DebugPanel from './components/DebugPanel'
 import './styles.css'
@@ -42,6 +42,7 @@ function App() {
   const [activeUserId, setActiveUserId] = useState(null)
   const [showDashboard, setShowDashboard] = useState(false)
   const [activeTab, setActiveTab] = useState('chat')
+  const healthWarnedRef = useRef(false)
   const isMobile = useIsMobile()
   useViewportHeight()
 
@@ -67,8 +68,19 @@ function App() {
     try {
       const resp = await fetch('/api/health')
       setHealth(await resp.json())
+      healthWarnedRef.current = false
     } catch (e) {
-      console.error('Failed to fetch health:', e)
+      setHealth({
+        backend: 'unreachable',
+        ollama: 'unreachable',
+        chromadb_chunks: -1,
+        conversations: -1,
+        messages: -1,
+      })
+      if (!healthWarnedRef.current) {
+        console.warn('Backend health check failed:', e)
+        healthWarnedRef.current = true
+      }
     }
   }
 
@@ -209,6 +221,11 @@ function App() {
         </button>
         {showDashboard && health && (
           <div className="health-stats">
+            {health.backend === 'unreachable' && (
+              <div className="health-item err">
+                Backend: unreachable
+              </div>
+            )}
             <div className={`health-item ${health.ollama === 'ok' ? 'ok' : 'err'}`}>
               Ollama: {health.ollama}
             </div>

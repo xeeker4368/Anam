@@ -5,8 +5,100 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const isStreamingRef = useRef(false)
+  const debugRef = useRef(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+
+  function summarize(value, maxLength = 220) {
+    const text = typeof value === 'string' ? value : JSON.stringify(value)
+    if (!text) return ''
+    return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text
+  }
+
+  function publishDebug(nextDebug) {
+    debugRef.current = nextDebug
+    onDebugData({
+      ...nextDebug,
+      tool_events: [...(nextDebug.tool_events || [])],
+      raw_events: [...(nextDebug.raw_events || [])],
+    })
+  }
+
+  function ensureDebug() {
+    if (!debugRef.current) {
+      debugRef.current = {
+        tool_events: [],
+        raw_events: [],
+      }
+    }
+    return debugRef.current
+  }
+
+  function appendRawEvent(data) {
+    const current = ensureDebug()
+    const next = {
+      ...current,
+      raw_events: [...(current.raw_events || []), data],
+    }
+    publishDebug(next)
+  }
+
+  function recordToolCall(data) {
+    const current = ensureDebug()
+    const toolEvent = {
+      name: data.name || 'unknown',
+      arguments: data.arguments || {},
+      query: data.arguments?.query,
+      status: 'pending',
+      result: null,
+      result_summary: '',
+      raw_call: data,
+    }
+    const next = {
+      ...current,
+      tool_events: [...(current.tool_events || []), toolEvent],
+      raw_events: [...(current.raw_events || []), data],
+    }
+    publishDebug(next)
+  }
+
+  function recordToolResult(data) {
+    const current = ensureDebug()
+    const toolEvents = [...(current.tool_events || [])]
+    const matchIndex = [...toolEvents]
+      .reverse()
+      .findIndex(event => event.name === data.name && event.status === 'pending')
+    const targetIndex = matchIndex >= 0 ? toolEvents.length - 1 - matchIndex : -1
+
+    if (targetIndex >= 0) {
+      toolEvents[targetIndex] = {
+        ...toolEvents[targetIndex],
+        status: data.ok ? 'succeeded' : 'failed',
+        ok: data.ok,
+        result: data.result,
+        result_summary: summarize(data.result),
+        raw_result: data,
+      }
+    } else {
+      toolEvents.push({
+        name: data.name || 'unknown',
+        arguments: {},
+        query: undefined,
+        status: data.ok ? 'succeeded' : 'failed',
+        ok: data.ok,
+        result: data.result,
+        result_summary: summarize(data.result),
+        raw_result: data,
+      })
+    }
+
+    const next = {
+      ...current,
+      tool_events: toolEvents,
+      raw_events: [...(current.raw_events || []), data],
+    }
+    publishDebug(next)
+  }
 
   // Load existing messages when conversationId changes
   // Skip if we're mid-stream — streaming manages its own message state
@@ -51,6 +143,7 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
     setInput('')
     setIsStreaming(true)
     isStreamingRef.current = true
+    debugRef.current = null
 
     // Add user message to display immediately
     setMessages(prev => [...prev, { role: 'user', content: text }])
@@ -88,10 +181,18 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
             const data = JSON.parse(line)
 
             if (data.type === 'debug') {
-              onDebugData(data)
+              publishDebug({
+                ...data,
+                tool_events: [],
+                raw_events: [data],
+              })
               if (data.conversation_id && !conversationId) {
                 onConversationCreated(data.conversation_id)
               }
+            } else if (data.type === 'tool_call') {
+              recordToolCall(data)
+            } else if (data.type === 'tool_result') {
+              recordToolResult(data)
             } else if (data.type === 'token') {
               setMessages(prev => {
                 const updated = [...prev]
@@ -103,6 +204,7 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
                 return updated
               })
             } else if (data.type === 'done') {
+              appendRawEvent(data)
               // Mark streaming complete
               setMessages(prev => {
                 const updated = [...prev]
@@ -111,6 +213,7 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
                 return updated
               })
             } else if (data.type === 'error') {
+              appendRawEvent(data)
               setMessages(prev => {
                 const updated = [...prev]
                 const last = updated[updated.length - 1]
@@ -122,6 +225,8 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
                 }
                 return updated
               })
+            } else {
+              appendRawEvent(data)
             }
           } catch (parseErr) {
             console.warn('Failed to parse stream line:', line, parseErr)

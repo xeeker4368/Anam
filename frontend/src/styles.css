@@ -348,12 +348,53 @@ body {
 }
 
 .debug-section {
-  margin-bottom: 20px;
+  margin-bottom: 10px;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .debug-section p {
   font-size: 13px;
   margin-bottom: 4px;
+}
+
+.debug-section-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 10px;
+  background: #1a1a2e;
+  color: #999;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.debug-section-toggle:hover {
+  color: #e0e0e0;
+}
+
+.debug-caret {
+  display: inline-block;
+  transition: transform 120ms ease;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.debug-caret.open {
+  transform: rotate(90deg);
+}
+
+.debug-section-body {
+  padding: 10px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .debug-note {
@@ -365,6 +406,27 @@ body {
   font-family: monospace;
   font-size: 12px;
   color: #666;
+  overflow-wrap: anywhere;
+}
+
+.overview-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.overview-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: #999;
+}
+
+.overview-row strong {
+  color: #d0d0d0;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .debug-chunk {
@@ -375,9 +437,14 @@ body {
   border: 1px solid #2a2a4a;
 }
 
+.debug-chunk-list {
+  margin-top: 10px;
+}
+
 .chunk-header {
   display: flex;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 6px;
   font-size: 11px;
 }
@@ -431,6 +498,113 @@ body {
   overflow-y: auto;
   white-space: pre-wrap;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.debug-tool-card {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.tool-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.tool-name {
+  color: #7faacc;
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tool-status {
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tool-status-pending {
+  background: #2a2a3e;
+  color: #c2b4e8;
+}
+
+.tool-status-succeeded {
+  background: #1a3a2a;
+  color: #6bcb77;
+}
+
+.tool-status-failed {
+  background: #4a2028;
+  color: #e8a0a0;
+}
+
+.tool-line {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.tool-label {
+  color: #777;
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.tool-value {
+  color: #c8c8c8;
+  overflow-wrap: anywhere;
+}
+
+.tool-result-summary {
+  color: #999;
+  font-size: 12px;
+  line-height: 1.45;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.debug-details {
+  margin-top: 6px;
+  max-width: 100%;
+}
+
+.debug-details summary {
+  color: #888;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.debug-details pre {
+  margin-top: 6px;
+  padding: 8px;
+  border-radius: 4px;
+  background: #111827;
+  color: #b8c2d6;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 /* --- Buttons --- */
