@@ -24,9 +24,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from tir.config import (
+    CONVERSATION_ITERATION_LIMIT,
     DEFAULT_USER,
     FRONTEND_DIR,
     OLLAMA_HOST,
+    SKILLS_DIR,
 )
 from tir.memory.db import (
     init_databases,
@@ -44,8 +46,9 @@ from tir.memory.db import (
 from tir.memory.retrieval import retrieve
 from tir.memory.chunking import maybe_chunk_live, chunk_conversation_final
 from tir.engine.context import build_system_prompt
-from tir.engine.ollama import chat_completion_stream
+from tir.engine.agent_loop import run_agent_loop
 from tir.memory.chroma import get_collection_count
+from tir.tools.registry import SkillRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +70,9 @@ app.add_middleware(
 @app.on_event("startup")
 def startup():
     init_databases()
-    logger.info("Tír API started")
+    app.state.registry = SkillRegistry.from_directory(SKILLS_DIR)
+    tool_count = len(app.state.registry.list_tools())
+    logger.info(f"Tír API started — {tool_count} tools loaded")
 
 
 # ---------------------------------------------------------------------------
@@ -169,9 +174,16 @@ def stream_chat(req: ChatRequest):
                 logger.warning(f"Retrieval failed: {e}")
 
         # --- Build system prompt ---
+        registry = getattr(app.state, "registry", None)
+        tool_descriptions = (
+            registry.list_tool_descriptions()
+            if registry and registry.has_tools()
+            else None
+        )
         system_prompt = build_system_prompt(
             user_name=user_name,
             retrieved_chunks=retrieved_chunks,
+            tool_descriptions=tool_descriptions,
         )
 
         # --- Conversation history ---
@@ -208,28 +220,75 @@ def stream_chat(req: ChatRequest):
         }
         yield json.dumps(debug_data) + "\n"
 
-        # --- Stream from Ollama ---
-        full_content = []
+        # --- Stream from agent loop ---
+        loop_result = None
         try:
-            for token in chat_completion_stream(
+            for event in run_agent_loop(
                 system_prompt=system_prompt,
                 messages=model_messages,
+                registry=registry,
+                iteration_limit=CONVERSATION_ITERATION_LIMIT,
+                ollama_host=OLLAMA_HOST,
             ):
-                full_content.append(token)
-                yield json.dumps({"type": "token", "content": token}) + "\n"
+                event_type = event.get("type")
+
+                if event_type == "token":
+                    yield json.dumps({
+                        "type": "token",
+                        "content": event["content"],
+                    }) + "\n"
+                elif event_type == "tool_call":
+                    yield json.dumps({
+                        "type": "tool_call",
+                        "name": event["name"],
+                        "arguments": event["arguments"],
+                    }) + "\n"
+                elif event_type == "tool_result":
+                    yield json.dumps({
+                        "type": "tool_result",
+                        "name": event["name"],
+                        "ok": event["ok"],
+                        "result": event["result"],
+                    }) + "\n"
+                elif event_type == "done":
+                    loop_result = event["result"]
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
             error_msg = f"Something went wrong when I tried to respond: {e}"
-            full_content = [error_msg]
+            loop_result = None
             yield json.dumps({"type": "error", "message": error_msg}) + "\n"
 
         # --- Save assistant message ---
-        assistant_content = "".join(full_content)
+        tool_trace = None
+        if loop_result is None:
+            assistant_content = "Something went wrong when I tried to respond."
+        elif loop_result.terminated_reason == "complete":
+            assistant_content = loop_result.final_content or ""
+            if loop_result.tool_trace:
+                tool_trace = json.dumps(loop_result.tool_trace)
+        elif loop_result.terminated_reason == "iteration_limit":
+            assistant_content = "I hit the tool iteration limit before I could finish responding."
+            if loop_result.tool_trace:
+                tool_trace = json.dumps(loop_result.tool_trace)
+            yield json.dumps({"type": "error", "message": assistant_content}) + "\n"
+        else:
+            assistant_content = (
+                "Something went wrong when I tried to respond: "
+                f"{loop_result.error or 'unknown error'}"
+            )
+            if loop_result.tool_trace:
+                tool_trace = json.dumps(loop_result.tool_trace)
+            yield json.dumps({"type": "error", "message": assistant_content}) + "\n"
+
         if not assistant_content:
             assistant_content = "I received your message but couldn't generate a response."
 
         assistant_msg = save_message(
-            conversation_id, user_id, "assistant", assistant_content
+            conversation_id,
+            user_id,
+            "assistant",
+            assistant_content,
+            tool_trace=tool_trace,
         )
 
         # --- Live chunking ---
