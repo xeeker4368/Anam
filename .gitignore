@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.pyanam/
+
+# Node / frontend build output
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+
+# Runtime data and databases
+data/prod/
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+logs/
+
+# Environment
+.env
+.env.*

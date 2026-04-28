@@ -175,3 +175,19 @@ I will first inspect the relevant files and compare the task against PROJECT_STA
 ```
 
 Then proceed in REVIEW ONLY mode unless the user has explicitly approved implementation.
+
+## Changelog Requirement
+
+For every approved patch, create a Markdown changelog entry in `changelog/`.
+
+The entry must include:
+- summary
+- files changed
+- behavior changed
+- tests/checks run
+- known limitations
+- follow-up work
+- Project Anam alignment check
+
+Do not create a changelog during REVIEW ONLY or PLAN ONLY mode.
+Only create a changelog when a patch has been approved and implemented.

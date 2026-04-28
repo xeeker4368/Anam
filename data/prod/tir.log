@@ -32,3 +32,20 @@
 2026-04-27 20:02:46,665 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 11 chunks
 2026-04-27 20:02:49,302 [tir.api.routes] INFO: Started conversation 0cd5613d for Lyle
 2026-04-27 20:13:21,941 [tir.memory.chunking] INFO: Live chunk 0 created for conversation 0cd5613d (10 messages)
+2026-04-27 20:25:25,624 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-04-27 20:25:25,624 [tir.tools.registry] INFO: Skill registry loaded: 1 skills, 1 tools
+2026-04-27 20:25:25,624 [tir.api.routes] INFO: Tír API started — 1 tools loaded
+2026-04-27 20:25:29,148 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 12 chunks
+2026-04-27 20:35:58,700 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-04-27 20:35:58,700 [tir.tools.registry] INFO: Skill registry loaded: 1 skills, 1 tools
+2026-04-27 20:35:58,700 [tir.api.routes] INFO: Tír API started — 1 tools loaded
+2026-04-27 20:36:02,702 [tir.api.routes] INFO: Started conversation 30398147 for Lyle
+2026-04-27 20:36:02,744 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 12 chunks
+2026-04-27 20:42:05,693 [tir.api.routes] INFO: Started conversation f0515e24 for Lyle
+2026-04-27 20:44:49,031 [tir.api.routes] INFO: Started conversation 81e912f1 for Lyle
+2026-04-27 20:53:38,928 [tir.api.routes] INFO: Started conversation 36a740b8 for Lyle
+2026-04-28 19:31:24,608 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-04-28 19:31:24,608 [tir.tools.registry] INFO: Skill registry loaded: 1 skills, 1 tools
+2026-04-28 19:31:24,608 [tir.api.routes] INFO: Tír API started — 1 tools loaded
+2026-04-28 19:31:35,578 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 12 chunks
+2026-04-28 19:31:44,252 [tir.api.routes] INFO: Started conversation 87e16e40 for Lyle
