@@ -429,6 +429,26 @@ body {
   overflow-wrap: anywhere;
 }
 
+.timing-grid {
+  display: grid;
+  gap: 5px;
+}
+
+.timing-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: #999;
+}
+
+.timing-row strong {
+  color: #d0d0d0;
+  text-align: right;
+  min-width: 0;
+  white-space: nowrap;
+}
+
 .debug-chunk {
   background: #1a1a2e;
   border-radius: 6px;

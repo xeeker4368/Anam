@@ -15,6 +15,7 @@ Endpoints:
 
 import json
 import logging
+import time
 
 import requests as http_requests
 from fastapi import FastAPI, HTTPException
@@ -141,10 +142,19 @@ def stream_chat(req: ChatRequest):
     user = _resolve_user(req.user_id)
 
     def generate():
+        request_start = time.perf_counter()
+        timings = {}
+
+        def elapsed_ms(start: float, end: float | None = None) -> float:
+            if end is None:
+                end = time.perf_counter()
+            return round((end - start) * 1000, 2)
+
         conversation_id = req.conversation_id
         user_id = user["id"]
         user_name = user["name"]
 
+        phase_start = time.perf_counter()
         update_user_last_seen(user_id)
 
         # --- Resolve or create conversation ---
@@ -156,11 +166,15 @@ def stream_chat(req: ChatRequest):
             if conv is None:
                 conversation_id = start_conversation(user_id)
                 logger.warning(f"Conversation not found, started new: {conversation_id[:8]}")
+        timings["resolve_conversation_ms"] = elapsed_ms(phase_start)
 
         # --- Save user message ---
+        phase_start = time.perf_counter()
         user_msg = save_message(conversation_id, user_id, "user", req.text)
+        timings["save_user_message_ms"] = elapsed_ms(phase_start)
 
         # --- Retrieval ---
+        phase_start = time.perf_counter()
         retrieved_chunks = []
         retrieval_skipped = _is_greeting(req.text)
 
@@ -172,8 +186,10 @@ def stream_chat(req: ChatRequest):
                 )
             except Exception as e:
                 logger.warning(f"Retrieval failed: {e}")
+        timings["retrieval_ms"] = elapsed_ms(phase_start)
 
         # --- Build system prompt ---
+        phase_start = time.perf_counter()
         registry = getattr(app.state, "registry", None)
         tool_descriptions = (
             registry.list_tool_descriptions()
@@ -185,15 +201,19 @@ def stream_chat(req: ChatRequest):
             retrieved_chunks=retrieved_chunks,
             tool_descriptions=tool_descriptions,
         )
+        timings["context_build_ms"] = elapsed_ms(phase_start)
 
         # --- Conversation history ---
+        phase_start = time.perf_counter()
         all_messages = get_conversation_messages(conversation_id)
         model_messages = [
             {"role": m["role"], "content": m["content"]}
             for m in all_messages
         ]
+        timings["history_load_ms"] = elapsed_ms(phase_start)
 
         # --- Emit debug event ---
+        timings["debug_emit_elapsed_ms"] = elapsed_ms(request_start)
         debug_data = {
             "type": "debug",
             "conversation_id": conversation_id,
@@ -217,11 +237,17 @@ def stream_chat(req: ChatRequest):
             ],
             "system_prompt_length": len(system_prompt),
             "history_message_count": len(model_messages),
+            "timings": timings,
         }
         yield json.dumps(debug_data) + "\n"
 
         # --- Stream from agent loop ---
         loop_result = None
+        agent_loop_start = time.perf_counter()
+        first_token_ms = None
+        first_token_at = None
+        last_token_at = None
+        tool_call_count = 0
         try:
             for event in run_agent_loop(
                 system_prompt=system_prompt,
@@ -233,11 +259,17 @@ def stream_chat(req: ChatRequest):
                 event_type = event.get("type")
 
                 if event_type == "token":
+                    token_at = time.perf_counter()
+                    if first_token_at is None:
+                        first_token_at = token_at
+                        first_token_ms = elapsed_ms(request_start, token_at)
+                    last_token_at = token_at
                     yield json.dumps({
                         "type": "token",
                         "content": event["content"],
                     }) + "\n"
                 elif event_type == "tool_call":
+                    tool_call_count += 1
                     yield json.dumps({
                         "type": "tool_call",
                         "name": event["name"],
@@ -257,6 +289,7 @@ def stream_chat(req: ChatRequest):
             error_msg = f"Something went wrong when I tried to respond: {e}"
             loop_result = None
             yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+        agent_loop_total_ms = elapsed_ms(agent_loop_start)
 
         # --- Save assistant message ---
         tool_trace = None
@@ -283,6 +316,7 @@ def stream_chat(req: ChatRequest):
         if not assistant_content:
             assistant_content = "I received your message but couldn't generate a response."
 
+        phase_start = time.perf_counter()
         assistant_msg = save_message(
             conversation_id,
             user_id,
@@ -290,12 +324,36 @@ def stream_chat(req: ChatRequest):
             assistant_content,
             tool_trace=tool_trace,
         )
+        save_assistant_message_ms = elapsed_ms(phase_start)
 
         # --- Live chunking ---
+        phase_start = time.perf_counter()
         try:
             maybe_chunk_live(conversation_id, user_id)
         except Exception as e:
             logger.warning(f"Live chunking failed: {e}")
+        chunking_ms = elapsed_ms(phase_start)
+
+        post_model_timings = {
+            "agent_loop_total_ms": agent_loop_total_ms,
+            "tool_call_count": tool_call_count,
+            "save_assistant_message_ms": save_assistant_message_ms,
+            "chunking_ms": chunking_ms,
+            "total_backend_ms": elapsed_ms(request_start),
+        }
+        if first_token_ms is not None:
+            post_model_timings["first_token_ms"] = first_token_ms
+        if first_token_at is not None and last_token_at is not None:
+            post_model_timings["model_stream_ms"] = elapsed_ms(first_token_at, last_token_at)
+        else:
+            post_model_timings["model_total_ms"] = agent_loop_total_ms
+        if loop_result is not None:
+            post_model_timings["tool_loop_iterations"] = loop_result.iterations
+
+        yield json.dumps({
+            "type": "debug_update",
+            "timings": post_model_timings,
+        }) + "\n"
 
         # --- Done event ---
         yield json.dumps({

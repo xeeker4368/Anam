@@ -76,6 +76,16 @@ function ToolEvent({ event, index }) {
   )
 }
 
+function TimingRow({ label, value }) {
+  if (value == null) return null
+  return (
+    <div className="timing-row">
+      <span>{label}</span>
+      <strong>{Number(value).toLocaleString()} ms</strong>
+    </div>
+  )
+}
+
 function DebugPanel({ data }) {
   if (!data) {
     return (
@@ -88,8 +98,14 @@ function DebugPanel({ data }) {
 
   const toolEvents = data.tool_events || []
   const rawEvents = data.raw_events || []
+  const timings = data.timings || {}
   const lastTool = toolEvents.length > 0 ? toolEvents[toolEvents.length - 1] : null
   const memoryDefaultOpen = toolEvents.length === 0
+  const dbSaveMs = (
+    timings.save_user_message_ms != null || timings.save_assistant_message_ms != null
+      ? (timings.save_user_message_ms || 0) + (timings.save_assistant_message_ms || 0)
+      : null
+  )
 
   return (
     <div className="debug-content">
@@ -117,6 +133,12 @@ function DebugPanel({ data }) {
             <span>Tool events</span>
             <strong>{toolEvents.length}</strong>
           </div>
+          {timings.total_backend_ms != null && (
+            <div className="overview-row">
+              <span>Total backend</span>
+              <strong>{timings.total_backend_ms.toLocaleString()} ms</strong>
+            </div>
+          )}
           {lastTool && (
             <div className="overview-row">
               <span>Last tool</span>
@@ -130,6 +152,45 @@ function DebugPanel({ data }) {
             </div>
           )}
         </div>
+      </DebugSection>
+
+      <DebugSection title="Timings" defaultOpen={Object.keys(timings).length > 0}>
+        {Object.keys(timings).length === 0 ? (
+          <p className="debug-note">No timing data recorded for this turn.</p>
+        ) : (
+          <div className="timing-grid">
+            <TimingRow label="Resolve conversation" value={timings.resolve_conversation_ms} />
+            <TimingRow label="Retrieval" value={timings.retrieval_ms} />
+            <TimingRow label="Context build" value={timings.context_build_ms} />
+            <TimingRow label="History load" value={timings.history_load_ms} />
+            <TimingRow label="Initial debug emitted" value={timings.debug_emit_elapsed_ms} />
+            <TimingRow label="First token" value={timings.first_token_ms} />
+            <TimingRow label="Model stream" value={timings.model_stream_ms} />
+            <TimingRow label="Model total" value={timings.model_total_ms} />
+            <TimingRow label="Agent/tool loop" value={timings.agent_loop_total_ms} />
+            <TimingRow label="DB saves" value={dbSaveMs} />
+            <TimingRow label="Save user message" value={timings.save_user_message_ms} />
+            <TimingRow label="Save assistant message" value={timings.save_assistant_message_ms} />
+            <TimingRow label="Chunking" value={timings.chunking_ms} />
+            <TimingRow label="Total backend" value={timings.total_backend_ms} />
+            <TimingRow label="Request to debug" value={timings.request_start_to_debug_ms} />
+            <TimingRow label="Request to first token" value={timings.request_start_to_first_token_ms} />
+            <TimingRow label="Request to done" value={timings.request_start_to_done_ms} />
+            <TimingRow label="Frontend stream total" value={timings.frontend_stream_total_ms} />
+            {timings.tool_call_count != null && (
+              <div className="timing-row">
+                <span>Tool calls</span>
+                <strong>{timings.tool_call_count}</strong>
+              </div>
+            )}
+            {timings.tool_loop_iterations != null && (
+              <div className="timing-row">
+                <span>Loop iterations</span>
+                <strong>{timings.tool_loop_iterations}</strong>
+              </div>
+            )}
+          </div>
+        )}
       </DebugSection>
 
       <DebugSection

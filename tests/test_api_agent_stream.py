@@ -97,7 +97,16 @@ def test_stream_chat_no_tool_path_preserves_basic_events(
     response = client.post("/api/chat/stream", json={"text": "Hello"})
     events = _stream_lines(response)
 
-    assert [event["type"] for event in events] == ["debug", "token", "token", "done"]
+    assert [event["type"] for event in events] == [
+        "debug",
+        "token",
+        "token",
+        "debug_update",
+        "done",
+    ]
+    assert "timings" in events[0]
+    assert "retrieval_ms" in events[0]["timings"]
+    assert "total_backend_ms" in events[-2]["timings"]
     assert events[-1]["conversation_id"] == "conv-1"
     assistant_call = mock_save_message.call_args_list[-1]
     assert assistant_call.kwargs["tool_trace"] is None
@@ -174,8 +183,11 @@ def test_stream_chat_tool_trace_is_emitted_and_persisted(
         "tool_call",
         "tool_result",
         "token",
+        "debug_update",
         "done",
     ]
+    assert events[-2]["timings"]["tool_call_count"] == 1
+    assert events[-2]["timings"]["tool_loop_iterations"] == 2
     assistant_call = mock_save_message.call_args_list[-1]
     persisted_trace = json.loads(assistant_call.kwargs["tool_trace"])
     assert persisted_trace[0]["tool_calls"][0]["name"] == "memory_search"
