@@ -207,6 +207,33 @@ def _init_working():
 
         CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
         CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
+
+        CREATE TABLE IF NOT EXISTS artifacts (
+            artifact_id TEXT PRIMARY KEY,
+            artifact_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            path TEXT,
+            status TEXT NOT NULL DEFAULT 'draft',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            source TEXT,
+            source_conversation_id TEXT,
+            source_message_id TEXT,
+            source_tool_name TEXT,
+            revision_of TEXT,
+            metadata_json TEXT,
+            FOREIGN KEY (revision_of) REFERENCES artifacts(artifact_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_artifacts_type
+            ON artifacts(artifact_type);
+        CREATE INDEX IF NOT EXISTS idx_artifacts_status
+            ON artifacts(status);
+        CREATE INDEX IF NOT EXISTS idx_artifacts_path
+            ON artifacts(path);
+        CREATE INDEX IF NOT EXISTS idx_artifacts_created_at
+            ON artifacts(created_at);
     """)
 
     # FTS5 virtual table — separate because executescript can't mix
