@@ -1,21 +1,18 @@
 """
 Tír Context Construction
 
-Assembles the entity's context for each turn. Phase 1 minimal version:
-- Section 1: Seed identity (soul.md)
-- Section 4: Current situation (who she's talking to, what time it is)
+Assembles the entity's context for each turn.
 
-Sections 2 (tools) and 3 (retrieved memories) are added in later phases.
-
-Per Context Construction Design v1.1, the ordering is:
-1. Seed identity (stable foundation)
-2. Available tools (capabilities) — Phase 3
-3. Retrieved memories (relevant past experience) — Phase 2
-4. Current situation (who and when)
+Ordering:
+1. Seed identity (soul.md)
+2. Operational guidance (OPERATIONAL_GUIDANCE.md, if present)
+3. Available tools
+4. Retrieved memories
+5. Current situation (who and when)
 5. Current conversation (the exchange so far) — handled by message history
 
-Sections 1 and 4 go into the system prompt.
-Section 5 goes into the messages array.
+Everything except current conversation goes into the system prompt.
+Current conversation goes into the messages array.
 """
 
 from datetime import datetime, timezone
@@ -35,6 +32,18 @@ def _load_soul() -> str:
     if not soul_path.exists():
         raise FileNotFoundError(f"soul.md not found at {soul_path}")
     return soul_path.read_text(encoding="utf-8").strip()
+
+
+def _load_operational_guidance() -> str | None:
+    """Load optional runtime guidance without treating it as memory."""
+    guidance_path = PROJECT_ROOT / "OPERATIONAL_GUIDANCE.md"
+    if not guidance_path.exists():
+        return None
+
+    content = guidance_path.read_text(encoding="utf-8").strip()
+    if not content:
+        return None
+    return f"[Operational Guidance]\n\n{content}"
 
 
 def _current_situation(user_name: str) -> str:
@@ -101,11 +110,16 @@ def build_system_prompt(
     # Section 1: Seed identity
     sections.append(_load_soul())
 
-    # Section 2: Available tools (Phase 3)
+    # Section 2: Operational guidance
+    operational_guidance = _load_operational_guidance()
+    if operational_guidance:
+        sections.append(operational_guidance)
+
+    # Section 3: Available tools
     if tool_descriptions:
         sections.append(tool_descriptions)
 
-    # Section 3: Retrieved memories
+    # Section 4: Retrieved memories
     if retrieved_chunks is None and user_message and not _is_greeting(user_message):
         # Automatic retrieval
         try:
@@ -120,7 +134,7 @@ def build_system_prompt(
     if retrieved_chunks:
         sections.append(_format_retrieved_memories(retrieved_chunks))
 
-    # Section 4: Current situation
+    # Section 5: Current situation
     if autonomous:
         sections.append(_autonomous_situation())
     else:
