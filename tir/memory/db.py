@@ -267,6 +267,44 @@ def _init_working():
             ON open_loops(source_conversation_id);
         CREATE INDEX IF NOT EXISTS idx_open_loops_created_at
             ON open_loops(created_at);
+
+        CREATE TABLE IF NOT EXISTS feedback_records (
+            feedback_id TEXT PRIMARY KEY,
+            feedback_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            title TEXT NOT NULL,
+            description TEXT,
+            user_feedback TEXT NOT NULL,
+            target_type TEXT,
+            target_id TEXT,
+            source TEXT,
+            source_conversation_id TEXT,
+            source_message_id TEXT,
+            source_tool_name TEXT,
+            related_artifact_id TEXT,
+            related_open_loop_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            resolved_at TEXT,
+            metadata_json TEXT,
+            FOREIGN KEY (related_artifact_id) REFERENCES artifacts(artifact_id),
+            FOREIGN KEY (related_open_loop_id) REFERENCES open_loops(open_loop_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_feedback_records_type
+            ON feedback_records(feedback_type);
+        CREATE INDEX IF NOT EXISTS idx_feedback_records_status
+            ON feedback_records(status);
+        CREATE INDEX IF NOT EXISTS idx_feedback_records_target
+            ON feedback_records(target_type, target_id);
+        CREATE INDEX IF NOT EXISTS idx_feedback_records_conversation
+            ON feedback_records(source_conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_feedback_records_artifact
+            ON feedback_records(related_artifact_id);
+        CREATE INDEX IF NOT EXISTS idx_feedback_records_open_loop
+            ON feedback_records(related_open_loop_id);
+        CREATE INDEX IF NOT EXISTS idx_feedback_records_created_at
+            ON feedback_records(created_at);
     """)
 
     # FTS5 virtual table — separate because executescript can't mix

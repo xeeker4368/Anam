@@ -55,7 +55,7 @@ class TestSchemaCreation:
         for expected in ["users", "channel_identifiers", "conversations",
                          "messages", "summaries", "documents",
                          "overnight_runs", "tasks", "artifacts",
-                         "open_loops"]:
+                         "open_loops", "feedback_records"]:
             assert expected in table_names, f"Missing table: {expected}"
 
     def test_fts5_table_exists(self, temp_data_dir):
