@@ -234,6 +234,39 @@ def _init_working():
             ON artifacts(path);
         CREATE INDEX IF NOT EXISTS idx_artifacts_created_at
             ON artifacts(created_at);
+
+        CREATE TABLE IF NOT EXISTS open_loops (
+            open_loop_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'open',
+            loop_type TEXT NOT NULL DEFAULT 'generic',
+            priority TEXT NOT NULL DEFAULT 'normal',
+            related_artifact_id TEXT,
+            source TEXT,
+            source_conversation_id TEXT,
+            source_message_id TEXT,
+            source_tool_name TEXT,
+            next_action TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            closed_at TEXT,
+            metadata_json TEXT,
+            FOREIGN KEY (related_artifact_id) REFERENCES artifacts(artifact_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_open_loops_status
+            ON open_loops(status);
+        CREATE INDEX IF NOT EXISTS idx_open_loops_type
+            ON open_loops(loop_type);
+        CREATE INDEX IF NOT EXISTS idx_open_loops_priority
+            ON open_loops(priority);
+        CREATE INDEX IF NOT EXISTS idx_open_loops_artifact
+            ON open_loops(related_artifact_id);
+        CREATE INDEX IF NOT EXISTS idx_open_loops_conversation
+            ON open_loops(source_conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_open_loops_created_at
+            ON open_loops(created_at);
     """)
 
     # FTS5 virtual table — separate because executescript can't mix
