@@ -9,6 +9,7 @@ import pytest
 from tir.artifacts.service import (
     ArtifactValidationError,
     create_artifact,
+    create_artifact_file,
     get_artifact,
     list_artifacts,
     update_artifact_status,
@@ -211,3 +212,131 @@ def test_list_filters_by_path(temp_stores):
     listed = list_artifacts(path="coding/a.py", workspace_root=workspace_root)
 
     assert [item["artifact_id"] for item in listed] == [first["artifact_id"]]
+
+
+def test_create_artifact_file_creates_file_and_metadata(temp_stores):
+    workspace_root = temp_stores["workspace_root"]
+
+    result = create_artifact_file(
+        relative_path="research/session-2/notes.md",
+        content="Session notes",
+        artifact_type="research_note",
+        title="Session 2",
+        description="Created as one operation",
+        status="active",
+        source="test",
+        source_conversation_id="conv-2",
+        source_message_id="msg-2",
+        source_tool_name="internal_helper",
+        metadata={"topic": "artifacts"},
+        workspace_root=workspace_root,
+    )
+
+    assert set(result) == {"artifact", "file"}
+    assert result["file"] == {
+        "path": "research/session-2/notes.md",
+        "bytes": len("Session notes"),
+    }
+    assert (workspace_root / "research/session-2/notes.md").read_text(
+        encoding="utf-8"
+    ) == "Session notes"
+
+    artifact = result["artifact"]
+    assert artifact["artifact_type"] == "research_note"
+    assert artifact["title"] == "Session 2"
+    assert artifact["description"] == "Created as one operation"
+    assert artifact["path"] == "research/session-2/notes.md"
+    assert artifact["status"] == "active"
+    assert artifact["source"] == "test"
+    assert artifact["source_conversation_id"] == "conv-2"
+    assert artifact["source_message_id"] == "msg-2"
+    assert artifact["source_tool_name"] == "internal_helper"
+    assert artifact["metadata"] == {"topic": "artifacts"}
+
+
+def test_create_artifact_file_supports_draft_status(temp_stores):
+    result = create_artifact_file(
+        relative_path="drafts/example.md",
+        content="Draft",
+        artifact_type="writing",
+        title="Draft file",
+        status="draft",
+        workspace_root=temp_stores["workspace_root"],
+    )
+
+    assert result["artifact"]["status"] == "draft"
+    assert result["artifact"]["path"] == "drafts/example.md"
+
+
+def test_create_artifact_file_invalid_path_does_not_create_metadata(temp_stores):
+    workspace_root = temp_stores["workspace_root"]
+
+    with pytest.raises(ValueError):
+        create_artifact_file(
+            relative_path="../outside.md",
+            content="No file",
+            artifact_type="generic",
+            title="Bad path",
+            workspace_root=workspace_root,
+        )
+
+    assert list_artifacts(workspace_root=workspace_root) == []
+
+
+def test_create_artifact_file_invalid_metadata_does_not_create_file_or_metadata(temp_stores):
+    workspace_root = temp_stores["workspace_root"]
+
+    with pytest.raises(ArtifactValidationError):
+        create_artifact_file(
+            relative_path="drafts/bad-metadata.md",
+            content="No file",
+            artifact_type="generic",
+            title="Bad metadata",
+            metadata={"bad": object()},
+            workspace_root=workspace_root,
+        )
+
+    assert not (workspace_root / "drafts/bad-metadata.md").exists()
+    assert list_artifacts(workspace_root=workspace_root) == []
+
+
+def test_create_artifact_file_invalid_type_and_status_do_not_create_file(temp_stores):
+    workspace_root = temp_stores["workspace_root"]
+
+    with pytest.raises(ArtifactValidationError):
+        create_artifact_file(
+            relative_path="drafts/bad-type.md",
+            content="No file",
+            artifact_type="unknown",
+            title="Bad type",
+            workspace_root=workspace_root,
+        )
+
+    with pytest.raises(ArtifactValidationError):
+        create_artifact_file(
+            relative_path="drafts/bad-status.md",
+            content="No file",
+            artifact_type="generic",
+            title="Bad status",
+            status="unknown",
+            workspace_root=workspace_root,
+        )
+
+    assert not (workspace_root / "drafts/bad-type.md").exists()
+    assert not (workspace_root / "drafts/bad-status.md").exists()
+    assert list_artifacts(workspace_root=workspace_root) == []
+
+
+def test_create_artifact_file_does_not_invoke_memory_indexing(temp_stores):
+    with patch("tir.memory.chunking._store_chunk") as mock_store_chunk, \
+         patch("tir.memory.chroma.upsert_chunk") as mock_upsert_chunk:
+        create_artifact_file(
+            relative_path="drafts/no-index.md",
+            content="No indexing",
+            artifact_type="generic",
+            title="No indexing",
+            workspace_root=temp_stores["workspace_root"],
+        )
+
+    mock_store_chunk.assert_not_called()
+    mock_upsert_chunk.assert_not_called()

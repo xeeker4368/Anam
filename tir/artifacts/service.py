@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from tir.config import WORKSPACE_DIR
-from tir.workspace.service import resolve_workspace_path
+from tir.workspace.service import resolve_workspace_path, write_workspace_file
 
 
 ALLOWED_ARTIFACT_TYPES = {
@@ -61,6 +61,12 @@ def _validate_artifact_type(artifact_type: str) -> None:
 def _validate_status(status: str) -> None:
     if status not in ALLOWED_ARTIFACT_STATUSES:
         raise ArtifactValidationError(f"Invalid artifact status: {status}")
+
+
+def _validate_title(title: str) -> str:
+    if not title or not title.strip():
+        raise ArtifactValidationError("title is required")
+    return title.strip()
 
 
 def _metadata_to_json(metadata: dict | None) -> str | None:
@@ -128,8 +134,7 @@ def create_artifact(
     """Create an artifact metadata record in working.db."""
     _validate_artifact_type(artifact_type)
     _validate_status(status)
-    if not title or not title.strip():
-        raise ArtifactValidationError("title is required")
+    normalized_title = _validate_title(title)
 
     artifact_id = str(uuid.uuid4())
     now = _now()
@@ -147,7 +152,7 @@ def create_artifact(
             (
                 artifact_id,
                 artifact_type,
-                title.strip(),
+                normalized_title,
                 description,
                 normalized_path,
                 status,
@@ -164,6 +169,55 @@ def create_artifact(
         conn.commit()
 
     return get_artifact(artifact_id)
+
+
+def create_artifact_file(
+    *,
+    relative_path: str | Path,
+    content: str,
+    artifact_type: str,
+    title: str,
+    description: str | None = None,
+    status: str = "draft",
+    source: str | None = None,
+    source_conversation_id: str | None = None,
+    source_message_id: str | None = None,
+    source_tool_name: str | None = None,
+    revision_of: str | None = None,
+    metadata: dict | None = None,
+    workspace_root: Path = WORKSPACE_DIR,
+) -> dict:
+    """Write a workspace file and register its artifact metadata.
+
+    Validation happens before writing so invalid artifact metadata or unsafe
+    paths do not create files or database records.
+    """
+    _validate_artifact_type(artifact_type)
+    _validate_status(status)
+    _validate_title(title)
+    _metadata_to_json(metadata)
+    normalized_path = _normalize_workspace_path(relative_path, workspace_root)
+
+    file_result = write_workspace_file(normalized_path, content, root=workspace_root)
+    artifact = create_artifact(
+        artifact_type=artifact_type,
+        title=title,
+        description=description,
+        path=file_result["path"],
+        status=status,
+        source=source,
+        source_conversation_id=source_conversation_id,
+        source_message_id=source_message_id,
+        source_tool_name=source_tool_name,
+        revision_of=revision_of,
+        metadata=metadata,
+        workspace_root=workspace_root,
+    )
+
+    return {
+        "artifact": artifact,
+        "file": file_result,
+    }
 
 
 def get_artifact(artifact_id: str) -> dict | None:
