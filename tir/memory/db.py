@@ -305,6 +305,53 @@ def _init_working():
             ON feedback_records(related_open_loop_id);
         CREATE INDEX IF NOT EXISTS idx_feedback_records_created_at
             ON feedback_records(created_at);
+
+        CREATE TABLE IF NOT EXISTS diagnostic_issues (
+            diagnostic_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL DEFAULT 'generic',
+            status TEXT NOT NULL DEFAULT 'open',
+            severity TEXT NOT NULL DEFAULT 'medium',
+            evidence_summary TEXT NOT NULL,
+            suspected_component TEXT,
+            related_feedback_id TEXT,
+            related_open_loop_id TEXT,
+            related_artifact_id TEXT,
+            source TEXT,
+            source_conversation_id TEXT,
+            source_message_id TEXT,
+            source_tool_name TEXT,
+            target_type TEXT,
+            target_id TEXT,
+            next_action TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            resolved_at TEXT,
+            metadata_json TEXT,
+            FOREIGN KEY (related_feedback_id) REFERENCES feedback_records(feedback_id),
+            FOREIGN KEY (related_open_loop_id) REFERENCES open_loops(open_loop_id),
+            FOREIGN KEY (related_artifact_id) REFERENCES artifacts(artifact_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_diagnostic_issues_category
+            ON diagnostic_issues(category);
+        CREATE INDEX IF NOT EXISTS idx_diagnostic_issues_status
+            ON diagnostic_issues(status);
+        CREATE INDEX IF NOT EXISTS idx_diagnostic_issues_severity
+            ON diagnostic_issues(severity);
+        CREATE INDEX IF NOT EXISTS idx_diagnostic_issues_feedback
+            ON diagnostic_issues(related_feedback_id);
+        CREATE INDEX IF NOT EXISTS idx_diagnostic_issues_open_loop
+            ON diagnostic_issues(related_open_loop_id);
+        CREATE INDEX IF NOT EXISTS idx_diagnostic_issues_artifact
+            ON diagnostic_issues(related_artifact_id);
+        CREATE INDEX IF NOT EXISTS idx_diagnostic_issues_conversation
+            ON diagnostic_issues(source_conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_diagnostic_issues_target
+            ON diagnostic_issues(target_type, target_id);
+        CREATE INDEX IF NOT EXISTS idx_diagnostic_issues_created_at
+            ON diagnostic_issues(created_at);
     """)
 
     # FTS5 virtual table — separate because executescript can't mix
