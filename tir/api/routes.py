@@ -113,6 +113,7 @@ def _resolve_user(user_id: str | None) -> dict:
         user = get_user(user_id)
         if user:
             return user
+        raise HTTPException(status_code=404, detail="User not found")
 
     user = get_user_by_name(DEFAULT_USER)
     if user:
@@ -140,6 +141,13 @@ def stream_chat(req: ChatRequest):
         {"type": "error", ...}      — if something goes wrong
     """
     user = _resolve_user(req.user_id)
+    supplied_conversation = (
+        get_conversation(req.conversation_id)
+        if req.conversation_id is not None
+        else None
+    )
+    if supplied_conversation and supplied_conversation["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Conversation does not belong to user")
 
     def generate():
         request_start = time.perf_counter()
@@ -162,10 +170,19 @@ def stream_chat(req: ChatRequest):
             conversation_id = start_conversation(user_id)
             logger.info(f"Started conversation {conversation_id[:8]} for {user_name}")
         else:
-            conv = get_conversation(conversation_id)
+            conv = supplied_conversation
             if conv is None:
                 conversation_id = start_conversation(user_id)
                 logger.warning(f"Conversation not found, started new: {conversation_id[:8]}")
+            elif conv.get("ended_at"):
+                previous_id = conversation_id
+                conversation_id = start_conversation(user_id)
+                logger.info(
+                    "Conversation %s was ended; started new conversation %s for %s",
+                    previous_id[:8],
+                    conversation_id[:8],
+                    user_name,
+                )
         timings["resolve_conversation_ms"] = elapsed_ms(phase_start)
 
         # --- Save user message ---
@@ -293,45 +310,50 @@ def stream_chat(req: ChatRequest):
 
         # --- Save assistant message ---
         tool_trace = None
+        assistant_msg = None
+        assistant_content = ""
+        should_persist_assistant = False
         if loop_result is None:
-            assistant_content = "Something went wrong when I tried to respond."
+            pass
         elif loop_result.terminated_reason == "complete":
             assistant_content = loop_result.final_content or ""
-            if loop_result.tool_trace:
+            should_persist_assistant = bool(assistant_content.strip())
+            if should_persist_assistant and loop_result.tool_trace:
                 tool_trace = json.dumps(loop_result.tool_trace)
+            elif not should_persist_assistant:
+                empty_message = "I received your message but couldn't generate a response."
+                logger.warning("Agent loop completed with empty assistant content")
+                yield json.dumps({"type": "error", "message": empty_message}) + "\n"
         elif loop_result.terminated_reason == "iteration_limit":
-            assistant_content = "I hit the tool iteration limit before I could finish responding."
-            if loop_result.tool_trace:
-                tool_trace = json.dumps(loop_result.tool_trace)
-            yield json.dumps({"type": "error", "message": assistant_content}) + "\n"
+            error_message = "I hit the tool iteration limit before I could finish responding."
+            yield json.dumps({"type": "error", "message": error_message}) + "\n"
         else:
-            assistant_content = (
+            error_message = (
                 "Something went wrong when I tried to respond: "
                 f"{loop_result.error or 'unknown error'}"
             )
-            if loop_result.tool_trace:
-                tool_trace = json.dumps(loop_result.tool_trace)
-            yield json.dumps({"type": "error", "message": assistant_content}) + "\n"
+            yield json.dumps({"type": "error", "message": error_message}) + "\n"
 
-        if not assistant_content:
-            assistant_content = "I received your message but couldn't generate a response."
-
-        phase_start = time.perf_counter()
-        assistant_msg = save_message(
-            conversation_id,
-            user_id,
-            "assistant",
-            assistant_content,
-            tool_trace=tool_trace,
-        )
-        save_assistant_message_ms = elapsed_ms(phase_start)
+        if should_persist_assistant:
+            phase_start = time.perf_counter()
+            assistant_msg = save_message(
+                conversation_id,
+                user_id,
+                "assistant",
+                assistant_content,
+                tool_trace=tool_trace,
+            )
+            save_assistant_message_ms = elapsed_ms(phase_start)
+        else:
+            save_assistant_message_ms = 0.0
 
         # --- Live chunking ---
         phase_start = time.perf_counter()
-        try:
-            maybe_chunk_live(conversation_id, user_id)
-        except Exception as e:
-            logger.warning(f"Live chunking failed: {e}")
+        if should_persist_assistant:
+            try:
+                maybe_chunk_live(conversation_id, user_id)
+            except Exception as e:
+                logger.warning(f"Live chunking failed: {e}")
         chunking_ms = elapsed_ms(phase_start)
 
         post_model_timings = {
@@ -359,7 +381,7 @@ def stream_chat(req: ChatRequest):
         yield json.dumps({
             "type": "done",
             "conversation_id": conversation_id,
-            "message_id": assistant_msg["id"],
+            "message_id": assistant_msg["id"] if assistant_msg else None,
         }) + "\n"
 
     return StreamingResponse(generate(), media_type="text/plain")

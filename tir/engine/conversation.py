@@ -113,27 +113,24 @@ def handle_turn(
             system_prompt=system_prompt,
             messages=model_messages,
         )
-        assistant_content = response["message"].get("content", "")
+        assistant_content = response["message"].get("content", "") or ""
 
-        if not assistant_content:
-            assistant_content = "I received your message but couldn't generate a response."
+        if not assistant_content.strip():
             logger.warning("Empty response from model")
+            return ConversationResponse(
+                content="I received your message but couldn't generate a response.",
+                conversation_id=conversation_id,
+                message_id="",
+                error=True,
+            )
 
     except Exception as e:
         logger.error(f"Model call failed: {e}")
         assistant_content = f"Something went wrong when I tried to respond: {e}"
-
-        # Still persist the error response so the conversation record is complete
-        error_msg = save_message(
-            conversation_id=conversation_id,
-            user_id=user_id,
-            role="assistant",
-            content=assistant_content,
-        )
         return ConversationResponse(
             content=assistant_content,
             conversation_id=conversation_id,
-            message_id=error_msg["id"],
+            message_id="",
             error=True,
         )
 
