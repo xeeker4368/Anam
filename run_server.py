@@ -14,7 +14,7 @@ import argparse
 import logging
 import uvicorn
 
-from tir.config import WEB_HOST, WEB_PORT
+from tir.config import DATA_DIR, WEB_HOST, WEB_PORT
 
 
 def main():
@@ -24,12 +24,14 @@ def main():
     args = parser.parse_args()
 
     log_level = logging.DEBUG if args.debug else logging.INFO
+    log_path = DATA_DIR / "tir.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler("data/prod/tir.log"),
+            logging.FileHandler(log_path),
         ],
     )
 

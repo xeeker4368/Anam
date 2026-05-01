@@ -28,6 +28,33 @@ def temp_data_dir(tmp_path):
 
 
 class TestSchemaCreation:
+    def test_archive_init_closes_connection(self, temp_data_dir, monkeypatch):
+        db = temp_data_dir
+
+        class FakeConnection:
+            def __init__(self):
+                self.executed = False
+                self.committed = False
+                self.closed = False
+
+            def executescript(self, script):
+                self.executed = True
+
+            def commit(self):
+                self.committed = True
+
+            def close(self):
+                self.closed = True
+
+        fake_conn = FakeConnection()
+        monkeypatch.setattr(db, "_connect_archive_only", lambda: fake_conn)
+
+        db._init_archive()
+
+        assert fake_conn.executed is True
+        assert fake_conn.committed is True
+        assert fake_conn.closed is True
+
     def test_archive_has_two_tables(self, temp_data_dir):
         db = temp_data_dir
         import sqlite3
@@ -141,6 +168,37 @@ class TestChannelIdentifiers:
         db.add_channel_identifier(user["id"], "imessage", "+15551234567")
         with pytest.raises(sqlite3.IntegrityError):
             db.add_channel_identifier(user["id"], "imessage", "+15551234567")
+
+    def test_upsert_channel_auth_creates_and_updates_without_duplicates(self, temp_data_dir):
+        db = temp_data_dir
+        user = db.create_user("Lyle")
+
+        created = db.upsert_channel_auth(
+            user["id"],
+            "web",
+            "lyle",
+            "hash-1",
+        )
+        updated = db.upsert_channel_auth(
+            user["id"],
+            "web",
+            "lyle",
+            "hash-2",
+        )
+
+        assert created["channel"] == "web"
+        assert created["identifier"] == "lyle"
+        assert created["auth_material"] == "hash-1"
+        assert updated["id"] == created["id"]
+        assert updated["auth_material"] == "hash-2"
+        assert updated["verified"] == 1
+
+        with db.get_connection() as conn:
+            count = conn.execute(
+                """SELECT COUNT(*) FROM main.channel_identifiers
+                   WHERE channel = 'web' AND identifier = 'lyle'"""
+            ).fetchone()[0]
+        assert count == 1
 
 
 class TestAtomicDualWrite:

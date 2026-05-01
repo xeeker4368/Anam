@@ -69,7 +69,8 @@ def init_databases():
 
 def _init_archive():
     """Archive schema: two tables, scope frozen forever."""
-    with _connect_archive_only() as conn:
+    conn = _connect_archive_only()
+    try:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
@@ -94,6 +95,9 @@ def _init_archive():
             CREATE INDEX IF NOT EXISTS idx_archive_user
                 ON messages(user_id);
         """)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _init_working():
@@ -494,6 +498,38 @@ def set_channel_auth(channel: str, identifier: str, auth_material: str):
             (auth_material, channel, identifier),
         )
         conn.commit()
+
+
+def upsert_channel_auth(
+    user_id: str,
+    channel: str,
+    identifier: str,
+    auth_material: str,
+    verified: bool = True,
+) -> dict:
+    """Create or update auth material for a channel identifier."""
+    cid = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO main.channel_identifiers
+               (id, user_id, channel, identifier, auth_material, verified, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(channel, identifier) DO UPDATE SET
+                   user_id = excluded.user_id,
+                   auth_material = excluded.auth_material,
+                   verified = excluded.verified""",
+            (cid, user_id, channel, identifier, auth_material, int(verified), now),
+        )
+        conn.commit()
+        row = conn.execute(
+            """SELECT * FROM main.channel_identifiers
+               WHERE channel = ? AND identifier = ?""",
+            (channel, identifier),
+        ).fetchone()
+
+    return dict(row)
 
 
 # ---------------------------------------------------------------------------

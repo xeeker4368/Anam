@@ -5,6 +5,7 @@ Paths, model settings, and tuning knobs.
 All configuration in one place.
 """
 
+import os
 from pathlib import Path
 
 # --- Paths ---
@@ -50,7 +51,7 @@ AUTONOMOUS_ITERATION_LIMIT = 50
 TIMEZONE = "America/New_York"
 
 # --- Web server ---
-WEB_HOST = "0.0.0.0"
-WEB_PORT = 8000
+WEB_HOST = os.getenv("TIR_WEB_HOST", "127.0.0.1")
+WEB_PORT = int(os.getenv("TIR_WEB_PORT", "8000"))
 DEFAULT_USER = "Lyle"
 FRONTEND_DIR = PROJECT_ROOT / "frontend" / "dist"
