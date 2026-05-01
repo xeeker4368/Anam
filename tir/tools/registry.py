@@ -15,6 +15,7 @@ and calls them by name. The registry handles the plumbing.
 
 import importlib
 import importlib.util
+import inspect
 import json
 import logging
 import sys
@@ -81,6 +82,11 @@ class ToolDefinition:
     args_schema: dict
     function: callable
     skill_name: str  # which skill owns this tool
+    accepts_context: bool | None = None
+
+    def __post_init__(self):
+        if self.accepts_context is None:
+            self.accepts_context = _accepts_context(self.function)
 
 
 @dataclass
@@ -148,6 +154,53 @@ def _parse_skill_md(path: Path) -> tuple[dict, str]:
 # ---------------------------------------------------------------------------
 # Skill Registry
 # ---------------------------------------------------------------------------
+
+def _accepts_context(func: callable) -> bool:
+    """Return whether a tool callable can accept the injected _context arg."""
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+
+    for parameter in signature.parameters.values():
+        if parameter.name == "_context":
+            return True
+        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+
+    return False
+
+
+def _normalize_args(tool_name: str, args) -> tuple[dict | None, str | None]:
+    """Normalize model-supplied tool arguments into a JSON object/dict."""
+    if isinstance(args, dict):
+        return args, None
+
+    if isinstance(args, str):
+        try:
+            parsed = json.loads(args)
+        except json.JSONDecodeError as e:
+            return (
+                None,
+                f"Invalid arguments for '{tool_name}': arguments must be a JSON "
+                f"object; failed to parse JSON string: {e.msg}",
+            )
+
+        if not isinstance(parsed, dict):
+            return (
+                None,
+                f"Invalid arguments for '{tool_name}': arguments must be a JSON "
+                f"object, got {type(parsed).__name__}",
+            )
+
+        return parsed, None
+
+    return (
+        None,
+        f"Invalid arguments for '{tool_name}': arguments must be a JSON object, "
+        f"got {type(args).__name__}",
+    )
+
 
 class SkillRegistry:
     """Registry of skills and their tools.
@@ -351,10 +404,14 @@ class SkillRegistry:
             return {"ok": False, "error": error_msg}
 
         tool_def = self._tools[tool_name]
+        normalized_args, arg_error = _normalize_args(tool_name, args)
+        if arg_error is not None:
+            logger.warning(arg_error)
+            return {"ok": False, "error": arg_error}
 
         # Validate args against schema
         try:
-            jsonschema.validate(instance=args, schema=tool_def.args_schema)
+            jsonschema.validate(instance=normalized_args, schema=tool_def.args_schema)
         except jsonschema.ValidationError as e:
             error_msg = f"Invalid arguments for '{tool_name}': {e.message}"
             logger.warning(error_msg)
@@ -362,19 +419,12 @@ class SkillRegistry:
 
         # Call the tool
         try:
-            if _context is not None:
-                try:
-                    result = tool_def.function(**args, _context=_context)
-                except TypeError as e:
-                    if "_context" in str(e):
-                        # Tool doesn't accept _context
-                        result = tool_def.function(**args)
-                    else:
-                        raise
+            if _context is not None and tool_def.accepts_context:
+                result = tool_def.function(**normalized_args, _context=_context)
             else:
-                result = tool_def.function(**args)
+                result = tool_def.function(**normalized_args)
 
-            return {"ok": True, "value": result}
+            return {"ok": True, "value": result, "normalized_args": normalized_args}
 
         except Exception as e:
             error_msg = f"'{tool_name}' failed: {type(e).__name__}: {e}"

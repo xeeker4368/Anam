@@ -143,6 +143,11 @@ def run_agent_loop(
 
                 # Dispatch through registry
                 envelope = registry.dispatch(tool_name, arguments)
+                trace_arguments = (
+                    envelope.get("normalized_args", arguments)
+                    if envelope["ok"]
+                    else arguments
+                )
 
                 if envelope["ok"]:
                     rendered = str(envelope["value"])
@@ -165,7 +170,7 @@ def run_agent_loop(
 
                 trace_record["tool_calls"].append({
                     "name": tool_name,
-                    "arguments": arguments,
+                    "arguments": trace_arguments,
                 })
                 trace_record["tool_results"].append({
                     "tool_name": tool_name,

@@ -63,7 +63,7 @@ def _make_text_chunks(text: str) -> list[dict]:
     return chunks
 
 
-def _make_tool_call_chunks(tool_name: str, arguments: dict) -> list[dict]:
+def _make_tool_call_chunks(tool_name: str, arguments) -> list[dict]:
     """Simulate Ollama returning a tool call (no text content)."""
     return [
         {
@@ -266,6 +266,56 @@ class TestAgentLoopToolCalling:
         tr = [e for e in events if e["type"] == "tool_result"][0]
         assert tr["ok"] is False
         assert "nonexistent_tool" in tr["result"]
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_invalid_json_arguments_are_tool_result_not_crash(self, mock_stream):
+        """Invalid JSON-string tool args return a tool result and loop continues."""
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("echo", '{"text":')),
+            iter(_make_text_chunks("I saw the tool error")),
+        ]
+        registry = _build_test_registry()
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=[{"role": "user", "content": "echo malformed"}],
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr["ok"] is False
+        assert "failed to parse JSON string" in tr["result"]
+
+        result = events[-1]["result"]
+        assert result.terminated_reason == "complete"
+        assert result.final_content == "I saw the tool error "
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_json_string_arguments_are_normalized_in_tool_trace(self, mock_stream):
+        """Successful JSON-string tool args are stored as normalized dicts."""
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("echo", '{"text": "hello"}')),
+            iter(_make_text_chunks("OK")),
+        ]
+        registry = _build_test_registry()
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=[{"role": "user", "content": "echo hello"}],
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        tc = [e for e in events if e["type"] == "tool_call"][0]
+        assert tc["arguments"] == '{"text": "hello"}'
+
+        trace = events[-1]["result"].tool_trace
+        assert trace[0]["tool_calls"][0]["arguments"] == {"text": "hello"}
 
 
 class TestAgentLoopEdgeCases:
