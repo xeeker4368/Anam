@@ -24,8 +24,10 @@ from zoneinfo import ZoneInfo
 
 from tir.config import CHUNK_TURN_SIZE, TIMEZONE
 from tir.memory.db import (
+    get_conversation,
     get_conversation_messages,
     get_turn_count,
+    get_unchunked_ended_conversations,
     get_user,
     upsert_chunk_fts,
     mark_conversation_chunked,
@@ -270,12 +272,12 @@ def chunk_conversation_final(conversation_id: str, user_id: str) -> int:
         Number of chunks created/updated.
     """
     messages = get_conversation_messages(conversation_id)
+    chunk_groups = _assign_messages_to_chunks(messages)
+    intended_chunk_count = len(chunk_groups)
 
-    if not messages:
+    if intended_chunk_count == 0:
         mark_conversation_chunked(conversation_id)
         return 0
-
-    chunk_groups = _assign_messages_to_chunks(messages)
 
     # Resolve user name
     user = get_user(user_id)
@@ -297,12 +299,72 @@ def chunk_conversation_final(conversation_id: str, user_id: str) -> int:
             )
             chunks_written += 1
         except Exception as e:
-            logger.error(f"Failed to write chunk {chunk_id}: {e}")
+            logger.error(f"Failed to write chunk {chunk_id}: {e}", exc_info=True)
 
-    mark_conversation_chunked(conversation_id)
+    if chunks_written == intended_chunk_count:
+        mark_conversation_chunked(conversation_id)
+        logger.info(
+            f"Final chunking complete for conversation {conversation_id[:8]}: "
+            f"{chunks_written}/{intended_chunk_count} chunks from {len(messages)} messages"
+        )
+    else:
+        logger.error(
+            f"Final chunking incomplete for conversation {conversation_id[:8]}: "
+            f"{chunks_written}/{intended_chunk_count} chunks written; "
+            "leaving conversation unchunked for recovery"
+        )
+
+    return chunks_written
+
+
+def recover_unchunked_ended_conversations(limit: int | None = None) -> dict:
+    """Retry final chunking for ended conversations that remain unchunked.
+
+    This helper is explicit and intentionally not wired into startup.
+    """
+    conversations = get_unchunked_ended_conversations()
+    if limit is not None:
+        conversations = conversations[:limit]
+
+    summary = {
+        "attempted": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "chunks_written": 0,
+        "failures": [],
+    }
+
+    for conv in conversations:
+        conversation_id = conv["id"]
+        summary["attempted"] += 1
+        try:
+            chunks_written = chunk_conversation_final(conversation_id, conv["user_id"])
+            summary["chunks_written"] += chunks_written
+            updated = get_conversation(conversation_id)
+            if updated and updated.get("chunked") == 1:
+                summary["succeeded"] += 1
+            else:
+                summary["failed"] += 1
+                summary["failures"].append({
+                    "conversation_id": conversation_id,
+                    "error": "conversation remained unchunked after retry",
+                })
+        except Exception as e:
+            logger.error(
+                f"Recovery chunking failed for conversation {conversation_id[:8]}: {e}",
+                exc_info=True,
+            )
+            summary["failed"] += 1
+            summary["failures"].append({
+                "conversation_id": conversation_id,
+                "error": str(e),
+            })
 
     logger.info(
-        f"Final chunking complete for conversation {conversation_id[:8]}: "
-        f"{chunks_written} chunks from {len(messages)} messages"
+        "Unchunked conversation recovery attempted=%s succeeded=%s failed=%s chunks_written=%s",
+        summary["attempted"],
+        summary["succeeded"],
+        summary["failed"],
+        summary["chunks_written"],
     )
-    return chunks_written
+    return summary
