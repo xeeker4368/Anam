@@ -16,8 +16,7 @@ requests
 pyyaml
 jsonschema
 
-# --- Needed for web adapter (Phase 3) ---
-flask
+# --- Needed for web auth/admin ---
 argon2-cffi
 
 # --- Needed for web search + fetch tools (Phase 3) ---
