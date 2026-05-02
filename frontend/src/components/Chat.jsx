@@ -19,6 +19,23 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
     return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text
   }
 
+  async function readErrorMessage(resp, fallback) {
+    const fallbackMessage = fallback || `HTTP ${resp.status} ${resp.statusText}`.trim()
+    try {
+      const contentType = resp.headers.get('content-type') || ''
+      if (contentType.includes('application/json')) {
+        const data = await resp.json()
+        const message = data?.detail || data?.message || data?.error
+        return typeof message === 'string' ? message : JSON.stringify(message || data)
+      }
+
+      const text = await resp.text()
+      return text.trim() || fallbackMessage
+    } catch {
+      return fallbackMessage
+    }
+  }
+
   function publishDebug(nextDebug) {
     debugRef.current = nextDebug
     onDebugData({
@@ -144,14 +161,22 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
   async function fetchMessages(convId) {
     try {
       const resp = await fetch(`/api/conversations/${convId}/messages`)
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, 'Failed to fetch messages'))
+      }
+
       const data = await resp.json()
+      if (!Array.isArray(data)) {
+        throw new Error('Messages response was not a list')
+      }
+
       setMessages(data.map(m => ({
         role: m.role,
         content: m.content,
         timestamp: m.timestamp,
       })))
     } catch (e) {
-      console.error('Failed to fetch messages:', e)
+      console.warn('Failed to fetch messages:', e)
     }
   }
 
@@ -182,6 +207,28 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
           user_id: userId,
         }),
       })
+
+      if (!resp.ok) {
+        const message = await readErrorMessage(resp, 'Chat request failed')
+        appendRawEvent({
+          type: 'error',
+          source: 'http',
+          status: resp.status,
+          message,
+        })
+        setMessages(prev => {
+          const updated = [...prev]
+          const last = updated[updated.length - 1]
+          updated[updated.length - 1] = {
+            ...last,
+            content: message,
+            streaming: false,
+            error: true,
+          }
+          return updated
+        })
+        return
+      }
 
       const reader = resp.body.getReader()
       const decoder = new TextDecoder()
@@ -284,11 +331,11 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
         }
         return updated
       })
+    } finally {
+      setIsStreaming(false)
+      isStreamingRef.current = false
+      onRefresh()
     }
-
-    setIsStreaming(false)
-    isStreamingRef.current = false
-    onRefresh()
   }
 
   function handleKeyDown(e) {

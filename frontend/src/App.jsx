@@ -8,7 +8,7 @@ function useIsMobile(breakpoint = 768) {
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < breakpoint)
     window.addEventListener('resize', handler)
-    return () => clearInterval(handler)
+    return () => window.removeEventListener('resize', handler)
   }, [breakpoint])
   return isMobile
 }
@@ -46,6 +46,23 @@ function App() {
   const isMobile = useIsMobile()
   useViewportHeight()
 
+  async function readErrorMessage(resp, fallback) {
+    const fallbackMessage = fallback || `HTTP ${resp.status} ${resp.statusText}`.trim()
+    try {
+      const contentType = resp.headers.get('content-type') || ''
+      if (contentType.includes('application/json')) {
+        const data = await resp.json()
+        const message = data?.detail || data?.message || data?.error
+        return typeof message === 'string' ? message : JSON.stringify(message || data)
+      }
+
+      const text = await resp.text()
+      return text.trim() || fallbackMessage
+    } catch {
+      return fallbackMessage
+    }
+  }
+
   useEffect(() => {
     fetchConversations()
     fetchHealth()
@@ -57,7 +74,15 @@ function App() {
   async function fetchConversations() {
     try {
       const resp = await fetch('/api/conversations')
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, 'Failed to fetch conversations'))
+      }
+
       const data = await resp.json()
+      if (!Array.isArray(data)) {
+        throw new Error('Conversations response was not a list')
+      }
+
       setConversations(data)
     } catch (e) {
       console.error('Failed to fetch conversations:', e)
@@ -87,7 +112,15 @@ function App() {
   async function fetchUsers() {
     try {
       const resp = await fetch('/api/users')
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, 'Failed to fetch users'))
+      }
+
       const data = await resp.json()
+      if (!Array.isArray(data)) {
+        throw new Error('Users response was not a list')
+      }
+
       setUsers(data)
       if (data.length > 0) {
         const admin = data.find(u => u.role === 'admin') || data[0]
@@ -112,6 +145,10 @@ function App() {
       const resp = await fetch(`/api/conversations/${activeConversationId}/close`, {
         method: 'POST',
       })
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, 'Failed to close conversation'))
+      }
+
       const data = await resp.json()
       console.log('Closed:', data)
       setActiveConversationId(null)
@@ -125,7 +162,15 @@ function App() {
   async function handleViewConversation(conv) {
     try {
       const resp = await fetch(`/api/conversations/${conv.id}/messages`)
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, 'Failed to fetch messages'))
+      }
+
       const messages = await resp.json()
+      if (!Array.isArray(messages)) {
+        throw new Error('Messages response was not a list')
+      }
+
       setViewingConversation(conv)
       setViewingMessages(messages)
       setDebugData(null)
