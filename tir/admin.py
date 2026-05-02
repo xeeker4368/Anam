@@ -24,7 +24,7 @@ from tir.memory.db import (
     get_all_users,
     get_user_by_name,
     add_channel_identifier,
-    set_channel_auth,
+    upsert_channel_auth,
 )
 
 
@@ -96,7 +96,13 @@ def cmd_set_password(args):
     ph = PasswordHasher()
     hashed = ph.hash(password)
 
-    set_channel_auth("web", args.user.lower(), hashed)
+    upsert_channel_auth(
+        user_id=user["id"],
+        channel="web",
+        identifier=args.user.lower(),
+        auth_material=hashed,
+        verified=True,
+    )
     print(f"Password set for {args.user} (web channel)")
 
 
