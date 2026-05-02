@@ -10,10 +10,12 @@ from tir.artifacts.service import (
     ArtifactValidationError,
     create_artifact,
     create_artifact_file,
+    create_artifact_file_with_open_loop,
     get_artifact,
     list_artifacts,
     update_artifact_status,
 )
+from tir.open_loops.service import OpenLoopValidationError, list_open_loops
 from tir.workspace.service import ensure_workspace
 
 
@@ -335,6 +337,180 @@ def test_create_artifact_file_does_not_invoke_memory_indexing(temp_stores):
             content="No indexing",
             artifact_type="generic",
             title="No indexing",
+            workspace_root=temp_stores["workspace_root"],
+        )
+
+    mock_store_chunk.assert_not_called()
+    mock_upsert_chunk.assert_not_called()
+
+
+def test_create_artifact_file_with_open_loop_creates_linked_records(temp_stores):
+    workspace_root = temp_stores["workspace_root"]
+
+    result = create_artifact_file_with_open_loop(
+        relative_path="drafts/linked.md",
+        content="Draft to continue",
+        artifact_type="writing",
+        title="Linked Draft",
+        description="Artifact description",
+        status="draft",
+        source="test",
+        source_conversation_id="conv-3",
+        source_message_id="msg-3",
+        source_tool_name="internal_helper",
+        metadata={"kind": "draft"},
+        create_open_loop=True,
+        open_loop_next_action="Revise the ending",
+        workspace_root=workspace_root,
+    )
+
+    assert set(result) == {"artifact", "file", "open_loop"}
+    assert result["file"] == {
+        "path": "drafts/linked.md",
+        "bytes": len("Draft to continue"),
+    }
+    assert (workspace_root / "drafts/linked.md").read_text(
+        encoding="utf-8"
+    ) == "Draft to continue"
+
+    artifact = result["artifact"]
+    open_loop = result["open_loop"]
+    assert artifact["artifact_type"] == "writing"
+    assert artifact["title"] == "Linked Draft"
+    assert artifact["metadata"] == {"kind": "draft"}
+    assert open_loop["related_artifact_id"] == artifact["artifact_id"]
+    assert open_loop["title"] == "Continue draft: Linked Draft"
+    assert open_loop["loop_type"] == "unfinished_artifact"
+    assert open_loop["priority"] == "normal"
+    assert open_loop["next_action"] == "Revise the ending"
+    assert open_loop["source"] == "test"
+    assert open_loop["source_conversation_id"] == "conv-3"
+    assert open_loop["source_message_id"] == "msg-3"
+    assert open_loop["source_tool_name"] == "internal_helper"
+
+    listed = list_open_loops(related_artifact_id=artifact["artifact_id"])
+    assert [item["open_loop_id"] for item in listed] == [open_loop["open_loop_id"]]
+
+
+def test_create_artifact_file_with_open_loop_is_optional(temp_stores):
+    result = create_artifact_file_with_open_loop(
+        relative_path="drafts/no-loop.md",
+        content="Finished enough",
+        artifact_type="writing",
+        title="No Loop",
+        create_open_loop=False,
+        workspace_root=temp_stores["workspace_root"],
+    )
+
+    assert result["artifact"]["title"] == "No Loop"
+    assert result["open_loop"] is None
+    assert list_open_loops(related_artifact_id=result["artifact"]["artifact_id"]) == []
+
+
+def test_create_artifact_file_with_open_loop_preserves_custom_loop_data(temp_stores):
+    result = create_artifact_file_with_open_loop(
+        relative_path="research/custom-loop.md",
+        content="Research note",
+        artifact_type="research_note",
+        title="Custom Loop",
+        create_open_loop=True,
+        open_loop_title="Finish research synthesis",
+        open_loop_description="Needs one more comparison pass",
+        open_loop_next_action="Compare against prior notes",
+        open_loop_priority="high",
+        open_loop_metadata={"reason": "unfinished"},
+        source="artifact-source",
+        source_conversation_id="artifact-conv",
+        source_message_id="artifact-msg",
+        source_tool_name="artifact-tool",
+        open_loop_source="loop-source",
+        open_loop_source_conversation_id="loop-conv",
+        open_loop_source_message_id="loop-msg",
+        open_loop_source_tool_name="loop-tool",
+        workspace_root=temp_stores["workspace_root"],
+    )
+
+    open_loop = result["open_loop"]
+    assert open_loop["title"] == "Finish research synthesis"
+    assert open_loop["description"] == "Needs one more comparison pass"
+    assert open_loop["next_action"] == "Compare against prior notes"
+    assert open_loop["priority"] == "high"
+    assert open_loop["metadata"] == {"reason": "unfinished"}
+    assert open_loop["source"] == "loop-source"
+    assert open_loop["source_conversation_id"] == "loop-conv"
+    assert open_loop["source_message_id"] == "loop-msg"
+    assert open_loop["source_tool_name"] == "loop-tool"
+
+
+def test_create_artifact_file_with_open_loop_invalid_path_creates_nothing(temp_stores):
+    workspace_root = temp_stores["workspace_root"]
+
+    with pytest.raises(ValueError):
+        create_artifact_file_with_open_loop(
+            relative_path="../outside.md",
+            content="No file",
+            artifact_type="writing",
+            title="Bad Path",
+            create_open_loop=True,
+            workspace_root=workspace_root,
+        )
+
+    assert list_artifacts(workspace_root=workspace_root) == []
+    assert list_open_loops() == []
+
+
+def test_create_artifact_file_with_open_loop_invalid_loop_rejects_before_writing(temp_stores):
+    workspace_root = temp_stores["workspace_root"]
+
+    with pytest.raises(OpenLoopValidationError):
+        create_artifact_file_with_open_loop(
+            relative_path="drafts/bad-loop-priority.md",
+            content="No file",
+            artifact_type="writing",
+            title="Bad Loop",
+            create_open_loop=True,
+            open_loop_priority="urgent",
+            workspace_root=workspace_root,
+        )
+
+    with pytest.raises(OpenLoopValidationError):
+        create_artifact_file_with_open_loop(
+            relative_path="drafts/bad-loop-type.md",
+            content="No file",
+            artifact_type="writing",
+            title="Bad Loop",
+            create_open_loop=True,
+            open_loop_type="task_manager_item",
+            workspace_root=workspace_root,
+        )
+
+    with pytest.raises(OpenLoopValidationError):
+        create_artifact_file_with_open_loop(
+            relative_path="drafts/bad-loop-title.md",
+            content="No file",
+            artifact_type="writing",
+            title="Bad Loop",
+            create_open_loop=True,
+            open_loop_title="   ",
+            workspace_root=workspace_root,
+        )
+
+    assert not (workspace_root / "drafts/bad-loop-priority.md").exists()
+    assert not (workspace_root / "drafts/bad-loop-type.md").exists()
+    assert not (workspace_root / "drafts/bad-loop-title.md").exists()
+    assert list_artifacts(workspace_root=workspace_root) == []
+    assert list_open_loops() == []
+
+
+def test_create_artifact_file_with_open_loop_does_not_invoke_memory_indexing(temp_stores):
+    with patch("tir.memory.chunking._store_chunk") as mock_store_chunk, \
+         patch("tir.memory.chroma.upsert_chunk") as mock_upsert_chunk:
+        create_artifact_file_with_open_loop(
+            relative_path="drafts/no-loop-index.md",
+            content="No indexing",
+            artifact_type="writing",
+            title="No loop indexing",
+            create_open_loop=True,
             workspace_root=temp_stores["workspace_root"],
         )
 

@@ -12,6 +12,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from tir.config import WORKSPACE_DIR
+from tir.open_loops.service import (
+    create_open_loop as create_open_loop_record,
+    validate_open_loop_fields,
+)
 from tir.workspace.service import resolve_workspace_path, write_workspace_file
 
 
@@ -217,6 +221,104 @@ def create_artifact_file(
     return {
         "artifact": artifact,
         "file": file_result,
+    }
+
+
+def create_artifact_file_with_open_loop(
+    *,
+    relative_path: str | Path,
+    content: str,
+    artifact_type: str,
+    title: str,
+    description: str | None = None,
+    status: str = "draft",
+    source: str | None = None,
+    source_conversation_id: str | None = None,
+    source_message_id: str | None = None,
+    source_tool_name: str | None = None,
+    revision_of: str | None = None,
+    metadata: dict | None = None,
+    create_open_loop: bool = False,
+    open_loop_title: str | None = None,
+    open_loop_description: str | None = None,
+    open_loop_next_action: str | None = None,
+    open_loop_type: str = "unfinished_artifact",
+    open_loop_priority: str = "normal",
+    open_loop_metadata: dict | None = None,
+    open_loop_source: str | None = None,
+    open_loop_source_conversation_id: str | None = None,
+    open_loop_source_message_id: str | None = None,
+    open_loop_source_tool_name: str | None = None,
+    workspace_root: Path = WORKSPACE_DIR,
+) -> dict:
+    """Create an artifact file and optionally link an open loop to it."""
+    normalized_title = _validate_title(title)
+    _validate_artifact_type(artifact_type)
+    _validate_status(status)
+    _metadata_to_json(metadata)
+    _normalize_workspace_path(relative_path, workspace_root)
+
+    requested_open_loop_title = (
+        open_loop_title
+        if open_loop_title is not None
+        else f"Continue draft: {normalized_title}"
+    )
+    if create_open_loop:
+        validate_open_loop_fields(
+            title=requested_open_loop_title,
+            loop_type=open_loop_type,
+            priority=open_loop_priority,
+            metadata=open_loop_metadata,
+        )
+
+    result = create_artifact_file(
+        relative_path=relative_path,
+        content=content,
+        artifact_type=artifact_type,
+        title=normalized_title,
+        description=description,
+        status=status,
+        source=source,
+        source_conversation_id=source_conversation_id,
+        source_message_id=source_message_id,
+        source_tool_name=source_tool_name,
+        revision_of=revision_of,
+        metadata=metadata,
+        workspace_root=workspace_root,
+    )
+
+    open_loop = None
+    if create_open_loop:
+        open_loop = create_open_loop_record(
+            title=requested_open_loop_title,
+            description=open_loop_description,
+            loop_type=open_loop_type,
+            priority=open_loop_priority,
+            related_artifact_id=result["artifact"]["artifact_id"],
+            source=open_loop_source if open_loop_source is not None else source,
+            source_conversation_id=(
+                open_loop_source_conversation_id
+                if open_loop_source_conversation_id is not None
+                else source_conversation_id
+            ),
+            source_message_id=(
+                open_loop_source_message_id
+                if open_loop_source_message_id is not None
+                else source_message_id
+            ),
+            source_tool_name=(
+                open_loop_source_tool_name
+                if open_loop_source_tool_name is not None
+                else source_tool_name
+            ),
+            next_action=open_loop_next_action,
+            metadata=open_loop_metadata,
+        )
+
+    return {
+        "artifact": result["artifact"],
+        "file": result["file"],
+        "open_loop": open_loop,
     }
 
 

@@ -82,6 +82,23 @@ def _metadata_to_json(metadata: dict | None) -> str | None:
         raise OpenLoopValidationError("metadata must be JSON serializable") from exc
 
 
+def validate_open_loop_fields(
+    *,
+    title: str,
+    status: str = "open",
+    loop_type: str = "generic",
+    priority: str = "normal",
+    metadata: dict | None = None,
+) -> str:
+    """Validate core open-loop fields and return the normalized title."""
+    normalized_title = _validate_title(title)
+    _validate_status(status)
+    _validate_loop_type(loop_type)
+    _validate_priority(priority)
+    _metadata_to_json(metadata)
+    return normalized_title
+
+
 def open_loop_to_dict(row) -> dict | None:
     """Convert an open-loop DB row to a stable service result shape."""
     if row is None:
@@ -127,10 +144,13 @@ def create_open_loop(
     metadata: dict | None = None,
 ) -> dict:
     """Create an internal open-loop metadata record in working.db."""
-    normalized_title = _validate_title(title)
-    _validate_status(status)
-    _validate_loop_type(loop_type)
-    _validate_priority(priority)
+    normalized_title = validate_open_loop_fields(
+        title=title,
+        status=status,
+        loop_type=loop_type,
+        priority=priority,
+        metadata=metadata,
+    )
     metadata_json = _metadata_to_json(metadata)
 
     open_loop_id = str(uuid.uuid4())

@@ -10,6 +10,7 @@ from tir.open_loops.service import (
     list_open_loops,
     open_loop_to_dict,
     update_open_loop_status,
+    validate_open_loop_fields,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "list_open_loops",
     "open_loop_to_dict",
     "update_open_loop_status",
+    "validate_open_loop_fields",
 ]
