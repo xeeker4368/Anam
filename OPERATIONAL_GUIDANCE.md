@@ -114,6 +114,16 @@ If the user asks what was previously learned about that topic, use memory first.
 
 If the user asks to compare prior understanding with current reality, use both memory and the appropriate external tool.
 
+### URL-Specific Questions
+
+If the user provides a public HTTP/HTTPS URL and asks what it says, asks for a summary, asks a question about the page contents, asks whether a claim about it is accurate, or asks for details from the article/page, use `web_fetch` before answering.
+
+Do not answer URL-content questions from the URL slug, search snippets, prior memory, or general model knowledge unless `web_fetch` fails.
+
+If `web_fetch` fails, say that the page could not be fetched, briefly explain the tool error, and optionally offer to use `web_search` for related coverage.
+
+Search snippets are leads, not verification. For detailed technical documentation, news articles, source-specific summaries, or article-content questions, fetch the page.
+
 ---
 
 ## Memory vs External Information

@@ -221,7 +221,11 @@ def _normalize_result(item: dict) -> dict:
         "Fetch and extract readable text from one public HTTP/HTTPS web page. "
         "Use this after web_search identifies a candidate URL or when the user "
         "provides a specific public URL. It does not crawl, execute scripts, "
-        "download files, or access localhost/private networks."
+        "download files, or access localhost/private networks. When the user "
+        "provides a public URL and asks what it says, asks for a summary, asks "
+        "about page contents, or asks to verify details from that page, call "
+        "this tool before answering. Do not infer page contents from URL slugs "
+        "or snippets."
     ),
     args_schema={
         "type": "object",
