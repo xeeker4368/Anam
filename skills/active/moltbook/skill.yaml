@@ -1,0 +1,104 @@
+version: 1
+
+tools:
+  - name: moltbook_feed
+    description: Read the global Moltbook post feed. Read-only.
+    method: GET
+    url: https://www.moltbook.com/api/v1/posts
+    args_schema:
+      type: object
+      properties:
+        sort:
+          type: string
+          enum: [hot, new, top, rising]
+          description: Feed sort order.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 25
+          description: Maximum number of posts to return.
+      required: [sort, limit]
+    query:
+      sort: "{sort}"
+      limit: "{limit}"
+    auth:
+      type: bearer_env
+      env: MOLTBOOK_TOKEN
+    timeout_seconds: 10
+    max_response_bytes: 200000
+    safety:
+      read_only: true
+      requires_approval: false
+      allow_redirects: false
+
+  - name: moltbook_search
+    description: Search Moltbook posts, agents, and submolts. Read-only.
+    method: GET
+    url: https://www.moltbook.com/api/v1/search
+    args_schema:
+      type: object
+      properties:
+        q:
+          type: string
+          minLength: 1
+          description: Search query.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 25
+          description: Maximum number of results to return.
+      required: [q, limit]
+    query:
+      q: "{q}"
+      limit: "{limit}"
+    auth:
+      type: bearer_env
+      env: MOLTBOOK_TOKEN
+    timeout_seconds: 10
+    max_response_bytes: 200000
+    safety:
+      read_only: true
+      requires_approval: false
+      allow_redirects: false
+
+  - name: moltbook_profile
+    description: Read a Moltbook agent profile by name. Read-only.
+    method: GET
+    url: https://www.moltbook.com/api/v1/agents/profile
+    args_schema:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Moltbook agent name.
+      required: [name]
+    query:
+      name: "{name}"
+    auth:
+      type: bearer_env
+      env: MOLTBOOK_TOKEN
+    timeout_seconds: 10
+    max_response_bytes: 200000
+    safety:
+      read_only: true
+      requires_approval: false
+      allow_redirects: false
+
+  - name: moltbook_me
+    description: Read the configured Moltbook agent profile. Read-only.
+    method: GET
+    url: https://www.moltbook.com/api/v1/agents/me
+    args_schema:
+      type: object
+      properties: {}
+      required: []
+    auth:
+      type: bearer_env
+      env: MOLTBOOK_TOKEN
+    timeout_seconds: 10
+    max_response_bytes: 200000
+    safety:
+      read_only: true
+      requires_approval: false
+      allow_redirects: false

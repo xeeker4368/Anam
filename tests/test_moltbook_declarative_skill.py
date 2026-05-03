@@ -1,0 +1,158 @@
+from unittest.mock import Mock, patch
+
+from tir.config import SKILLS_DIR
+from tir.tools.registry import SkillRegistry
+
+
+MOLTBOOK_TOOL_NAMES = {
+    "moltbook_feed",
+    "moltbook_search",
+    "moltbook_profile",
+    "moltbook_me",
+}
+
+
+def _response(payload=b'{"success": true, "data": []}'):
+    response = Mock()
+    response.status_code = 200
+    response.headers = {"Content-Type": "application/json"}
+    response.url = "https://www.moltbook.com/api/v1/test"
+    response.encoding = "utf-8"
+    response.apparent_encoding = None
+    response.iter_content.return_value = [payload]
+    return response
+
+
+def _registry():
+    return SkillRegistry.from_directory(SKILLS_DIR)
+
+
+def test_moltbook_declarative_skill_loads_with_existing_active_tools():
+    registry = _registry()
+
+    tool_names = {tool["function"]["name"] for tool in registry.list_tools()}
+
+    assert "memory_search" in tool_names
+    assert "web_search" in tool_names
+    assert "web_fetch" in tool_names
+    assert MOLTBOOK_TOOL_NAMES.issubset(tool_names)
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_feed_maps_sort_limit_and_bearer_auth(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_feed", {"sort": "new", "limit": 10})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/posts",
+        params={"sort": "new", "limit": "10"},
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+    assert "moltbook-secret-token" not in str(result["value"])
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_search_maps_query_limit_and_bearer_auth(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_search", {"q": "agents", "limit": 5})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once()
+    assert mock_get.call_args.args[0] == "https://www.moltbook.com/api/v1/search"
+    assert mock_get.call_args.kwargs["params"] == {
+        "q": "agents",
+        "limit": "5",
+    }
+    assert mock_get.call_args.kwargs["headers"] == {
+        "Authorization": "Bearer moltbook-secret-token",
+    }
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_profile_maps_name_and_bearer_auth(mock_get, monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_profile", {"name": "HelpfulBot"})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/agents/profile",
+        params={"name": "HelpfulBot"},
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_me_sends_bearer_auth_without_query_args(mock_get, monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_me", {})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/agents/me",
+        params=None,
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_missing_moltbook_token_returns_ok_false_without_request_or_secret_leak(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.delenv("MOLTBOOK_TOKEN", raising=False)
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_me", {})
+
+    assert result["ok"] is True
+    assert result["value"] == {
+        "ok": False,
+        "error": "Missing required environment variable: MOLTBOOK_TOKEN",
+    }
+    assert "moltbook-secret-token" not in str(result)
+    mock_get.assert_not_called()
+
+
+def test_moltbook_skill_does_not_include_write_or_path_template_tools():
+    registry = _registry()
+    tool_names = {tool["function"]["name"] for tool in registry.list_tools()}
+
+    assert MOLTBOOK_TOOL_NAMES.issubset(tool_names)
+    assert "moltbook_read_post" not in tool_names
+    assert "moltbook_post" not in tool_names
+    assert "moltbook_comment" not in tool_names
+    assert "moltbook_vote" not in tool_names
+    assert "moltbook_follow" not in tool_names
+    assert "moltbook_home" not in tool_names
