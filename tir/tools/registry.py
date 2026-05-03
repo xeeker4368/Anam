@@ -25,6 +25,8 @@ from pathlib import Path
 import jsonschema
 import yaml
 
+from tir.tools.http_declarative import load_declarative_http_tools
+
 logger = logging.getLogger(__name__)
 
 
@@ -316,6 +318,36 @@ class SkillRegistry:
                         logger.info(
                             f"Registered tool '{tool_name}' from skill '{skill_name}'"
                         )
+
+            skill_yaml_path = entry / "skill.yaml"
+            if skill_yaml_path.exists():
+                for declarative_tool in load_declarative_http_tools(skill_yaml_path):
+                    tool_name = declarative_tool.name
+
+                    if tool_name in registry._tools:
+                        existing = registry._tools[tool_name]
+                        raise ValueError(
+                            f"Duplicate tool name '{tool_name}' declared by "
+                            f"skills '{existing.skill_name}' and '{skill_name}'"
+                        )
+
+                    tool_def = ToolDefinition(
+                        name=tool_name,
+                        description=declarative_tool.description,
+                        args_schema=declarative_tool.args_schema,
+                        function=declarative_tool.function,
+                        skill_name=skill_name,
+                        accepts_context=False,
+                    )
+
+                    registry._tools[tool_name] = tool_def
+                    registry._tool_to_skill[tool_name] = skill_name
+                    skill.tools.append(tool_name)
+
+                    logger.info(
+                        f"Registered declarative HTTP tool '{tool_name}' "
+                        f"from skill '{skill_name}'"
+                    )
 
             registry._skills[skill_name] = skill
 
