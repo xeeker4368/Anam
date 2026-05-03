@@ -12,7 +12,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse, urlunparse
 
 import jsonschema
 import requests
@@ -73,6 +73,7 @@ class _HttpToolConfig:
     auth: _AuthConfig | None
     timeout_seconds: float
     max_response_bytes: int
+    path_placeholders: tuple[str, ...]
 
 
 class DeclarativeHttpTool:
@@ -82,11 +83,20 @@ class DeclarativeHttpTool:
         self.config = config
 
     def __call__(self, **kwargs) -> dict:
+        args = _apply_top_level_defaults(self.config.args_schema, kwargs)
         auth_headers, auth_error = _build_auth_headers(self.config.auth)
         if auth_error:
             return {"ok": False, "error": auth_error}
 
-        query_params, query_error = _build_query_params(self.config.query, kwargs)
+        url, url_error = _build_request_url(
+            self.config.url,
+            self.config.path_placeholders,
+            args,
+        )
+        if url_error:
+            return {"ok": False, "error": url_error}
+
+        query_params, query_error = _build_query_params(self.config.query, args)
         if query_error:
             return {"ok": False, "error": query_error}
 
@@ -95,7 +105,7 @@ class DeclarativeHttpTool:
 
         try:
             response = requests.get(
-                self.config.url,
+                url,
                 params=query_params or None,
                 headers=headers or None,
                 timeout=self.config.timeout_seconds,
@@ -134,7 +144,7 @@ class DeclarativeHttpTool:
         return {
             "ok": True,
             "status_code": response.status_code,
-            "url": response.url or self.config.url,
+            "url": response.url or url,
             "content_type": content_type,
             "json": parsed_json,
             "text": text,
@@ -206,6 +216,7 @@ def _validate_tool_config(path: Path, index: int, raw: dict) -> _HttpToolConfig:
         ) from exc
 
     query = _validate_string_mapping(raw.get("query", {}), f"{prefix}.query")
+    path_placeholders = _validate_path_templates(url, args_schema, f"{prefix}.url")
     _validate_query_templates(query, args_schema, f"{prefix}.query")
 
     headers = _validate_string_mapping(raw.get("headers", {}), f"{prefix}.headers")
@@ -239,6 +250,7 @@ def _validate_tool_config(path: Path, index: int, raw: dict) -> _HttpToolConfig:
         auth=auth,
         timeout_seconds=timeout_seconds,
         max_response_bytes=max_response_bytes,
+        path_placeholders=path_placeholders,
     )
 
 
@@ -296,6 +308,49 @@ def _validate_url(url: str, prefix: str) -> None:
         )
 
 
+def _find_unbalanced_braces(value: str) -> bool:
+    return "{" in _TEMPLATE_RE.sub("", value) or "}" in _TEMPLATE_RE.sub("", value)
+
+
+def _validate_path_templates(
+    url: str,
+    args_schema: dict,
+    prefix: str,
+) -> tuple[str, ...]:
+    parsed = urlparse(url)
+    non_path_parts = {
+        "scheme": parsed.scheme,
+        "netloc": parsed.netloc,
+        "params": parsed.params,
+        "query": parsed.query,
+        "fragment": parsed.fragment,
+    }
+    for part_name, part_value in non_path_parts.items():
+        if "{" in part_value or "}" in part_value:
+            raise DeclarativeHttpSkillError(
+                f"{prefix}: placeholders are only allowed in the URL path "
+                f"(found in {part_name})"
+            )
+
+    if _find_unbalanced_braces(parsed.path):
+        raise DeclarativeHttpSkillError(f"{prefix}: malformed path template")
+
+    properties = args_schema.get("properties", {})
+    if properties is None:
+        properties = {}
+    if not isinstance(properties, dict):
+        raise DeclarativeHttpSkillError(f"{prefix}: args_schema.properties must be a mapping")
+
+    placeholders = tuple(dict.fromkeys(_TEMPLATE_RE.findall(parsed.path)))
+    for placeholder in placeholders:
+        if placeholder not in properties:
+            raise DeclarativeHttpSkillError(
+                f"{prefix}: unknown path template argument '{placeholder}'"
+            )
+
+    return placeholders
+
+
 def _validate_query_templates(
     query: dict[str, str],
     args_schema: dict,
@@ -309,12 +364,10 @@ def _validate_query_templates(
 
     for param_name, template in query.items():
         placeholders = _TEMPLATE_RE.findall(template)
-        if "{" in template or "}" in template:
-            rebuilt = _TEMPLATE_RE.sub("", template)
-            if "{" in rebuilt or "}" in rebuilt:
-                raise DeclarativeHttpSkillError(
-                    f"{prefix}.{param_name}: invalid template syntax"
-                )
+        if _find_unbalanced_braces(template):
+            raise DeclarativeHttpSkillError(
+                f"{prefix}.{param_name}: invalid template syntax"
+            )
         for placeholder in placeholders:
             if placeholder not in properties:
                 raise DeclarativeHttpSkillError(
@@ -425,6 +478,58 @@ def _build_query_params(
         params[key] = value
 
     return params, None
+
+
+def _apply_top_level_defaults(args_schema: dict, args: dict) -> dict:
+    result = dict(args)
+    properties = args_schema.get("properties", {})
+    if not isinstance(properties, dict):
+        return result
+
+    for key, schema in properties.items():
+        if key in result:
+            continue
+        if isinstance(schema, dict) and "default" in schema:
+            result[key] = schema["default"]
+
+    return result
+
+
+def _build_request_url(
+    template_url: str,
+    path_placeholders: tuple[str, ...],
+    args: dict,
+) -> tuple[str | None, str | None]:
+    if not path_placeholders:
+        return template_url, None
+
+    parsed = urlparse(template_url)
+    path = parsed.path
+    for placeholder in path_placeholders:
+        if placeholder not in args:
+            return None, f"Missing argument for path template: {placeholder}"
+        encoded = quote(str(args[placeholder]), safe="")
+        path = path.replace("{" + placeholder + "}", encoded)
+
+    if "{" in path or "}" in path:
+        return None, "Unresolved URL path template placeholder"
+
+    final_url = urlunparse(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            path,
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+    try:
+        _validate_url(final_url, "resolved URL")
+    except DeclarativeHttpSkillError as exc:
+        return None, str(exc)
+
+    return final_url, None
 
 
 def _read_response_bytes(response, max_response_bytes: int) -> bytes:

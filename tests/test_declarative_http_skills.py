@@ -52,6 +52,26 @@ tools:
 {extra}"""
 
 
+def _path_skill_yaml(url="https://example.com/api/posts/{post_id}", extra=""):
+    return f"""version: 1
+tools:
+  - name: example_post
+    description: Read one post.
+    method: GET
+    url: {url}
+    args_schema:
+      type: object
+      properties:
+        post_id:
+          type: string
+          minLength: 1
+      required: [post_id]
+    safety:
+      read_only: true
+      requires_approval: false
+{extra}"""
+
+
 def _response(
     status_code=200,
     chunks=None,
@@ -337,3 +357,204 @@ def test_missing_env_var_returns_ok_false_without_secret_leak(
     }
     assert "super-secret-token" not in str(result)
     mock_get.assert_not_called()
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_path_placeholder_substitution(mock_get, tmp_path):
+    _write_skill(tmp_path, skill_yaml=_path_skill_yaml())
+    mock_get.return_value = _response()
+    registry = SkillRegistry.from_directory(tmp_path)
+
+    result = registry.dispatch("example_post", {"post_id": "post-123"})
+
+    assert result["ok"] is True
+    mock_get.assert_called_once()
+    assert mock_get.call_args.args[0] == "https://example.com/api/posts/post-123"
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_path_placeholder_encoding_keeps_slash_inside_segment(mock_get, tmp_path):
+    _write_skill(tmp_path, skill_yaml=_path_skill_yaml())
+    mock_get.return_value = _response()
+    registry = SkillRegistry.from_directory(tmp_path)
+
+    result = registry.dispatch("example_post", {"post_id": "a/b c"})
+
+    assert result["ok"] is True
+    mock_get.assert_called_once()
+    assert mock_get.call_args.args[0] == "https://example.com/api/posts/a%2Fb%20c"
+
+
+def test_path_placeholders_rejected_outside_path_host(tmp_path):
+    _write_skill(
+        tmp_path,
+        skill_yaml=_path_skill_yaml(url="https://{host}/api/posts"),
+    )
+
+    with pytest.raises(DeclarativeHttpSkillError, match="only allowed in the URL path"):
+        SkillRegistry.from_directory(tmp_path)
+
+
+def test_path_placeholders_rejected_outside_path_query(tmp_path):
+    _write_skill(
+        tmp_path,
+        skill_yaml=_path_skill_yaml(url="https://example.com/api/posts?x={value}"),
+    )
+
+    with pytest.raises(DeclarativeHttpSkillError, match="only allowed in the URL path"):
+        SkillRegistry.from_directory(tmp_path)
+
+
+def test_malformed_path_template_braces_rejected(tmp_path):
+    _write_skill(
+        tmp_path,
+        skill_yaml=_path_skill_yaml(url="https://example.com/api/posts/{post_id"),
+    )
+
+    with pytest.raises(DeclarativeHttpSkillError, match="malformed path template"):
+        SkillRegistry.from_directory(tmp_path)
+
+
+def test_path_placeholder_must_exist_in_args_schema_properties(tmp_path):
+    _write_skill(
+        tmp_path,
+        skill_yaml=_path_skill_yaml(url="https://example.com/api/posts/{missing}"),
+    )
+
+    with pytest.raises(DeclarativeHttpSkillError, match="unknown path template argument"):
+        SkillRegistry.from_directory(tmp_path)
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_unresolved_path_placeholder_fails_without_request(mock_get, tmp_path):
+    _write_skill(
+        tmp_path,
+        skill_yaml="""version: 1
+tools:
+  - name: example_post
+    description: Read one post.
+    method: GET
+    url: https://example.com/api/posts/{post_id}
+    args_schema:
+      type: object
+      properties:
+        post_id:
+          type: string
+          minLength: 1
+      required: []
+    safety:
+      read_only: true
+      requires_approval: false
+""",
+    )
+    registry = SkillRegistry.from_directory(tmp_path)
+
+    result = registry.dispatch("example_post", {})
+
+    assert result["ok"] is True
+    assert result["value"] == {
+        "ok": False,
+        "error": "Missing argument for path template: post_id",
+    }
+    mock_get.assert_not_called()
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_final_url_safety_validation_runs_after_path_substitution(mock_get, tmp_path):
+    _write_skill(
+        tmp_path,
+        skill_yaml=_path_skill_yaml(url="https://example.com/api/{post_id}"),
+    )
+    registry = SkillRegistry.from_directory(tmp_path)
+
+    result = registry.dispatch("example_post", {"post_id": "safe"})
+
+    assert result["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://example.com/api/safe",
+        params=None,
+        headers=None,
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_defaults_apply_to_missing_top_level_optional_args(mock_get, tmp_path):
+    _write_skill(
+        tmp_path,
+        skill_yaml="""version: 1
+tools:
+  - name: example_feed
+    description: Read feed.
+    method: GET
+    url: https://example.com/api/feed
+    args_schema:
+      type: object
+      properties:
+        sort:
+          type: string
+          default: hot
+        limit:
+          type: integer
+          default: 25
+      required: []
+    query:
+      sort: "{sort}"
+      limit: "{limit}"
+    safety:
+      read_only: true
+      requires_approval: false
+""",
+    )
+    mock_get.return_value = _response()
+    registry = SkillRegistry.from_directory(tmp_path)
+
+    result = registry.dispatch("example_feed", {})
+
+    assert result["ok"] is True
+    assert mock_get.call_args.kwargs["params"] == {
+        "sort": "hot",
+        "limit": "25",
+    }
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_explicit_args_override_defaults(mock_get, tmp_path):
+    _write_skill(
+        tmp_path,
+        skill_yaml="""version: 1
+tools:
+  - name: example_feed
+    description: Read feed.
+    method: GET
+    url: https://example.com/api/feed
+    args_schema:
+      type: object
+      properties:
+        sort:
+          type: string
+          default: hot
+        limit:
+          type: integer
+          default: 25
+      required: []
+    query:
+      sort: "{sort}"
+      limit: "{limit}"
+    safety:
+      read_only: true
+      requires_approval: false
+""",
+    )
+    mock_get.return_value = _response()
+    registry = SkillRegistry.from_directory(tmp_path)
+
+    result = registry.dispatch("example_feed", {"sort": "new", "limit": 5})
+
+    assert result["ok"] is True
+    assert mock_get.call_args.kwargs["params"] == {
+        "sort": "new",
+        "limit": "5",
+    }
