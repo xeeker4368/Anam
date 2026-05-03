@@ -20,4 +20,5 @@ jsonschema
 argon2-cffi
 
 # --- Needed for web search + fetch tools (Phase 3) ---
+duckduckgo-search
 trafilatura
