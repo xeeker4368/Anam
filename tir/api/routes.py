@@ -48,6 +48,7 @@ from tir.memory.retrieval import retrieve
 from tir.memory.chunking import maybe_chunk_live, chunk_conversation_final
 from tir.engine.context import build_system_prompt
 from tir.engine.agent_loop import run_agent_loop
+from tir.engine.url_prefetch import get_url_prefetch_candidate
 from tir.memory.chroma import get_collection_count
 from tir.tools.registry import SkillRegistry
 from tir.artifacts.service import (
@@ -62,6 +63,16 @@ from tir.open_loops.service import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _render_tool_envelope(envelope: dict) -> tuple[bool, str]:
+    """Render a registry dispatch envelope for stream/model tool context."""
+    if envelope.get("ok"):
+        value = envelope.get("value")
+        effective_ok = not (isinstance(value, dict) and value.get("ok") is False)
+        return effective_ok, str(value)
+
+    return False, f"Error: {envelope.get('error', 'unknown tool error')}"
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -271,13 +282,80 @@ def stream_chat(req: ChatRequest):
         }
         yield json.dumps(debug_data) + "\n"
 
+        # --- Deterministic URL-content prefetch ---
+        tool_call_count = 0
+        prefetch_tool_trace = []
+        url_prefetch_ms = 0.0
+        prefetch_url = get_url_prefetch_candidate(req.text)
+        if prefetch_url:
+            phase_start = time.perf_counter()
+            tool_name = "web_fetch"
+            tool_args = {"url": prefetch_url}
+
+            yield json.dumps({
+                "type": "tool_call",
+                "name": tool_name,
+                "arguments": tool_args,
+            }) + "\n"
+            tool_call_count += 1
+
+            if registry is not None and hasattr(registry, "dispatch"):
+                envelope = registry.dispatch(tool_name, tool_args)
+            else:
+                envelope = {
+                    "ok": False,
+                    "error": "web_fetch tool unavailable",
+                }
+
+            effective_ok, rendered = _render_tool_envelope(envelope)
+            trace_args = (
+                envelope.get("normalized_args", tool_args)
+                if envelope.get("ok")
+                else tool_args
+            )
+
+            yield json.dumps({
+                "type": "tool_result",
+                "name": tool_name,
+                "ok": effective_ok,
+                "result": rendered,
+            }) + "\n"
+
+            model_messages.append({
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"function": {"name": tool_name, "arguments": trace_args}}
+                ],
+            })
+            model_messages.append({
+                "role": "tool",
+                "tool_name": tool_name,
+                "content": rendered,
+            })
+
+            prefetch_tool_trace.append({
+                "iteration": -1,
+                "phase": "url_prefetch",
+                "tool_calls": [
+                    {"name": tool_name, "arguments": trace_args}
+                ],
+                "tool_results": [
+                    {
+                        "tool_name": tool_name,
+                        "ok": effective_ok,
+                        "rendered": rendered[:500],
+                    }
+                ],
+            })
+            url_prefetch_ms = elapsed_ms(phase_start)
+
         # --- Stream from agent loop ---
         loop_result = None
         agent_loop_start = time.perf_counter()
         first_token_ms = None
         first_token_at = None
         last_token_at = None
-        tool_call_count = 0
         try:
             for event in run_agent_loop(
                 system_prompt=system_prompt,
@@ -331,8 +409,9 @@ def stream_chat(req: ChatRequest):
         elif loop_result.terminated_reason == "complete":
             assistant_content = loop_result.final_content or ""
             should_persist_assistant = bool(assistant_content.strip())
-            if should_persist_assistant and loop_result.tool_trace:
-                tool_trace = json.dumps(loop_result.tool_trace)
+            combined_tool_trace = prefetch_tool_trace + (loop_result.tool_trace or [])
+            if should_persist_assistant and combined_tool_trace:
+                tool_trace = json.dumps(combined_tool_trace)
             elif not should_persist_assistant:
                 empty_message = "I received your message but couldn't generate a response."
                 logger.warning("Agent loop completed with empty assistant content")
@@ -372,6 +451,7 @@ def stream_chat(req: ChatRequest):
         post_model_timings = {
             "agent_loop_total_ms": agent_loop_total_ms,
             "tool_call_count": tool_call_count,
+            "url_prefetch_ms": url_prefetch_ms,
             "save_assistant_message_ms": save_assistant_message_ms,
             "chunking_ms": chunking_ms,
             "total_backend_ms": elapsed_ms(request_start),
