@@ -32,7 +32,7 @@ tools:
       allow_redirects: false
 
   - name: moltbook_search
-    description: Search Moltbook posts, agents, and submolts. Read-only.
+    description: Search Moltbook posts, agents, comments, mentions, and submolts. Read-only. Results are mixed and are not a reliable posts-by-author filter; inspect result type and author fields before making authorship claims.
     method: GET
     url: https://www.moltbook.com/api/v1/search
     args_schema:
