@@ -29,18 +29,58 @@ class WebFetchError(RuntimeError):
 
 
 class _HTMLTextExtractor(HTMLParser):
+    _BLOCK_TAGS = {
+        "article",
+        "aside",
+        "blockquote",
+        "br",
+        "dd",
+        "div",
+        "dl",
+        "dt",
+        "figcaption",
+        "footer",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "hr",
+        "li",
+        "main",
+        "nav",
+        "ol",
+        "p",
+        "pre",
+        "section",
+        "table",
+        "td",
+        "th",
+        "tr",
+        "ul",
+    }
+    _SKIP_TAGS = {"head", "script", "style", "noscript"}
+
     def __init__(self):
         super().__init__()
         self._skip_depth = 0
         self._parts = []
 
     def handle_starttag(self, tag, attrs):
-        if tag.lower() in {"head", "script", "style", "noscript"}:
+        tag_name = tag.lower()
+        if tag_name in self._SKIP_TAGS:
             self._skip_depth += 1
+        elif not self._skip_depth and tag_name in self._BLOCK_TAGS:
+            self._parts.append("\n")
 
     def handle_endtag(self, tag):
-        if tag.lower() in {"head", "script", "style", "noscript"} and self._skip_depth:
+        tag_name = tag.lower()
+        if tag_name in self._SKIP_TAGS and self._skip_depth:
             self._skip_depth -= 1
+        elif not self._skip_depth and tag_name in self._BLOCK_TAGS:
+            self._parts.append("\n")
 
     def handle_data(self, data):
         if not self._skip_depth:
@@ -158,7 +198,7 @@ def _extract_title(page_text: str) -> str:
     return _fallback_title(page_text)
 
 
-def _fallback_text(page_text: str) -> str:
+def _extract_visible_text(page_text: str) -> str:
     parser = _HTMLTextExtractor()
     try:
         parser.feed(page_text)
@@ -167,7 +207,74 @@ def _fallback_text(page_text: str) -> str:
         return _normalize_whitespace(page_text)
 
 
+def _leading_excerpt(text: str, max_chars: int = 1200) -> str:
+    excerpt = (text or "")[:max_chars].strip()
+    sentence_match = re.search(r"^(.{120,}?[\.\?!])\s", excerpt)
+    if sentence_match:
+        return sentence_match.group(1).strip()
+    return excerpt
+
+
+def _simple_deduplicate_merge(prefix: str, extracted: str) -> str:
+    prefix = _normalize_whitespace(prefix)
+    extracted = _normalize_whitespace(extracted)
+    if not prefix:
+        return extracted
+    if not extracted:
+        return prefix
+
+    prefix_lower = prefix.lower()
+    extracted_lower = extracted.lower()
+    if extracted_lower in prefix_lower:
+        return prefix
+    if prefix_lower in extracted_lower:
+        return extracted
+
+    prefix_words = prefix.split()
+    extracted_words = extracted.split()
+    max_overlap = min(len(prefix_words), len(extracted_words), 80)
+    for size in range(max_overlap, 5, -1):
+        if (
+            " ".join(prefix_words[-size:]).lower()
+            == " ".join(extracted_words[:size]).lower()
+        ):
+            return _normalize_whitespace(
+                " ".join(prefix_words + extracted_words[size:])
+            )
+
+    return _normalize_whitespace(f"{prefix} {extracted}")
+
+
+def _merge_extracted_text(trafilatura_text: str | None, visible_text: str) -> str:
+    extracted = _normalize_whitespace(trafilatura_text or "")
+    visible = _normalize_whitespace(visible_text or "")
+    if not extracted:
+        return visible
+    if not visible:
+        return extracted
+
+    visible_is_substantially_longer = len(visible) > len(extracted) * 1.35
+    if not visible_is_substantially_longer:
+        return extracted
+
+    leading = _leading_excerpt(visible)
+    if not leading:
+        return extracted
+
+    extracted_lower = extracted.lower()
+    leading_lower = leading.lower()
+    leading_words = leading_lower.split()
+    leading_marker = " ".join(leading_words[: min(len(leading_words), 12)])
+    if leading_lower in extracted_lower or (
+        leading_marker and leading_marker in extracted_lower
+    ):
+        return extracted
+
+    return _simple_deduplicate_merge(leading, extracted)
+
+
 def _extract_text(page_text: str) -> str:
+    visible_text = _extract_visible_text(page_text)
     try:
         extracted = trafilatura.extract(
             page_text,
@@ -178,10 +285,7 @@ def _extract_text(page_text: str) -> str:
     except Exception:
         extracted = None
 
-    if extracted:
-        return _normalize_whitespace(extracted)
-
-    return _fallback_text(page_text)
+    return _merge_extracted_text(extracted, visible_text)
 
 
 def _search_provider(query: str, max_results: int) -> list[dict]:

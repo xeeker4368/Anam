@@ -359,6 +359,43 @@ def test_web_fetch_uses_trafilatura_extract_result(mock_get, mock_extract, mock_
 @patch("skills.active.web_search.web_search.trafilatura.extract_metadata")
 @patch("skills.active.web_search.web_search.trafilatura.extract")
 @patch("skills.active.web_search.web_search.requests.get")
+def test_web_fetch_merges_visible_lead_when_trafilatura_omits_it(
+    mock_get,
+    mock_extract,
+    mock_metadata,
+):
+    lead = (
+        '"Ransomware activity jumped again in Q1 2026," writes Slashdot '
+        "reader BrianFagioli, citing a new industry report."
+    )
+    html = f"""
+        <html>
+            <head><title>Ransomware Activity Jumps</title></head>
+            <body>
+                <nav>Login Subscribe</nav>
+                <article>
+                    <p>{lead}</p>
+                    <p>The report said attacks increased across several sectors.</p>
+                    <p>Security teams are still working through the backlog.</p>
+                </article>
+            </body>
+        </html>
+    """
+    mock_get.return_value = _fetch_response(content=html.encode("utf-8"))
+    mock_extract.return_value = "The report said attacks increased across several sectors."
+    mock_metadata.return_value = Mock(title="Ransomware Activity Jumps")
+
+    result = web_fetch("https://slashdot.org/story/example")
+
+    assert result["ok"] is True
+    assert lead in result["text"]
+    assert "BrianFagioli" in result["text"]
+    assert "The report said attacks increased" in result["text"]
+
+
+@patch("skills.active.web_search.web_search.trafilatura.extract_metadata")
+@patch("skills.active.web_search.web_search.trafilatura.extract")
+@patch("skills.active.web_search.web_search.requests.get")
 def test_web_fetch_falls_back_to_basic_html_stripping(mock_get, mock_extract, mock_metadata):
     mock_get.return_value = _fetch_response(
         content=(
