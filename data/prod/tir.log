@@ -49,3 +49,63 @@
 2026-04-28 19:31:24,608 [tir.api.routes] INFO: Tír API started — 1 tools loaded
 2026-04-28 19:31:35,578 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 12 chunks
 2026-04-28 19:31:44,252 [tir.api.routes] INFO: Started conversation 87e16e40 for Lyle
+2026-05-03 13:40:15,897 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-03 13:40:15,897 [tir.tools.registry] INFO: Skill registry loaded: 1 skills, 1 tools
+2026-05-03 13:40:15,897 [tir.api.routes] INFO: Tír API started — 1 tools loaded
+2026-05-03 13:40:44,950 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 12 chunks
+2026-05-03 13:40:55,976 [tir.api.routes] INFO: Started conversation 466adf85 for Lyle
+2026-05-03 13:44:15,644 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-03 13:44:15,645 [tir.tools.registry] INFO: Skill registry loaded: 1 skills, 1 tools
+2026-05-03 13:44:15,645 [tir.api.routes] INFO: Tír API started — 1 tools loaded
+2026-05-03 13:44:20,423 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 12 chunks
+2026-05-03 13:44:31,284 [tir.api.routes] INFO: Started conversation 728fdcd6 for Lyle
+2026-05-03 13:54:42,069 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-03 13:54:42,069 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-03 13:54:42,069 [tir.tools.registry] INFO: Skill registry loaded: 2 skills, 2 tools
+2026-05-03 13:54:42,069 [tir.api.routes] INFO: Tír API started — 2 tools loaded
+2026-05-03 13:54:44,642 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 12 chunks
+2026-05-03 13:54:51,783 [tir.api.routes] INFO: Started conversation 0b4a8c67 for Lyle
+2026-05-03 13:55:11,000 [primp] INFO: response: https://www.bing.com/search?q=current+DuckDuckGo+Search+Python+package+name 200
+2026-05-03 13:55:12,544 [primp] INFO: response: https://www.bing.com/search?q=python+library+for+duckduckgo+search 200
+2026-05-03 13:55:14,195 [primp] INFO: response: https://www.bing.com/search?q=duckduckgo+search+api+python+package 200
+2026-05-03 13:55:16,033 [primp] INFO: response: https://www.bing.com/search?q=site%3Apypi.org+%22duckduckgo%22+search 200
+2026-05-03 13:55:16,955 [primp] INFO: response: https://www.bing.com/search?q=site%3Apypi.org+%22duckduckgo%22+search&first=11&FORM=PERE 200
+2026-05-03 13:55:17,811 [primp] INFO: response: https://www.bing.com/search?q=site%3Apypi.org+%22duckduckgo%22+search&first=21&FORM=PERE1 200
+2026-05-03 13:55:18,656 [primp] INFO: response: https://www.bing.com/search?q=site%3Apypi.org+%22duckduckgo%22+search&first=31&FORM=PERE2 200
+2026-05-03 13:55:19,582 [primp] INFO: response: https://www.bing.com/search?q=site%3Apypi.org+%22duckduckgo%22+search&first=41&FORM=PERE3 200
+2026-05-03 13:57:12,858 [primp] INFO: response: https://www.bing.com/search?q=duckduckgo-search+PyPI 200
+2026-05-03 14:17:59,529 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-03 14:17:59,530 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-03 14:17:59,530 [tir.tools.registry] INFO: Skill registry loaded: 2 skills, 2 tools
+2026-05-03 14:17:59,530 [tir.api.routes] INFO: Tír API started — 2 tools loaded
+2026-05-03 14:18:02,329 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 12 chunks
+2026-05-03 14:18:06,662 [tir.api.routes] INFO: Started conversation 5c096aa0 for Lyle
+2026-05-03 14:36:13,938 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-03 14:36:14,102 [tir.tools.registry] INFO: Registered tool 'web_fetch' from skill 'web_search'
+2026-05-03 14:36:14,102 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-03 14:36:14,102 [tir.tools.registry] INFO: Skill registry loaded: 2 skills, 3 tools
+2026-05-03 14:36:14,102 [tir.api.routes] INFO: Tír API started — 3 tools loaded
+2026-05-03 14:36:24,827 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 12 chunks
+2026-05-03 14:36:30,171 [tir.api.routes] INFO: Started conversation 887cd83f for Lyle
+2026-05-03 14:47:24,606 [tir.memory.chunking] ERROR: ChromaDB upsert failed for 887cd83f-7887-42a4-b637-c51819d7944e_chunk_0: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-03 14:47:24,607 [tir.api.routes] WARNING: Live chunking failed: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-03 14:59:54,631 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-03 14:59:54,749 [tir.tools.registry] INFO: Registered tool 'web_fetch' from skill 'web_search'
+2026-05-03 14:59:54,749 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-03 14:59:54,749 [tir.tools.registry] INFO: Skill registry loaded: 2 skills, 3 tools
+2026-05-03 14:59:54,749 [tir.api.routes] INFO: Tír API started — 3 tools loaded
+2026-05-03 14:59:59,910 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 12 chunks
+2026-05-03 15:02:17,714 [tir.memory.chunking] INFO: Live chunk 1 created for conversation 887cd83f (10 messages)
+2026-05-03 15:15:52,050 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-03 15:15:52,162 [tir.tools.registry] INFO: Registered tool 'web_fetch' from skill 'web_search'
+2026-05-03 15:15:52,162 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-03 15:15:52,162 [tir.tools.registry] INFO: Skill registry loaded: 2 skills, 3 tools
+2026-05-03 15:15:52,162 [tir.api.routes] INFO: Tír API started — 3 tools loaded
+2026-05-03 15:15:56,772 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 13 chunks
+2026-05-03 15:16:19,305 [tir.api.routes] INFO: Started conversation 23d5942a for Lyle
+2026-05-03 15:23:46,132 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-03 15:23:46,268 [tir.tools.registry] INFO: Registered tool 'web_fetch' from skill 'web_search'
+2026-05-03 15:23:46,268 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-03 15:23:46,268 [tir.tools.registry] INFO: Skill registry loaded: 2 skills, 3 tools
+2026-05-03 15:23:46,268 [tir.api.routes] INFO: Tír API started — 3 tools loaded
+2026-05-03 15:23:58,428 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 13 chunks
