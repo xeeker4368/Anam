@@ -55,3 +55,7 @@ WEB_HOST = os.getenv("TIR_WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.getenv("TIR_WEB_PORT", "8000"))
 DEFAULT_USER = "Lyle"
 FRONTEND_DIR = PROJECT_ROOT / "frontend" / "dist"
+
+# --- Web search ---
+SEARXNG_URL = os.getenv("TIR_SEARXNG_URL", "http://127.0.0.1:8080")
+WEB_SEARCH_TIMEOUT_SECONDS = float(os.getenv("TIR_WEB_SEARCH_TIMEOUT_SECONDS", "10"))

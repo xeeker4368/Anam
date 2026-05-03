@@ -1,6 +1,13 @@
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
+import requests
+
+from tir.config import SEARXNG_URL, WEB_SEARCH_TIMEOUT_SECONDS
 from tir.tools.registry import tool
+
+
+class WebSearchProviderError(RuntimeError):
+    """Raised when the configured SearXNG provider returns unusable data."""
 
 
 def _clamp_max_results(max_results) -> int:
@@ -19,18 +26,32 @@ def _source_from_url(url: str) -> str:
 
 
 def _search_provider(query: str, max_results: int) -> list[dict]:
-    from duckduckgo_search import DDGS
+    response = requests.get(
+        urljoin(SEARXNG_URL.rstrip("/") + "/", "search"),
+        params={"q": query, "format": "json"},
+        timeout=WEB_SEARCH_TIMEOUT_SECONDS,
+    )
+    if response.status_code != 200:
+        raise WebSearchProviderError(f"SearXNG returned HTTP {response.status_code}")
 
-    with DDGS(timeout=10) as ddgs:
-        return list(ddgs.text(query, max_results=max_results))
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise WebSearchProviderError("SearXNG returned non-JSON response") from exc
+
+    results = data.get("results") if isinstance(data, dict) else None
+    if not isinstance(results, list):
+        raise WebSearchProviderError("SearXNG response missing results list")
+
+    return results[:max_results]
 
 
 def _normalize_result(item: dict) -> dict:
-    url = item.get("href") or item.get("url") or ""
+    url = item.get("url") or ""
     return {
         "title": item.get("title") or "",
         "url": url,
-        "snippet": item.get("body") or item.get("snippet") or "",
+        "snippet": item.get("content") or item.get("snippet") or "",
         "source": _source_from_url(url),
     }
 
@@ -70,6 +91,13 @@ def web_search(query: str, max_results: int = 5) -> dict:
 
     try:
         raw_results = _search_provider(normalized_query, result_limit)
+    except WebSearchProviderError as exc:
+        return {"ok": False, "error": str(exc)}
+    except requests.RequestException as exc:
+        return {
+            "ok": False,
+            "error": f"web_search provider failed: {type(exc).__name__}: {exc}",
+        }
     except Exception as exc:
         return {
             "ok": False,
