@@ -50,6 +50,16 @@ from tir.engine.context import build_system_prompt
 from tir.engine.agent_loop import run_agent_loop
 from tir.memory.chroma import get_collection_count
 from tir.tools.registry import SkillRegistry
+from tir.artifacts.service import (
+    ArtifactValidationError,
+    get_artifact,
+    list_artifacts,
+)
+from tir.open_loops.service import (
+    OpenLoopValidationError,
+    get_open_loop,
+    list_open_loops,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -438,6 +448,74 @@ def api_close_conversation(conversation_id: str):
         logger.warning(f"Final chunking failed: {e}")
 
     return {"closed": True, "chunks_saved": chunks_saved}
+
+
+# ---------------------------------------------------------------------------
+# Artifacts
+# ---------------------------------------------------------------------------
+
+@app.get("/api/artifacts")
+def api_list_artifacts(
+    artifact_type: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """List artifact metadata records."""
+    try:
+        return list_artifacts(
+            artifact_type=artifact_type,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+    except ArtifactValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/artifacts/{artifact_id}")
+def api_get_artifact(artifact_id: str):
+    """Get artifact metadata without reading workspace file contents."""
+    artifact = get_artifact(artifact_id)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return artifact
+
+
+# ---------------------------------------------------------------------------
+# Open loops
+# ---------------------------------------------------------------------------
+
+@app.get("/api/open-loops")
+def api_list_open_loops(
+    status: str | None = None,
+    loop_type: str | None = None,
+    priority: str | None = None,
+    related_artifact_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """List open-loop metadata records."""
+    try:
+        return list_open_loops(
+            status=status,
+            loop_type=loop_type,
+            priority=priority,
+            related_artifact_id=related_artifact_id,
+            limit=limit,
+            offset=offset,
+        )
+    except OpenLoopValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/open-loops/{open_loop_id}")
+def api_get_open_loop(open_loop_id: str):
+    """Get open-loop metadata by id."""
+    open_loop = get_open_loop(open_loop_id)
+    if not open_loop:
+        raise HTTPException(status_code=404, detail="Open loop not found")
+    return open_loop
 
 
 # ---------------------------------------------------------------------------
