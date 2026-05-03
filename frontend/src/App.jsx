@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Chat from './components/Chat'
 import DebugPanel from './components/DebugPanel'
+import RegistryPanel from './components/RegistryPanel'
 import './styles.css'
 
 function useIsMobile(breakpoint = 768) {
@@ -42,6 +43,11 @@ function App() {
   const [activeUserId, setActiveUserId] = useState(null)
   const [showDashboard, setShowDashboard] = useState(false)
   const [activeTab, setActiveTab] = useState('chat')
+  const [rightPanelView, setRightPanelView] = useState('debug')
+  const [artifacts, setArtifacts] = useState([])
+  const [openLoops, setOpenLoops] = useState([])
+  const [registryLoading, setRegistryLoading] = useState(false)
+  const [registryError, setRegistryError] = useState(null)
   const healthWarnedRef = useRef(false)
   const isMobile = useIsMobile()
   useViewportHeight()
@@ -67,6 +73,7 @@ function App() {
     fetchConversations()
     fetchHealth()
     fetchUsers()
+    fetchRegistries()
     const healthInterval = setInterval(fetchHealth, 30000)
     return () => clearInterval(healthInterval)
   }, [])
@@ -128,6 +135,41 @@ function App() {
       }
     } catch (e) {
       console.error('Failed to fetch users:', e)
+    }
+  }
+
+  async function fetchRegistries() {
+    setRegistryLoading(true)
+    setRegistryError(null)
+    try {
+      const [artifactResp, openLoopResp] = await Promise.all([
+        fetch('/api/artifacts'),
+        fetch('/api/open-loops'),
+      ])
+
+      if (!artifactResp.ok) {
+        throw new Error(await readErrorMessage(artifactResp, 'Failed to fetch artifacts'))
+      }
+      if (!openLoopResp.ok) {
+        throw new Error(await readErrorMessage(openLoopResp, 'Failed to fetch open loops'))
+      }
+
+      const artifactData = await artifactResp.json()
+      const openLoopData = await openLoopResp.json()
+      if (!Array.isArray(artifactData)) {
+        throw new Error('Artifacts response was not a list')
+      }
+      if (!Array.isArray(openLoopData)) {
+        throw new Error('Open loops response was not a list')
+      }
+
+      setArtifacts(artifactData)
+      setOpenLoops(openLoopData)
+    } catch (e) {
+      console.warn('Failed to fetch registry records:', e)
+      setRegistryError(e.message || 'Failed to fetch registry records')
+    } finally {
+      setRegistryLoading(false)
     }
   }
 
@@ -196,6 +238,7 @@ function App() {
   const handleRefresh = useCallback(() => {
     fetchConversations()
     fetchHealth()
+    fetchRegistries()
   }, [])
 
   // --- Sidebar content ---
@@ -345,6 +388,17 @@ function App() {
           {activeTab === 'debug' && (
             <div className="m-scroll"><DebugPanel data={debugData} /></div>
           )}
+          {activeTab === 'registry' && (
+            <div className="m-scroll">
+              <RegistryPanel
+                artifacts={artifacts}
+                openLoops={openLoops}
+                loading={registryLoading}
+                error={registryError}
+                onRefresh={fetchRegistries}
+              />
+            </div>
+          )}
         </div>
         <div className="m-tabs">
           <button
@@ -359,6 +413,10 @@ function App() {
             className={`m-tab ${activeTab === 'debug' ? 'active' : ''}`}
             onClick={() => setActiveTab('debug')}
           >Debug</button>
+          <button
+            className={`m-tab ${activeTab === 'registry' ? 'active' : ''}`}
+            onClick={() => setActiveTab('registry')}
+          >Registry</button>
         </div>
       </div>
     )
@@ -374,7 +432,33 @@ function App() {
       </div>
       {showDebug && (
         <aside className="debug-panel">
-          <DebugPanel data={debugData} />
+          <div className="right-panel-switch">
+            <button
+              type="button"
+              className={`right-panel-tab ${rightPanelView === 'debug' ? 'active' : ''}`}
+              onClick={() => setRightPanelView('debug')}
+            >
+              Debug
+            </button>
+            <button
+              type="button"
+              className={`right-panel-tab ${rightPanelView === 'registry' ? 'active' : ''}`}
+              onClick={() => setRightPanelView('registry')}
+            >
+              Registry
+            </button>
+          </div>
+          {rightPanelView === 'debug' ? (
+            <DebugPanel data={debugData} />
+          ) : (
+            <RegistryPanel
+              artifacts={artifacts}
+              openLoops={openLoops}
+              loading={registryLoading}
+              error={registryError}
+              onRefresh={fetchRegistries}
+            />
+          )}
         </aside>
       )}
     </div>
