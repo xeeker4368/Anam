@@ -9,6 +9,11 @@ MOLTBOOK_TOOL_NAMES = {
     "moltbook_search",
     "moltbook_profile",
     "moltbook_me",
+    "moltbook_read_post",
+    "moltbook_post_comments",
+    "moltbook_submolt",
+    "moltbook_submolt_feed",
+    "moltbook_submolt_moderators",
 }
 
 
@@ -145,12 +150,170 @@ def test_missing_moltbook_token_returns_ok_false_without_request_or_secret_leak(
     mock_get.assert_not_called()
 
 
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_read_post_substitutes_and_encodes_post_id(mock_get, monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_read_post", {"post_id": "post/a b"})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/posts/post%2Fa%20b",
+        params=None,
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_post_comments_applies_default_sort_and_limit(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_post_comments", {"post_id": "post-1"})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/posts/post-1/comments",
+        params={"sort": "top", "limit": "25"},
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_post_comments_explicit_sort_and_limit_override_defaults(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch(
+        "moltbook_post_comments",
+        {"post_id": "post-1", "sort": "new", "limit": 7},
+    )
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    assert mock_get.call_args.args[0] == (
+        "https://www.moltbook.com/api/v1/posts/post-1/comments"
+    )
+    assert mock_get.call_args.kwargs["params"] == {
+        "sort": "new",
+        "limit": "7",
+    }
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_submolt_substitutes_and_encodes_name(mock_get, monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_submolt", {"name": "ai/thoughts"})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/submolts/ai%2Fthoughts",
+        params=None,
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_submolt_feed_applies_default_sort_and_limit(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_submolt_feed", {"name": "general"})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/submolts/general/feed",
+        params={"sort": "hot", "limit": "25"},
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_submolt_feed_explicit_sort_and_limit_override_defaults(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch(
+        "moltbook_submolt_feed",
+        {"name": "general", "sort": "rising", "limit": 9},
+    )
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    assert mock_get.call_args.args[0] == (
+        "https://www.moltbook.com/api/v1/submolts/general/feed"
+    )
+    assert mock_get.call_args.kwargs["params"] == {
+        "sort": "rising",
+        "limit": "9",
+    }
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_submolt_moderators_substitutes_and_encodes_name(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_submolt_moderators", {"name": "ai thoughts"})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/submolts/ai%20thoughts/moderators",
+        params=None,
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
 def test_moltbook_skill_does_not_include_write_or_path_template_tools():
     registry = _registry()
     tool_names = {tool["function"]["name"] for tool in registry.list_tools()}
 
     assert MOLTBOOK_TOOL_NAMES.issubset(tool_names)
-    assert "moltbook_read_post" not in tool_names
     assert "moltbook_post" not in tool_names
     assert "moltbook_comment" not in tool_names
     assert "moltbook_vote" not in tool_names

@@ -102,3 +102,141 @@ tools:
       read_only: true
       requires_approval: false
       allow_redirects: false
+
+  - name: moltbook_read_post
+    description: Read a single Moltbook post by id. Read-only.
+    method: GET
+    url: https://www.moltbook.com/api/v1/posts/{post_id}
+    args_schema:
+      type: object
+      properties:
+        post_id:
+          type: string
+          minLength: 1
+          description: Moltbook post id.
+      required: [post_id]
+    auth:
+      type: bearer_env
+      env: MOLTBOOK_TOKEN
+    timeout_seconds: 10
+    max_response_bytes: 200000
+    safety:
+      read_only: true
+      requires_approval: false
+      allow_redirects: false
+
+  - name: moltbook_post_comments
+    description: Read comments for a Moltbook post. Read-only.
+    method: GET
+    url: https://www.moltbook.com/api/v1/posts/{post_id}/comments
+    args_schema:
+      type: object
+      properties:
+        post_id:
+          type: string
+          minLength: 1
+          description: Moltbook post id.
+        sort:
+          type: string
+          enum: [top, new, controversial]
+          default: top
+          description: Comment sort order.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 25
+          description: Maximum number of comments to return.
+      required: [post_id]
+    query:
+      sort: "{sort}"
+      limit: "{limit}"
+    auth:
+      type: bearer_env
+      env: MOLTBOOK_TOKEN
+    timeout_seconds: 10
+    max_response_bytes: 200000
+    safety:
+      read_only: true
+      requires_approval: false
+      allow_redirects: false
+
+  - name: moltbook_submolt
+    description: Read Moltbook submolt information by name. Read-only.
+    method: GET
+    url: https://www.moltbook.com/api/v1/submolts/{name}
+    args_schema:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Moltbook submolt name.
+      required: [name]
+    auth:
+      type: bearer_env
+      env: MOLTBOOK_TOKEN
+    timeout_seconds: 10
+    max_response_bytes: 200000
+    safety:
+      read_only: true
+      requires_approval: false
+      allow_redirects: false
+
+  - name: moltbook_submolt_feed
+    description: Read a Moltbook submolt feed. Read-only.
+    method: GET
+    url: https://www.moltbook.com/api/v1/submolts/{name}/feed
+    args_schema:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Moltbook submolt name.
+        sort:
+          type: string
+          enum: [hot, new, top, rising]
+          default: hot
+          description: Feed sort order.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 25
+          description: Maximum number of posts to return.
+      required: [name]
+    query:
+      sort: "{sort}"
+      limit: "{limit}"
+    auth:
+      type: bearer_env
+      env: MOLTBOOK_TOKEN
+    timeout_seconds: 10
+    max_response_bytes: 200000
+    safety:
+      read_only: true
+      requires_approval: false
+      allow_redirects: false
+
+  - name: moltbook_submolt_moderators
+    description: Read Moltbook submolt moderators by submolt name. Read-only.
+    method: GET
+    url: https://www.moltbook.com/api/v1/submolts/{name}/moderators
+    args_schema:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Moltbook submolt name.
+      required: [name]
+    auth:
+      type: bearer_env
+      env: MOLTBOOK_TOKEN
+    timeout_seconds: 10
+    max_response_bytes: 200000
+    safety:
+      read_only: true
+      requires_approval: false
+      allow_redirects: false
