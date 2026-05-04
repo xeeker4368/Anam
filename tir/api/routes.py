@@ -51,6 +51,7 @@ from tir.engine.agent_loop import run_agent_loop
 from tir.engine.url_prefetch import get_url_prefetch_candidate
 from tir.memory.chroma import get_collection_count
 from tir.tools.registry import SkillRegistry
+from tir.tools.rendering import render_tool_result
 from tir.artifacts.service import (
     ArtifactValidationError,
     get_artifact,
@@ -70,7 +71,7 @@ def _render_tool_envelope(envelope: dict) -> tuple[bool, str]:
     if envelope.get("ok"):
         value = envelope.get("value")
         effective_ok = not (isinstance(value, dict) and value.get("ok") is False)
-        return effective_ok, str(value)
+        return effective_ok, render_tool_result(value)
 
     return False, f"Error: {envelope.get('error', 'unknown tool error')}"
 

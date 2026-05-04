@@ -6,6 +6,7 @@ Tests validate loop control flow, event yielding, tool dispatch,
 error handling, and tool trace recording.
 """
 
+import json
 import pytest
 from unittest.mock import patch, MagicMock
 from tir.engine.agent_loop import run_agent_loop, LoopResult
@@ -41,6 +42,47 @@ def echo_tool(text: str) -> str:
 )
 def fail_tool() -> str:
     raise ValueError("Intentional failure")
+
+
+@tool(
+    name="dict_tool",
+    description="Returns structured data",
+    args_schema={"type": "object", "properties": {}},
+)
+def dict_tool() -> dict:
+    return {"ok": True, "value": None}
+
+
+@tool(
+    name="list_tool",
+    description="Returns a list",
+    args_schema={"type": "object", "properties": {}},
+)
+def list_tool() -> list:
+    return [{"ok": True}, "next"]
+
+
+@tool(
+    name="unicode_tool",
+    description="Returns Unicode text inside structured data",
+    args_schema={"type": "object", "properties": {}},
+)
+def unicode_tool() -> dict:
+    return {"text": "café"}
+
+
+class NonJsonSerializable:
+    def __str__(self):
+        return "non-json-value"
+
+
+@tool(
+    name="object_tool",
+    description="Returns a non-JSON-serializable value",
+    args_schema={"type": "object", "properties": {}},
+)
+def object_tool() -> NonJsonSerializable:
+    return NonJsonSerializable()
 
 
 # ---------------------------------------------------------------------------
@@ -108,8 +150,40 @@ def _build_test_registry():
         function=fail_tool,
         skill_name="test_fail",
     )
+    registry._tools["dict_tool"] = ToolDefinition(
+        name="dict_tool",
+        description="Returns structured data",
+        args_schema={"type": "object", "properties": {}},
+        function=dict_tool,
+        skill_name="test_structured",
+    )
+    registry._tools["list_tool"] = ToolDefinition(
+        name="list_tool",
+        description="Returns a list",
+        args_schema={"type": "object", "properties": {}},
+        function=list_tool,
+        skill_name="test_structured",
+    )
+    registry._tools["unicode_tool"] = ToolDefinition(
+        name="unicode_tool",
+        description="Returns Unicode structured data",
+        args_schema={"type": "object", "properties": {}},
+        function=unicode_tool,
+        skill_name="test_structured",
+    )
+    registry._tools["object_tool"] = ToolDefinition(
+        name="object_tool",
+        description="Returns non-JSON data",
+        args_schema={"type": "object", "properties": {}},
+        function=object_tool,
+        skill_name="test_structured",
+    )
     registry._tool_to_skill["echo"] = "test_echo"
     registry._tool_to_skill["fail_tool"] = "test_fail"
+    registry._tool_to_skill["dict_tool"] = "test_structured"
+    registry._tool_to_skill["list_tool"] = "test_structured"
+    registry._tool_to_skill["unicode_tool"] = "test_structured"
+    registry._tool_to_skill["object_tool"] = "test_structured"
 
     return registry
 
@@ -316,6 +390,123 @@ class TestAgentLoopToolCalling:
 
         trace = events[-1]["result"].tool_trace
         assert trace[0]["tool_calls"][0]["arguments"] == {"text": "hello"}
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_structured_dict_tool_result_renders_as_json(self, mock_stream):
+        """Dict tool results are streamed and passed to the model as JSON."""
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("dict_tool", {})),
+            iter(_make_text_chunks("OK")),
+        ]
+        registry = _build_test_registry()
+        messages = [{"role": "user", "content": "call dict"}]
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=messages,
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr == {
+            "type": "tool_result",
+            "name": "dict_tool",
+            "ok": True,
+            "result": '{"ok": true, "value": null}',
+        }
+        assert json.loads(tr["result"]) == {"ok": True, "value": None}
+        assert messages[2]["content"] == tr["result"]
+        assert events[-1]["result"].tool_trace[0]["tool_results"][0]["rendered"] == (
+            tr["result"][:500]
+        )
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_list_tool_result_renders_as_json(self, mock_stream):
+        """List tool results are rendered as valid JSON."""
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("list_tool", {})),
+            iter(_make_text_chunks("OK")),
+        ]
+        registry = _build_test_registry()
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=[{"role": "user", "content": "call list"}],
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr["result"] == '[{"ok": true}, "next"]'
+        assert json.loads(tr["result"]) == [{"ok": True}, "next"]
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_unicode_structured_tool_result_remains_readable(self, mock_stream):
+        """JSON rendering keeps Unicode readable."""
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("unicode_tool", {})),
+            iter(_make_text_chunks("OK")),
+        ]
+        registry = _build_test_registry()
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=[{"role": "user", "content": "call unicode"}],
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr["result"] == '{"text": "café"}'
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_string_tool_result_remains_unquoted(self, mock_stream):
+        """Plain string tool results stay unchanged."""
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("echo", {"text": "hello"})),
+            iter(_make_text_chunks("OK")),
+        ]
+        registry = _build_test_registry()
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=[{"role": "user", "content": "echo hello"}],
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr["result"] == "Echo: hello"
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_non_json_serializable_tool_result_falls_back_to_string(self, mock_stream):
+        """Non-JSON-serializable values fall back to str(...)."""
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("object_tool", {})),
+            iter(_make_text_chunks("OK")),
+        ]
+        registry = _build_test_registry()
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=[{"role": "user", "content": "call object"}],
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr["result"] == "non-json-value"
 
 
 class TestAgentLoopEdgeCases:

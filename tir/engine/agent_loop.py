@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 from tir.config import CHAT_MODEL
 from tir.engine.ollama import chat_completion_stream_with_tools
+from tir.tools.rendering import render_tool_result
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +151,7 @@ def run_agent_loop(
                 )
 
                 if envelope["ok"]:
-                    rendered = str(envelope["value"])
+                    rendered = render_tool_result(envelope["value"])
                 else:
                     rendered = f"Error: {envelope['error']}"
 

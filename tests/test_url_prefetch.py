@@ -167,7 +167,9 @@ def test_url_content_question_prefetches_before_model_tokens(
     }
     assert events[2]["name"] == "web_fetch"
     assert events[2]["ok"] is True
-    assert "Fetched page text." in events[2]["result"]
+    rendered_result = json.loads(events[2]["result"])
+    assert rendered_result["ok"] is True
+    assert rendered_result["text"] == "Fetched page text."
     assert events[-2]["timings"]["tool_call_count"] == 1
 
     registry.dispatch.assert_called_once_with(
@@ -177,12 +179,15 @@ def test_url_content_question_prefetches_before_model_tokens(
     model_messages = mock_loop.call_args.kwargs["messages"]
     assert model_messages[-2]["tool_calls"][0]["function"]["name"] == "web_fetch"
     assert model_messages[-1]["role"] == "tool"
-    assert "Fetched page text." in model_messages[-1]["content"]
+    assert json.loads(model_messages[-1]["content"])["text"] == "Fetched page text."
 
     assistant_call = mock_save_message.call_args_list[-1]
     persisted_trace = json.loads(assistant_call.kwargs["tool_trace"])
     assert persisted_trace[0]["phase"] == "url_prefetch"
     assert persisted_trace[0]["tool_calls"][0]["name"] == "web_fetch"
+    assert json.loads(persisted_trace[0]["tool_results"][0]["rendered"])["text"] == (
+        "Fetched page text."
+    )
 
 
 @patch("tir.api.routes.maybe_chunk_live")
@@ -251,10 +256,17 @@ def test_failed_web_fetch_result_is_passed_to_model(
 
     assert events[2]["type"] == "tool_result"
     assert events[2]["ok"] is False
-    assert "web_fetch rejected localhost URLs" in events[2]["result"]
+    rendered_result = json.loads(events[2]["result"])
+    assert rendered_result == {
+        "ok": False,
+        "error": "web_fetch rejected localhost URLs",
+        "url": "http://localhost/page",
+    }
 
     model_messages = mock_loop.call_args.kwargs["messages"]
-    assert "web_fetch rejected localhost URLs" in model_messages[-1]["content"]
+    assert json.loads(model_messages[-1]["content"])["error"] == (
+        "web_fetch rejected localhost URLs"
+    )
 
 
 @patch("tir.api.routes.maybe_chunk_live")
