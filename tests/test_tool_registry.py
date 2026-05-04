@@ -1,4 +1,4 @@
-from tir.tools.registry import SkillRegistry, ToolDefinition
+from tir.tools.registry import SkillRegistry, ToolDefinition, tool
 
 
 def _registry_with_tool(name, function, args_schema=None):
@@ -12,6 +12,59 @@ def _registry_with_tool(name, function, args_schema=None):
     )
     registry._tool_to_skill[name] = "test"
     return registry
+
+
+def test_python_tool_decorator_stores_freshness_metadata():
+    @tool(
+        name="current_status",
+        description="Read current status.",
+        args_schema={"type": "object", "properties": {}},
+        freshness={
+            "mode": "real_time",
+            "source_of_truth": True,
+            "memory_may_inform_but_not_replace": True,
+        },
+    )
+    def current_status():
+        return "ok"
+
+    metadata = current_status._tool_metadata
+    assert metadata["freshness"] == {
+        "mode": "real_time",
+        "source_of_truth": True,
+        "memory_may_inform_but_not_replace": True,
+    }
+
+
+def test_tool_descriptions_include_realtime_source_of_truth_marker():
+    registry = SkillRegistry()
+    registry._tools["current_status"] = ToolDefinition(
+        name="current_status",
+        description="Read current status.",
+        args_schema={"type": "object", "properties": {}},
+        function=lambda: "ok",
+        skill_name="test",
+        freshness={
+            "mode": "real_time",
+            "source_of_truth": True,
+            "memory_may_inform_but_not_replace": True,
+        },
+    )
+    registry._tools["memory_search"] = ToolDefinition(
+        name="memory_search",
+        description="Search memories.",
+        args_schema={"type": "object", "properties": {}},
+        function=lambda: "ok",
+        skill_name="test",
+    )
+
+    descriptions = registry.list_tool_descriptions()
+
+    assert (
+        "- current_status [real-time; source-of-truth; memory may inform "
+        "but not replace]: Read current status."
+    ) in descriptions
+    assert "- memory_search: Search memories." in descriptions
 
 
 def test_tool_accepting_context_receives_it():

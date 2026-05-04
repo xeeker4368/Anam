@@ -26,6 +26,10 @@ tools:
       env: MOLTBOOK_TOKEN
     timeout_seconds: 10
     max_response_bytes: 200000
+    freshness:
+      mode: real_time
+      source_of_truth: true
+      memory_may_inform_but_not_replace: true
     safety:
       read_only: true
       requires_approval: false
@@ -56,6 +60,10 @@ tools:
       env: MOLTBOOK_TOKEN
     timeout_seconds: 10
     max_response_bytes: 200000
+    freshness:
+      mode: real_time
+      source_of_truth: true
+      memory_may_inform_but_not_replace: true
     safety:
       read_only: true
       requires_approval: false
@@ -93,6 +101,10 @@ tools:
       env: MOLTBOOK_TOKEN
     timeout_seconds: 10
     max_response_bytes: 200000
+    freshness:
+      mode: real_time
+      source_of_truth: true
+      memory_may_inform_but_not_replace: true
     safety:
       read_only: true
       requires_approval: false
@@ -117,6 +129,10 @@ tools:
       env: MOLTBOOK_TOKEN
     timeout_seconds: 10
     max_response_bytes: 200000
+    freshness:
+      mode: real_time
+      source_of_truth: true
+      memory_may_inform_but_not_replace: true
     safety:
       read_only: true
       requires_approval: false
@@ -135,6 +151,10 @@ tools:
       env: MOLTBOOK_TOKEN
     timeout_seconds: 10
     max_response_bytes: 200000
+    freshness:
+      mode: real_time
+      source_of_truth: true
+      memory_may_inform_but_not_replace: true
     safety:
       read_only: true
       requires_approval: false
@@ -157,6 +177,10 @@ tools:
       env: MOLTBOOK_TOKEN
     timeout_seconds: 10
     max_response_bytes: 200000
+    freshness:
+      mode: real_time
+      source_of_truth: true
+      memory_may_inform_but_not_replace: true
     safety:
       read_only: true
       requires_approval: false
@@ -193,6 +217,10 @@ tools:
       env: MOLTBOOK_TOKEN
     timeout_seconds: 10
     max_response_bytes: 200000
+    freshness:
+      mode: real_time
+      source_of_truth: true
+      memory_may_inform_but_not_replace: true
     safety:
       read_only: true
       requires_approval: false
@@ -215,6 +243,10 @@ tools:
       env: MOLTBOOK_TOKEN
     timeout_seconds: 10
     max_response_bytes: 200000
+    freshness:
+      mode: real_time
+      source_of_truth: true
+      memory_may_inform_but_not_replace: true
     safety:
       read_only: true
       requires_approval: false
@@ -251,6 +283,10 @@ tools:
       env: MOLTBOOK_TOKEN
     timeout_seconds: 10
     max_response_bytes: 200000
+    freshness:
+      mode: real_time
+      source_of_truth: true
+      memory_may_inform_but_not_replace: true
     safety:
       read_only: true
       requires_approval: false
@@ -273,6 +309,10 @@ tools:
       env: MOLTBOOK_TOKEN
     timeout_seconds: 10
     max_response_bytes: 200000
+    freshness:
+      mode: real_time
+      source_of_truth: true
+      memory_may_inform_but_not_replace: true
     safety:
       read_only: true
       requires_approval: false

@@ -38,6 +38,8 @@ def tool(
     name: str,
     description: str,
     args_schema: dict,
+    *,
+    freshness: dict | None = None,
 ):
     """Decorator that marks a function as a tool.
 
@@ -67,6 +69,7 @@ def tool(
             "name": name,
             "description": description,
             "args_schema": args_schema,
+            "freshness": _validate_freshness_metadata(freshness),
         }
         return func
     return decorator
@@ -84,11 +87,13 @@ class ToolDefinition:
     args_schema: dict
     function: callable
     skill_name: str  # which skill owns this tool
+    freshness: dict | None = None
     accepts_context: bool | None = None
 
     def __post_init__(self):
         if self.accepts_context is None:
             self.accepts_context = _accepts_context(self.function)
+        self.freshness = _validate_freshness_metadata(self.freshness)
 
 
 @dataclass
@@ -171,6 +176,62 @@ def _accepts_context(func: callable) -> bool:
             return True
 
     return False
+
+
+def _validate_freshness_metadata(freshness: dict | None) -> dict | None:
+    """Validate optional tool freshness metadata."""
+    if freshness is None:
+        return None
+    if not isinstance(freshness, dict):
+        raise ValueError("freshness must be a mapping")
+
+    allowed_keys = {
+        "mode",
+        "source_of_truth",
+        "memory_may_inform_but_not_replace",
+    }
+    unknown_keys = set(freshness) - allowed_keys
+    if unknown_keys:
+        keys = ", ".join(sorted(unknown_keys))
+        raise ValueError(f"freshness contains unknown keys: {keys}")
+
+    mode = freshness.get("mode")
+    if mode is not None and mode != "real_time":
+        raise ValueError("freshness.mode must be 'real_time'")
+
+    source_of_truth = freshness.get("source_of_truth", False)
+    if not isinstance(source_of_truth, bool):
+        raise ValueError("freshness.source_of_truth must be a boolean")
+
+    memory_note = freshness.get("memory_may_inform_but_not_replace", False)
+    if not isinstance(memory_note, bool):
+        raise ValueError(
+            "freshness.memory_may_inform_but_not_replace must be a boolean"
+        )
+
+    normalized = {
+        "source_of_truth": source_of_truth,
+        "memory_may_inform_but_not_replace": memory_note,
+    }
+    if mode is not None:
+        normalized["mode"] = mode
+
+    return normalized
+
+
+def _freshness_marker(tool_def: ToolDefinition) -> str:
+    """Return a compact human-readable freshness marker for tool prompts."""
+    freshness = tool_def.freshness or {}
+    if freshness.get("mode") != "real_time":
+        return ""
+
+    parts = ["real-time"]
+    if freshness.get("source_of_truth"):
+        parts.append("source-of-truth")
+    if freshness.get("memory_may_inform_but_not_replace"):
+        parts.append("memory may inform but not replace")
+
+    return f" [{'; '.join(parts)}]"
 
 
 def _normalize_args(tool_name: str, args) -> tuple[dict | None, str | None]:
@@ -309,6 +370,7 @@ class SkillRegistry:
                             args_schema=meta["args_schema"],
                             function=obj,
                             skill_name=skill_name,
+                            freshness=meta.get("freshness"),
                         )
 
                         registry._tools[tool_name] = tool_def
@@ -337,6 +399,7 @@ class SkillRegistry:
                         args_schema=declarative_tool.args_schema,
                         function=declarative_tool.function,
                         skill_name=skill_name,
+                        freshness=declarative_tool.freshness,
                         accepts_context=False,
                     )
 
@@ -389,7 +452,8 @@ class SkillRegistry:
 
         lines = ["You have access to the following tools:"]
         for tool_def in self._tools.values():
-            lines.append(f"- {tool_def.name}: {tool_def.description}")
+            marker = _freshness_marker(tool_def)
+            lines.append(f"- {tool_def.name}{marker}: {tool_def.description}")
         return "\n".join(lines)
 
     def get_skill(self, skill_name: str) -> Skill:

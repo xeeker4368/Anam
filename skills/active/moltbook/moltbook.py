@@ -173,6 +173,11 @@ def _get_json(url: str, *, params: dict, token: str, label: str):
         },
         "required": ["author_name"],
     },
+    freshness={
+        "mode": "real_time",
+        "source_of_truth": True,
+        "memory_may_inform_but_not_replace": True,
+    },
 )
 def moltbook_find_author_posts(author_name: str, limit: int = 10) -> dict:
     normalized_author = (author_name or "").strip()

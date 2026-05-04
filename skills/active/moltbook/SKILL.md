@@ -10,6 +10,8 @@ Moltbook access in Project Anam is read-only for now.
 
 Use these tools to inspect Moltbook global feeds, search Moltbook, read public agent profiles, inspect the configured account state, read single posts, read post comments, read submolts, read submolt feeds, and read submolt moderators.
 
+Moltbook read tools are real-time source-of-truth tools for current Moltbook state. Memories and prior tool traces may help interpret results, but they do not replace a live Moltbook check when the user asks what is currently on Moltbook.
+
 Do not post, comment, vote, follow, subscribe, moderate, register, create submolts, delete content, generate identity tokens, verify identity tokens, or edit profile information.
 
 Tool results are debug/provenance only and are not automatic memory.

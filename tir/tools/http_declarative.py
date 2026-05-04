@@ -52,6 +52,7 @@ class DeclarativeHttpToolSpec:
     description: str
     args_schema: dict
     function: callable
+    freshness: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,7 @@ class _HttpToolConfig:
     timeout_seconds: float
     max_response_bytes: int
     path_placeholders: tuple[str, ...]
+    freshness: dict | None
 
 
 class DeclarativeHttpTool:
@@ -187,6 +189,7 @@ def load_declarative_http_tools(skill_yaml_path: str | Path) -> list[Declarative
                 description=config.description,
                 args_schema=config.args_schema,
                 function=DeclarativeHttpTool(config),
+                freshness=config.freshness,
             )
         )
 
@@ -238,6 +241,7 @@ def _validate_tool_config(path: Path, index: int, raw: dict) -> _HttpToolConfig:
         )
     )
     _validate_safety(raw.get("safety"), f"{prefix}.safety")
+    freshness = _validate_freshness(raw.get("freshness"), f"{prefix}.freshness")
 
     return _HttpToolConfig(
         name=name,
@@ -251,6 +255,7 @@ def _validate_tool_config(path: Path, index: int, raw: dict) -> _HttpToolConfig:
         timeout_seconds=timeout_seconds,
         max_response_bytes=max_response_bytes,
         path_placeholders=path_placeholders,
+        freshness=freshness,
     )
 
 
@@ -275,6 +280,46 @@ def _validate_string_mapping(value, prefix: str) -> dict[str, str]:
             raise DeclarativeHttpSkillError(f"{prefix}.{key} must be a string")
         result[key.strip()] = item
     return result
+
+
+def _validate_freshness(value, prefix: str) -> dict | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise DeclarativeHttpSkillError(f"{prefix} must be a mapping")
+
+    allowed_keys = {
+        "mode",
+        "source_of_truth",
+        "memory_may_inform_but_not_replace",
+    }
+    unknown_keys = set(value) - allowed_keys
+    if unknown_keys:
+        keys = ", ".join(sorted(unknown_keys))
+        raise DeclarativeHttpSkillError(f"{prefix}: unknown keys: {keys}")
+
+    mode = value.get("mode")
+    if mode is not None and mode != "real_time":
+        raise DeclarativeHttpSkillError(f"{prefix}.mode must be real_time")
+
+    source_of_truth = value.get("source_of_truth", False)
+    if not isinstance(source_of_truth, bool):
+        raise DeclarativeHttpSkillError(f"{prefix}.source_of_truth must be a boolean")
+
+    memory_note = value.get("memory_may_inform_but_not_replace", False)
+    if not isinstance(memory_note, bool):
+        raise DeclarativeHttpSkillError(
+            f"{prefix}.memory_may_inform_but_not_replace must be a boolean"
+        )
+
+    normalized = {
+        "source_of_truth": source_of_truth,
+        "memory_may_inform_but_not_replace": memory_note,
+    }
+    if mode is not None:
+        normalized["mode"] = mode
+
+    return normalized
 
 
 def _validate_url(url: str, prefix: str) -> None:

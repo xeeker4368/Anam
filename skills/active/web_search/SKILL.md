@@ -10,6 +10,8 @@ Use `web_search` for current outside-world information, changing facts, URLs or 
 
 Do not use it for internal Project Anam facts when surfaced memory, current context, or `memory_search` is sufficient.
 
+`web_search` and `web_fetch` are real-time source-of-truth tools. Prior memories or previous tool traces may inform interpretation, but they do not replace a live search or fetch when current public web state or page contents are requested.
+
 This is search only, not page fetching. Search snippets are leads, not full verification. If results are weak, stale, contradictory, or only snippet-level, state uncertainty.
 
 Use `web_fetch` to read one selected public HTTP/HTTPS page after `web_search` returns a candidate URL or when the user gives a specific public URL.

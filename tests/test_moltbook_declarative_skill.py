@@ -42,6 +42,12 @@ def test_moltbook_declarative_skill_loads_with_existing_active_tools():
     assert "web_search" in tool_names
     assert "web_fetch" in tool_names
     assert MOLTBOOK_TOOL_NAMES.issubset(tool_names)
+    for tool_name in MOLTBOOK_TOOL_NAMES:
+        assert registry._tools[tool_name].freshness == {
+            "mode": "real_time",
+            "source_of_truth": True,
+            "memory_may_inform_but_not_replace": True,
+        }
 
 
 @patch("tir.tools.http_declarative.requests.get")

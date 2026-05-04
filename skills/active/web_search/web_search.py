@@ -349,6 +349,11 @@ def _normalize_result(item: dict) -> dict:
         },
         "required": ["url"],
     },
+    freshness={
+        "mode": "real_time",
+        "source_of_truth": True,
+        "memory_may_inform_but_not_replace": True,
+    },
 )
 def web_fetch(url: str, max_chars: int = 12000) -> dict:
     safe_url, validation_error = _validate_fetch_url(url)
@@ -432,6 +437,11 @@ def web_fetch(url: str, max_chars: int = 12000) -> dict:
             },
         },
         "required": ["query"],
+    },
+    freshness={
+        "mode": "real_time",
+        "source_of_truth": True,
+        "memory_may_inform_but_not_replace": True,
     },
 )
 def web_search(query: str, max_results: int = 5) -> dict:

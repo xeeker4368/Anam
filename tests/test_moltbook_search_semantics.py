@@ -24,6 +24,11 @@ def test_moltbook_find_author_posts_tool_loads_with_existing_moltbook_tools():
     assert "moltbook_posts_by_author" in tool_names
     assert "moltbook_search" in tool_names
     assert "moltbook_find_author_posts" in tool_names
+    assert registry._tools["moltbook_find_author_posts"].freshness == {
+        "mode": "real_time",
+        "source_of_truth": True,
+        "memory_may_inform_but_not_replace": True,
+    }
 
 
 @patch("skills.active.moltbook.moltbook.requests.get")

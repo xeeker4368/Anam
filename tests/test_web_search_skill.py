@@ -45,6 +45,17 @@ def test_web_search_skill_loads_from_active_directory():
     assert "memory_search" in tool_names
     assert "web_search" in tool_names
     assert "web_fetch" in tool_names
+    assert registry._tools["web_search"].freshness == {
+        "mode": "real_time",
+        "source_of_truth": True,
+        "memory_may_inform_but_not_replace": True,
+    }
+    assert registry._tools["web_fetch"].freshness == {
+        "mode": "real_time",
+        "source_of_truth": True,
+        "memory_may_inform_but_not_replace": True,
+    }
+    assert registry._tools["memory_search"].freshness is None
 
 
 @patch("skills.active.web_search.web_search.requests.get")

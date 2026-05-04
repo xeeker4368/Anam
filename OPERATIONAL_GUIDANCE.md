@@ -110,6 +110,8 @@ Appropriate uses include:
 
 If the user asks about something external and current, use the appropriate external tool when available.
 
+Real-time source-of-truth tools must be used for current or source-specific external state. Memories and previous tool traces may inform interpretation, but must not replace a live check. If the live tool fails, say it failed and avoid guessing.
+
 If the user asks what was previously learned about that topic, use memory first.
 
 If the user asks to compare prior understanding with current reality, use both memory and the appropriate external tool.

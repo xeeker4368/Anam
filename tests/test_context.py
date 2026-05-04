@@ -20,6 +20,7 @@ def test_operational_guidance_is_labeled_and_ordered():
 
     assert "You are an AI." in prompt
     assert "[Operational Guidance]" in prompt
+    assert "Real-time source-of-truth tools must be used" in prompt
     assert "DESIGN_RATIONALE" not in prompt
     assert "You have access to the following tools:" in prompt
     assert "These are your own experiences and memories." in prompt

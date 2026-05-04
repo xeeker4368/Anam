@@ -100,6 +100,94 @@ def test_declarative_skill_loads_and_tool_appears_in_registry(tmp_path):
     assert registry.get_skill_for_tool("example_status").name == "example_api"
 
 
+def test_declarative_freshness_loads_and_marks_tool_description(tmp_path):
+    _write_skill(
+        tmp_path,
+        skill_yaml="""version: 1
+tools:
+  - name: example_status
+    description: Get public service status.
+    method: GET
+    url: https://example.com/api/status
+    args_schema:
+      type: object
+      properties: {}
+      required: []
+    freshness:
+      mode: real_time
+      source_of_truth: true
+      memory_may_inform_but_not_replace: true
+    safety:
+      read_only: true
+      requires_approval: false
+""",
+    )
+
+    registry = SkillRegistry.from_directory(tmp_path)
+    tool_def = registry._tools["example_status"]
+
+    assert tool_def.freshness == {
+        "mode": "real_time",
+        "source_of_truth": True,
+        "memory_may_inform_but_not_replace": True,
+    }
+    assert (
+        "- example_status [real-time; source-of-truth; memory may inform "
+        "but not replace]: Get public service status."
+    ) in registry.list_tool_descriptions()
+
+
+def test_declarative_freshness_unknown_keys_fail_loudly(tmp_path):
+    _write_skill(
+        tmp_path,
+        skill_yaml="""version: 1
+tools:
+  - name: example_status
+    description: Get public service status.
+    method: GET
+    url: https://example.com/api/status
+    args_schema:
+      type: object
+      properties: {}
+      required: []
+    freshness:
+      mode: real_time
+      stale_after_seconds: 60
+    safety:
+      read_only: true
+      requires_approval: false
+""",
+    )
+
+    with pytest.raises(DeclarativeHttpSkillError, match="unknown keys"):
+        SkillRegistry.from_directory(tmp_path)
+
+
+def test_declarative_freshness_invalid_mode_fails_loudly(tmp_path):
+    _write_skill(
+        tmp_path,
+        skill_yaml="""version: 1
+tools:
+  - name: example_status
+    description: Get public service status.
+    method: GET
+    url: https://example.com/api/status
+    args_schema:
+      type: object
+      properties: {}
+      required: []
+    freshness:
+      mode: cached
+    safety:
+      read_only: true
+      requires_approval: false
+""",
+    )
+
+    with pytest.raises(DeclarativeHttpSkillError, match="mode must be real_time"):
+        SkillRegistry.from_directory(tmp_path)
+
+
 @patch("tir.tools.http_declarative.requests.get")
 def test_declarative_tool_successful_mocked_get(mock_get, tmp_path):
     _write_skill(tmp_path, skill_yaml=_base_skill_yaml())
