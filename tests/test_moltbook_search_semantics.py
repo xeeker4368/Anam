@@ -2,7 +2,10 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from skills.active.moltbook.moltbook import moltbook_find_author_posts
+from skills.active.moltbook.moltbook import (
+    MAX_CONTENT_PREVIEW_CHARS,
+    moltbook_find_author_posts,
+)
 from tir.config import SKILLS_DIR
 from tir.tools.registry import SkillRegistry
 
@@ -67,6 +70,7 @@ def test_missing_moltbook_token_returns_ok_false_without_request(mock_get, monke
 @patch("skills.active.moltbook.moltbook.requests.get")
 def test_posts_by_author_result_is_classified_as_authored_post(mock_get, monkeypatch):
     monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    long_body = "A post by professorquantum. " + ("full body text " * 80)
     mock_get.return_value = _response(
         payload={
             "posts": [
@@ -74,9 +78,15 @@ def test_posts_by_author_result_is_classified_as_authored_post(mock_get, monkeyp
                     "type": "post",
                     "id": "post-by-professor",
                     "title": "Quantum markets update",
-                    "content": "A post by professorquantum.",
+                    "content": long_body,
                     "author": {"name": "professorquantum"},
+                    "created_at": "2026-05-03T10:00:00Z",
+                    "submolt": {"name": "markets"},
+                    "upvotes": 4,
+                    "downvotes": 1,
+                    "comment_count": 12,
                     "url": "https://moltbook.com/post/post-by-professor",
+                    "internal_debug": {"large": "payload"},
                 },
             ]
         }
@@ -86,9 +96,26 @@ def test_posts_by_author_result_is_classified_as_authored_post(mock_get, monkeyp
 
     assert result["ok"] is True
     assert [item["id"] for item in result["authored_posts"]] == ["post-by-professor"]
+    post = result["authored_posts"][0]
+    assert post == {
+        "id": "post-by-professor",
+        "title": "Quantum markets update",
+        "author_name": "professorquantum",
+        "created_at": "2026-05-03T10:00:00Z",
+        "submolt": "markets",
+        "upvotes": 4,
+        "downvotes": 1,
+        "comment_count": 12,
+        "content_preview": long_body[:MAX_CONTENT_PREVIEW_CHARS].rstrip() + "...",
+        "url": "https://moltbook.com/post/post-by-professor",
+    }
+    assert "raw" not in post
+    assert "content" not in post
+    assert long_body not in str(result)
     assert result["mentions"] == []
     assert result["profiles"] == []
-    assert "semantic search is mixed-type" in result["note"]
+    assert "/posts?author" in result["note"]
+    assert "moltbook_read_post" in result["note"]
 
 
 @patch("skills.active.moltbook.moltbook.requests.get")
@@ -123,6 +150,9 @@ def test_mismatched_author_from_posts_by_author_is_not_trusted(mock_get, monkeyp
     assert result["authored_posts"] == []
     assert [item["id"] for item in result["other_results"]] == ["mention-post"]
     assert result["other_results"][0]["author_name"] == "doctor_crustacean"
+    assert result["other_results"][0]["type"] == "post"
+    assert "raw" not in result["other_results"][0]
+    assert "content" not in result["other_results"][0]
 
 
 @patch("skills.active.moltbook.moltbook.requests.get")
@@ -159,8 +189,23 @@ def test_profile_recent_posts_fallback_when_posts_by_author_empty(mock_get, monk
 
     assert result["ok"] is True
     assert [item["id"] for item in result["authored_posts"]] == ["known-post"]
-    assert result["authored_posts"][0]["author_name"] == "unitymolty"
-    assert result["profiles"][0]["type"] == "agent"
+    post = result["authored_posts"][0]
+    assert post["author_name"] == "unitymolty"
+    assert post["title"] == "The Registry Debt Threshold: When Your Skills Become a Cognitive Tax"
+    assert post["submolt"] == "agents"
+    assert post["content_preview"] == "I noticed my tool-selection latency creeping up."
+    assert "raw" not in post
+    assert "content" not in post
+    profile = result["profiles"][0]
+    assert profile == {
+        "type": "agent",
+        "id": "agent-1",
+        "name": "unitymolty",
+        "description": "Profile result",
+        "karma": 1704,
+        "url": "https://www.moltbook.com/u/unitymolty",
+    }
+    assert "raw" not in profile
 
 
 @patch("skills.active.moltbook.moltbook.requests.get")
@@ -188,6 +233,8 @@ def test_search_miss_regression_posts_by_author_still_finds_known_post(
     result = moltbook_find_author_posts("unitymolty")
 
     assert [item["id"] for item in result["authored_posts"]] == ["registry-debt"]
+    assert "raw" not in result["authored_posts"][0]
+    assert "content" not in result["authored_posts"][0]
     assert mock_get.call_count == 1
 
 
