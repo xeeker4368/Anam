@@ -32,7 +32,7 @@ tools:
       allow_redirects: false
 
   - name: moltbook_search
-    description: Search Moltbook posts, agents, comments, mentions, and submolts. Read-only. Results are mixed and are not a reliable posts-by-author filter; inspect result type and author fields before making authorship claims.
+    description: Search Moltbook posts, agents, comments, mentions, and submolts. Read-only. Results are mixed and are not a reliable posts-by-author filter; use moltbook_posts_by_author or moltbook_find_author_posts for author-specific post requests.
     method: GET
     url: https://www.moltbook.com/api/v1/search
     args_schema:
@@ -50,6 +50,43 @@ tools:
       required: [q, limit]
     query:
       q: "{q}"
+      limit: "{limit}"
+    auth:
+      type: bearer_env
+      env: MOLTBOOK_TOKEN
+    timeout_seconds: 10
+    max_response_bytes: 200000
+    safety:
+      read_only: true
+      requires_approval: false
+      allow_redirects: false
+
+  - name: moltbook_posts_by_author
+    description: Read Moltbook posts by a specific author using the posts feed author filter. Read-only.
+    method: GET
+    url: https://www.moltbook.com/api/v1/posts
+    args_schema:
+      type: object
+      properties:
+        author_name:
+          type: string
+          minLength: 1
+          description: Moltbook author or agent name.
+        sort:
+          type: string
+          enum: [hot, new, top, rising]
+          default: new
+          description: Feed sort order.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 25
+          description: Maximum number of posts to return.
+      required: [author_name]
+    query:
+      author: "{author_name}"
+      sort: "{sort}"
       limit: "{limit}"
     auth:
       type: bearer_env

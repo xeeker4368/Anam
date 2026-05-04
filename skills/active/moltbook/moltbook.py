@@ -8,9 +8,9 @@ from tir.tools.registry import tool
 
 MOLTBOOK_API_BASE = "https://www.moltbook.com/api/v1"
 MOLTBOOK_AUTHOR_SEARCH_NOTE = (
-    "Moltbook search is mixed-type and not a strict author filter. "
     "authored_posts only includes post-like results whose author field matches "
-    "the requested author."
+    "the requested author. Moltbook semantic search is mixed-type and should "
+    "be used separately for mentions or discovery, not authorship."
 )
 
 
@@ -26,27 +26,25 @@ def _normalize_name(value) -> str:
     return str(value or "").strip().lower()
 
 
-def _extract_results(payload) -> list:
+def _extract_posts(payload) -> list:
     if isinstance(payload, list):
         return payload
     if not isinstance(payload, dict):
         return []
 
-    for key in ("results", "data", "items"):
+    for key in ("posts", "recentPosts", "results", "data", "items"):
         value = payload.get(key)
         if isinstance(value, list):
             return value
 
-    combined = []
-    for key in ("posts", "comments", "agents", "profiles", "submolts"):
-        value = payload.get(key)
-        if isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict) and "type" not in item:
-                    item = dict(item)
-                    item["type"] = key[:-1] if key.endswith("s") else key
-                combined.append(item)
-    return combined
+    data = payload.get("data")
+    if isinstance(data, dict):
+        for key in ("posts", "results", "items"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return value
+
+    return []
 
 
 def _nested_get(item: dict, path: tuple[str, ...]):
@@ -122,19 +120,32 @@ def _compact_result(item: dict) -> dict:
     }
 
 
-def _mentions_author(item: dict, author_name: str) -> bool:
-    target = _normalize_name(author_name)
+def _compact_profile_post(item: dict, author_name: str) -> dict:
     compact = _compact_result(item)
-    haystack = " ".join(
-        str(compact.get(key) or "")
-        for key in ("title", "content", "url", "author_name")
-    )
-    if isinstance(item.get("post"), dict):
-        haystack += " " + " ".join(
-            str(item["post"].get(key) or "")
-            for key in ("title", "content", "url", "author_name", "author")
+    if not compact["author_name"]:
+        compact["author_name"] = author_name
+    compact["type"] = "post"
+    return compact
+
+
+def _get_json(url: str, *, params: dict, token: str, label: str):
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
         )
-    return target in haystack.lower()
+    except requests.RequestException as exc:
+        return None, f"Moltbook {label} failed: {type(exc).__name__}: {exc}"
+
+    if response.status_code != 200:
+        return None, f"Moltbook {label} returned HTTP {response.status_code}"
+
+    try:
+        return response.json(), None
+    except ValueError:
+        return None, f"Moltbook {label} returned non-JSON response"
 
 
 @tool(
@@ -174,31 +185,26 @@ def moltbook_find_author_posts(author_name: str, limit: int = 10) -> dict:
 
     bounded_limit = _clamp_limit(limit)
 
-    try:
-        response = requests.get(
-            urljoin(MOLTBOOK_API_BASE.rstrip("/") + "/", "search"),
-            params={"q": normalized_author, "limit": str(bounded_limit)},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10,
-        )
-    except requests.RequestException as exc:
-        return {"ok": False, "error": f"Moltbook search failed: {type(exc).__name__}: {exc}"}
-
-    if response.status_code != 200:
-        return {"ok": False, "error": f"Moltbook search returned HTTP {response.status_code}"}
-
-    try:
-        payload = response.json()
-    except ValueError:
-        return {"ok": False, "error": "Moltbook search returned non-JSON response"}
-
     authored_posts = []
     mentions = []
     profiles = []
     other_results = []
     target = _normalize_name(normalized_author)
 
-    for item in _extract_results(payload):
+    posts_payload, error = _get_json(
+        urljoin(MOLTBOOK_API_BASE.rstrip("/") + "/", "posts"),
+        params={
+            "author": normalized_author,
+            "sort": "new",
+            "limit": str(bounded_limit),
+        },
+        token=token,
+        label="posts by author",
+    )
+    if error:
+        return {"ok": False, "error": error}
+
+    for item in _extract_posts(posts_payload):
         if not isinstance(item, dict):
             other_results.append({"type": "unknown", "raw": item})
             continue
@@ -209,15 +215,46 @@ def moltbook_find_author_posts(author_name: str, limit: int = 10) -> dict:
 
         if post_like and author_matches:
             authored_posts.append(compact)
-        elif _is_profile_like(item):
-            profiles.append(compact)
-        elif (post_like or _result_type(item) in {"comment", "comments"}) and _mentions_author(
-            item,
-            normalized_author,
-        ):
-            mentions.append(compact)
         else:
             other_results.append(compact)
+
+    if not authored_posts:
+        profile_payload, error = _get_json(
+            urljoin(MOLTBOOK_API_BASE.rstrip("/") + "/", "agents/profile"),
+            params={"name": normalized_author},
+            token=token,
+            label="agent profile",
+        )
+        if error:
+            return {"ok": False, "error": error}
+
+        if isinstance(profile_payload, dict):
+            agent = profile_payload.get("agent")
+            if isinstance(agent, dict):
+                profiles.append(_compact_result({
+                    "type": "agent",
+                    "id": agent.get("id"),
+                    "name": agent.get("name"),
+                    "description": agent.get("description", ""),
+                    "karma": agent.get("karma"),
+                    "url": f"https://www.moltbook.com/u/{agent.get('name', normalized_author)}",
+                }))
+
+        for item in _extract_posts(
+            profile_payload.get("recentPosts", [])
+            if isinstance(profile_payload, dict)
+            else []
+        ):
+            if not isinstance(item, dict):
+                other_results.append({"type": "unknown", "raw": item})
+                continue
+
+            compact = _compact_profile_post(item, normalized_author)
+            author_matches = _normalize_name(compact["author_name"]) == target
+            if _is_post_like(compact) and author_matches:
+                authored_posts.append(compact)
+            else:
+                other_results.append(compact)
 
     return {
         "ok": True,

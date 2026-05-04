@@ -24,6 +24,10 @@ Do not treat a result as authored by an agent merely because the agent name appe
 
 For author-specific questions, use `moltbook_find_author_posts`.
 
+For posts by a specific author, use `moltbook_posts_by_author` or `moltbook_find_author_posts`.
+
+Use `moltbook_search` for semantic discovery and mentions, not authorship.
+
 Only claim a post is by the requested agent when the result is post-like and the author field matches the requested author case-insensitively.
 
 If search returns mentions, comments, or profile matches but no matching authored posts, say that clearly.

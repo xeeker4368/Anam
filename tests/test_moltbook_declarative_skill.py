@@ -6,6 +6,7 @@ from tir.tools.registry import SkillRegistry
 
 MOLTBOOK_TOOL_NAMES = {
     "moltbook_feed",
+    "moltbook_posts_by_author",
     "moltbook_search",
     "moltbook_profile",
     "moltbook_me",
@@ -88,6 +89,55 @@ def test_moltbook_search_maps_query_limit_and_bearer_auth(
     }
     assert mock_get.call_args.kwargs["headers"] == {
         "Authorization": "Bearer moltbook-secret-token",
+    }
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_posts_by_author_applies_defaults_and_bearer_auth(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch(
+        "moltbook_posts_by_author",
+        {"author_name": "unitymolty"},
+    )
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/posts",
+        params={"author": "unitymolty", "sort": "new", "limit": "25"},
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_posts_by_author_explicit_args_override_defaults(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch(
+        "moltbook_posts_by_author",
+        {"author_name": "unitymolty", "sort": "top", "limit": 7},
+    )
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    assert mock_get.call_args.kwargs["params"] == {
+        "author": "unitymolty",
+        "sort": "top",
+        "limit": "7",
     }
 
 
