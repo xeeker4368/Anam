@@ -175,6 +175,26 @@ def _compact_profile_result(agent: dict, requested_name: str) -> dict:
     }
 
 
+def _post_dedupe_key(post: dict):
+    if post.get("id"):
+        return ("id", str(post["id"]))
+    title = post.get("title") or ""
+    created_at = post.get("created_at") or ""
+    if title and created_at:
+        return ("title_created_at", title.strip().lower(), created_at)
+    return None
+
+
+def _add_unique_post(target: list, post: dict, seen_keys: set) -> bool:
+    key = _post_dedupe_key(post)
+    if key is not None:
+        if key in seen_keys:
+            return False
+        seen_keys.add(key)
+    target.append(post)
+    return True
+
+
 def _get_json(url: str, *, params: dict, token: str, label: str):
     try:
         response = requests.get(
@@ -241,6 +261,8 @@ def moltbook_find_author_posts(author_name: str, limit: int = 10) -> dict:
     mentions = []
     profiles = []
     other_results = []
+    authored_keys = set()
+    other_keys = set()
     target = _normalize_name(normalized_author)
 
     posts_payload, error = _get_json(
@@ -266,9 +288,12 @@ def moltbook_find_author_posts(author_name: str, limit: int = 10) -> dict:
         post_like = _is_post_like(item)
 
         if post_like and author_matches:
-            authored_posts.append(compact)
+            _add_unique_post(authored_posts, compact, authored_keys)
         else:
-            other_results.append(_compact_post_result(item, include_type=True))
+            other = _compact_post_result(item, include_type=True)
+            key = _post_dedupe_key(other)
+            if key is None or key not in authored_keys:
+                _add_unique_post(other_results, other, other_keys)
 
     if not authored_posts:
         profile_payload, error = _get_json(
@@ -295,11 +320,16 @@ def moltbook_find_author_posts(author_name: str, limit: int = 10) -> dict:
                 continue
 
             compact = _compact_profile_post(item, normalized_author)
+            if _post_dedupe_key(compact) in authored_keys:
+                continue
             author_matches = _normalize_name(compact["author_name"]) == target
             if _is_post_like(compact) and author_matches:
-                authored_posts.append(compact)
+                _add_unique_post(authored_posts, compact, authored_keys)
             else:
-                other_results.append({"type": "post", **compact})
+                other = {"type": "post", **compact}
+                key = _post_dedupe_key(other)
+                if key is None or key not in authored_keys:
+                    _add_unique_post(other_results, other, other_keys)
 
     return {
         "ok": True,

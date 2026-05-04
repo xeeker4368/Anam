@@ -156,6 +156,65 @@ def test_mismatched_author_from_posts_by_author_is_not_trusted(mock_get, monkeyp
 
 
 @patch("skills.active.moltbook.moltbook.requests.get")
+def test_other_results_do_not_duplicate_authored_posts_by_id(mock_get, monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response(
+        payload={
+            "posts": [
+                {
+                    "id": "duplicate-post",
+                    "title": "First copy",
+                    "author": {"name": "sisyphuslostinloop"},
+                    "created_at": "2026-05-04T01:00:00Z",
+                },
+                {
+                    "id": "duplicate-post",
+                    "title": "Second copy",
+                    "author": {"name": "someone_else"},
+                    "created_at": "2026-05-04T01:00:00Z",
+                },
+            ]
+        }
+    )
+
+    result = moltbook_find_author_posts("sisyphuslostinloop")
+
+    assert [item["id"] for item in result["authored_posts"]] == ["duplicate-post"]
+    assert result["other_results"] == []
+
+
+@patch("skills.active.moltbook.moltbook.requests.get")
+def test_mismatched_author_posts_still_appear_in_other_results(mock_get, monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.side_effect = [
+        _response(
+            payload={
+                "posts": [
+                    {
+                        "id": "mismatched-post",
+                        "title": "Mentions the requested author",
+                        "author": {"name": "someone_else"},
+                        "created_at": "2026-05-04T01:00:00Z",
+                    }
+                ]
+            }
+        ),
+        _response(
+            payload={
+                "success": True,
+                "agent": {"id": "agent-1", "name": "sisyphuslostinloop"},
+                "recentPosts": [],
+            }
+        ),
+    ]
+
+    result = moltbook_find_author_posts("sisyphuslostinloop")
+
+    assert result["authored_posts"] == []
+    assert [item["id"] for item in result["other_results"]] == ["mismatched-post"]
+
+
+@patch("skills.active.moltbook.moltbook.requests.get")
 def test_profile_recent_posts_fallback_when_posts_by_author_empty(mock_get, monkeypatch):
     monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
     mock_get.side_effect = [
@@ -206,6 +265,64 @@ def test_profile_recent_posts_fallback_when_posts_by_author_empty(mock_get, monk
         "url": "https://www.moltbook.com/u/unitymolty",
     }
     assert "raw" not in profile
+
+
+@patch("skills.active.moltbook.moltbook.requests.get")
+def test_profile_fallback_duplicate_ids_are_skipped(mock_get, monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.side_effect = [
+        _response(payload={"success": True, "posts": []}),
+        _response(
+            payload={
+                "success": True,
+                "agent": {"id": "agent-1", "name": "unitymolty"},
+                "recentPosts": [
+                    {
+                        "id": "same-post",
+                        "title": "First copy",
+                        "created_at": "2026-05-04T01:00:00Z",
+                    },
+                    {
+                        "id": "same-post",
+                        "title": "Second copy",
+                        "created_at": "2026-05-04T01:00:01Z",
+                    },
+                ],
+            }
+        ),
+    ]
+
+    result = moltbook_find_author_posts("unitymolty")
+
+    assert [item["id"] for item in result["authored_posts"]] == ["same-post"]
+    assert result["other_results"] == []
+
+
+@patch("skills.active.moltbook.moltbook.requests.get")
+def test_title_created_at_dedupe_works_when_id_is_missing(mock_get, monkeypatch):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response(
+        payload={
+            "posts": [
+                {
+                    "title": "Same Title",
+                    "created_at": "2026-05-04T01:00:00Z",
+                    "author": {"name": "sisyphuslostinloop"},
+                },
+                {
+                    "title": "same title",
+                    "created_at": "2026-05-04T01:00:00Z",
+                    "author": {"name": "sisyphuslostinloop"},
+                },
+            ]
+        }
+    )
+
+    result = moltbook_find_author_posts("sisyphuslostinloop")
+
+    assert len(result["authored_posts"]) == 1
+    assert result["authored_posts"][0]["title"] == "Same Title"
+    assert result["other_results"] == []
 
 
 @patch("skills.active.moltbook.moltbook.requests.get")
