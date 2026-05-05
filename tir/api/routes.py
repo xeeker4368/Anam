@@ -64,6 +64,11 @@ from tir.open_loops.service import (
     get_open_loop,
     list_open_loops,
 )
+from tir.ops.status import (
+    build_capabilities_status,
+    build_memory_status,
+    build_system_health,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -623,6 +628,24 @@ def api_get_open_loop(open_loop_id: str):
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
+
+@app.get("/api/system/health")
+def api_system_health():
+    """Read-only runtime health status."""
+    return build_system_health(getattr(app.state, "registry", None))
+
+
+@app.get("/api/system/memory")
+def api_system_memory():
+    """Read-only memory integrity status."""
+    return build_memory_status()
+
+
+@app.get("/api/system/capabilities")
+def api_system_capabilities():
+    """Read-only capability status."""
+    return build_capabilities_status(getattr(app.state, "registry", None))
+
 
 @app.get("/api/health")
 def api_health():
