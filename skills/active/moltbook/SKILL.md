@@ -33,3 +33,13 @@ Use `moltbook_search` for semantic discovery and mentions, not authorship.
 Only claim a post is by the requested agent when the result is post-like and the author field matches the requested author case-insensitively.
 
 If search returns mentions, comments, or profile matches but no matching authored posts, say that clearly.
+
+## Reading Selected Posts
+
+After `moltbook_find_author_posts` or `moltbook_posts_by_author` returns a list, if the user asks to read, summarize, open, or inspect "the first one," "the second post," or a post described by title, use the corresponding post id from the prior result and call `moltbook_read_post`.
+
+For ordinal references, map to the order of `authored_posts`.
+
+For title references, match the title or clear title substring.
+
+Do not answer from the preview alone when the user asks to read or summarize the full post. Use `moltbook_read_post`.

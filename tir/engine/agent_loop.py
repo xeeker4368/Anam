@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 from tir.config import CHAT_MODEL
 from tir.engine.ollama import chat_completion_stream_with_tools
+from tir.engine.tool_trace_context import selection_metadata_for_tool_result
 from tir.tools.rendering import render_tool_result
 
 logger = logging.getLogger(__name__)
@@ -151,9 +152,15 @@ def run_agent_loop(
                 )
 
                 if envelope["ok"]:
-                    rendered = render_tool_result(envelope["value"])
+                    tool_value = envelope["value"]
+                    rendered = render_tool_result(tool_value)
+                    selection = selection_metadata_for_tool_result(
+                        tool_name,
+                        tool_value,
+                    )
                 else:
                     rendered = f"Error: {envelope['error']}"
+                    selection = None
 
                 yield {
                     "type": "tool_result",
@@ -173,11 +180,14 @@ def run_agent_loop(
                     "name": tool_name,
                     "arguments": trace_arguments,
                 })
-                trace_record["tool_results"].append({
+                tool_result_trace = {
                     "tool_name": tool_name,
                     "ok": envelope["ok"],
                     "rendered": rendered[:500],
-                })
+                }
+                if selection:
+                    tool_result_trace["selection"] = selection
+                trace_record["tool_results"].append(tool_result_trace)
 
             tool_trace.append(trace_record)
             continue

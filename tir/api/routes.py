@@ -48,6 +48,7 @@ from tir.memory.retrieval import retrieve
 from tir.memory.chunking import maybe_chunk_live, chunk_conversation_final
 from tir.engine.context import build_system_prompt
 from tir.engine.agent_loop import run_agent_loop
+from tir.engine.tool_trace_context import build_moltbook_selection_context
 from tir.engine.url_prefetch import get_url_prefetch_candidate
 from tir.memory.chroma import get_collection_count
 from tir.tools.registry import SkillRegistry
@@ -252,6 +253,20 @@ def stream_chat(req: ChatRequest):
             {"role": m["role"], "content": m["content"]}
             for m in all_messages
         ]
+        moltbook_selection_context = build_moltbook_selection_context(all_messages)
+        if moltbook_selection_context:
+            current_user_index = next(
+                (
+                    index
+                    for index, message in enumerate(all_messages)
+                    if message.get("id") == user_msg["id"]
+                ),
+                len(model_messages),
+            )
+            model_messages.insert(
+                current_user_index,
+                {"role": "system", "content": moltbook_selection_context},
+            )
         timings["history_load_ms"] = elapsed_ms(phase_start)
 
         # --- Emit debug event ---
