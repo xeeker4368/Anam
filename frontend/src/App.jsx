@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Chat from './components/Chat'
 import DebugPanel from './components/DebugPanel'
 import RegistryPanel from './components/RegistryPanel'
+import SystemPanel from './components/SystemPanel'
 import './styles.css'
 
 function useIsMobile(breakpoint = 768) {
@@ -48,6 +49,12 @@ function App() {
   const [openLoops, setOpenLoops] = useState([])
   const [registryLoading, setRegistryLoading] = useState(false)
   const [registryError, setRegistryError] = useState(null)
+  const [systemHealth, setSystemHealth] = useState(null)
+  const [systemMemory, setSystemMemory] = useState(null)
+  const [systemCapabilities, setSystemCapabilities] = useState(null)
+  const [systemLoading, setSystemLoading] = useState(false)
+  const [systemError, setSystemError] = useState(null)
+  const [systemLoaded, setSystemLoaded] = useState(false)
   const healthWarnedRef = useRef(false)
   const isMobile = useIsMobile()
   useViewportHeight()
@@ -173,6 +180,57 @@ function App() {
     }
   }
 
+  async function fetchSystemStatus() {
+    setSystemLoading(true)
+    setSystemError(null)
+    try {
+      const [healthResp, memoryResp, capabilitiesResp] = await Promise.all([
+        fetch('/api/system/health'),
+        fetch('/api/system/memory'),
+        fetch('/api/system/capabilities'),
+      ])
+
+      if (!healthResp.ok) {
+        throw new Error(await readErrorMessage(healthResp, 'Failed to fetch system health'))
+      }
+      if (!memoryResp.ok) {
+        throw new Error(await readErrorMessage(memoryResp, 'Failed to fetch memory status'))
+      }
+      if (!capabilitiesResp.ok) {
+        throw new Error(
+          await readErrorMessage(capabilitiesResp, 'Failed to fetch capability status')
+        )
+      }
+
+      const healthData = await healthResp.json()
+      const memoryData = await memoryResp.json()
+      const capabilitiesData = await capabilitiesResp.json()
+      if (!healthData || typeof healthData !== 'object' || Array.isArray(healthData)) {
+        throw new Error('System health response was not an object')
+      }
+      if (!memoryData || typeof memoryData !== 'object' || Array.isArray(memoryData)) {
+        throw new Error('Memory status response was not an object')
+      }
+      if (
+        !capabilitiesData ||
+        typeof capabilitiesData !== 'object' ||
+        Array.isArray(capabilitiesData)
+      ) {
+        throw new Error('Capability status response was not an object')
+      }
+
+      setSystemHealth(healthData)
+      setSystemMemory(memoryData)
+      setSystemCapabilities(capabilitiesData)
+      setSystemLoaded(true)
+    } catch (e) {
+      console.warn('Failed to fetch system status:', e)
+      setSystemError(e.message || 'Failed to fetch system status')
+    } finally {
+      setSystemLoading(false)
+    }
+  }
+
   async function handleCloseConversation() {
     if (!activeConversationId) return
     try {
@@ -232,6 +290,20 @@ function App() {
     fetchHealth()
     fetchRegistries()
   }, [])
+
+  function openSystemPanel() {
+    setRightPanelView('system')
+    if (!systemLoaded && !systemLoading) {
+      fetchSystemStatus()
+    }
+  }
+
+  function openSystemTab() {
+    setActiveTab('system')
+    if (!systemLoaded && !systemLoading) {
+      fetchSystemStatus()
+    }
+  }
 
   // --- Sidebar content ---
   const sidebarContent = (
@@ -385,6 +457,18 @@ function App() {
               />
             </div>
           )}
+          {activeTab === 'system' && (
+            <div className="m-scroll">
+              <SystemPanel
+                health={systemHealth}
+                memory={systemMemory}
+                capabilities={systemCapabilities}
+                loading={systemLoading}
+                error={systemError}
+                onRefresh={fetchSystemStatus}
+              />
+            </div>
+          )}
         </div>
         <div className="m-tabs">
           <button
@@ -403,6 +487,10 @@ function App() {
             className={`m-tab ${activeTab === 'registry' ? 'active' : ''}`}
             onClick={() => setActiveTab('registry')}
           >Registry</button>
+          <button
+            className={`m-tab ${activeTab === 'system' ? 'active' : ''}`}
+            onClick={openSystemTab}
+          >System</button>
         </div>
       </div>
     )
@@ -433,16 +521,34 @@ function App() {
             >
               Registry
             </button>
+            <button
+              type="button"
+              className={`right-panel-tab ${rightPanelView === 'system' ? 'active' : ''}`}
+              onClick={openSystemPanel}
+            >
+              System
+            </button>
           </div>
-          {rightPanelView === 'debug' ? (
+          {rightPanelView === 'debug' && (
             <DebugPanel data={debugData} />
-          ) : (
+          )}
+          {rightPanelView === 'registry' && (
             <RegistryPanel
               artifacts={artifacts}
               openLoops={openLoops}
               loading={registryLoading}
               error={registryError}
               onRefresh={fetchRegistries}
+            />
+          )}
+          {rightPanelView === 'system' && (
+            <SystemPanel
+              health={systemHealth}
+              memory={systemMemory}
+              capabilities={systemCapabilities}
+              loading={systemLoading}
+              error={systemError}
+              onRefresh={fetchSystemStatus}
             />
           )}
         </aside>
