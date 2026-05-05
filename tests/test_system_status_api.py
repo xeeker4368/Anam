@@ -206,30 +206,34 @@ def test_system_capabilities_reports_available_and_disabled_features(
     assert data["ok"] is True
     capabilities = data["capabilities"]
     assert capabilities["memory_search"]["available"] is True
-    assert capabilities["web_search"] == {
-        "available": True,
-        "configured": True,
-        "source": "searxng",
-    }
+    assert capabilities["memory_search"]["mode"] == "read_only"
+    assert capabilities["web_search"]["available"] is True
+    assert capabilities["web_search"]["configured"] is True
+    assert capabilities["web_search"]["source_of_truth"] is True
+    assert capabilities["web_search"]["real_time"] is True
     assert capabilities["web_fetch"]["available"] is True
-    assert capabilities["moltbook_read_only"] == {
-        "available": True,
-        "configured": True,
-    }
+    assert capabilities["moltbook_read_only"]["available"] is True
+    assert capabilities["moltbook_read_only"]["configured"] is True
+    assert capabilities["moltbook_read_only"]["mode"] == "read_only"
     assert capabilities["backups"]["available"] is True
-    assert capabilities["file_uploads"] == {
-        "enabled": False,
-        "status": "not_implemented",
-    }
+    assert capabilities["backups"]["mode"] == "manual"
+    assert capabilities["memory_maintenance"]["available"] is True
+    assert capabilities["memory_maintenance"]["mode"] == "manual"
+    assert capabilities["file_uploads"]["enabled"] is False
+    assert capabilities["file_uploads"]["status"] == "not_implemented"
     assert capabilities["image_generation"]["status"] == "not_implemented"
     assert capabilities["autonomous_research"]["status"] == "not_implemented"
+    assert capabilities["reflection_journal"]["status"] == "not_implemented"
+    assert capabilities["review_queue"]["status"] == "not_implemented"
+    assert capabilities["code_sandbox"]["status"] == "not_implemented"
     assert capabilities["speech"]["status"] == "not_implemented"
     assert capabilities["vision"]["status"] == "not_implemented"
     assert capabilities["write_actions"]["enabled"] is False
-    assert capabilities["self_modification"] == {
-        "enabled": False,
-        "status": "staged_only",
-    }
+    assert capabilities["write_actions"]["requires_approval"] is True
+    assert capabilities["self_modification"]["enabled"] is False
+    assert capabilities["self_modification"]["requires_approval"] is True
+    assert capabilities["self_modification"]["mode"] == "staged_only"
+    assert capabilities["self_modification"]["status"] == "staged_only"
     assert "configured-token" not in response.text
 
 

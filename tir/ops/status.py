@@ -9,6 +9,7 @@ from pathlib import Path
 from tir import config
 from tir.memory.audit import audit_memory_integrity
 from tir.memory.chroma import get_collection_count
+from tir.ops.capabilities import build_capabilities_status as _build_capabilities_status
 
 
 def _timestamp() -> str:
@@ -110,21 +111,6 @@ def _registry_counts(registry) -> dict:
     }
 
 
-def _tool_names(registry) -> set[str]:
-    if registry is None:
-        return set()
-    try:
-        return {
-            tool["function"]["name"]
-            for tool in registry.list_tools()
-            if isinstance(tool, dict)
-            and isinstance(tool.get("function"), dict)
-            and tool["function"].get("name")
-        }
-    except Exception:
-        return set()
-
-
 def build_system_health(registry=None) -> dict:
     """Return read-only runtime health for operator visibility."""
     backup_dir = Path(config.BACKUP_DIR)
@@ -171,54 +157,4 @@ def build_memory_status() -> dict:
 
 def build_capabilities_status(registry=None) -> dict:
     """Return read-only capability availability and configuration status."""
-    tools = _tool_names(registry)
-    return {
-        "ok": True,
-        "capabilities": {
-            "memory_search": {
-                "available": "memory_search" in tools,
-            },
-            "web_search": {
-                "available": "web_search" in tools,
-                "configured": bool(config.SEARXNG_URL),
-                "source": "searxng",
-            },
-            "web_fetch": {
-                "available": "web_fetch" in tools,
-            },
-            "moltbook_read_only": {
-                "available": any(name.startswith("moltbook_") for name in tools),
-                "configured": bool(os.getenv("MOLTBOOK_TOKEN")),
-            },
-            "backups": {
-                "available": True,
-            },
-            "file_uploads": {
-                "enabled": False,
-                "status": "not_implemented",
-            },
-            "image_generation": {
-                "enabled": False,
-                "status": "not_implemented",
-            },
-            "autonomous_research": {
-                "enabled": False,
-                "status": "not_implemented",
-            },
-            "speech": {
-                "enabled": False,
-                "status": "not_implemented",
-            },
-            "vision": {
-                "enabled": False,
-                "status": "not_implemented",
-            },
-            "write_actions": {
-                "enabled": False,
-            },
-            "self_modification": {
-                "enabled": False,
-                "status": "staged_only",
-            },
-        },
-    }
+    return _build_capabilities_status(registry)
