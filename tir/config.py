@@ -16,6 +16,7 @@ WORKING_DB = DATA_DIR / "working.db"
 CHROMA_DIR = str(DATA_DIR / "chromadb")
 SKILLS_DIR = PROJECT_ROOT / "skills" / "active"
 WORKSPACE_DIR = PROJECT_ROOT / "workspace"
+BACKUP_DIR = PROJECT_ROOT / "backups"
 
 # --- Ollama ---
 OLLAMA_HOST = "http://localhost:11434"

@@ -16,11 +16,14 @@ Commands:
     memory-repair    Repair ended unchunked conversations
     memory-checkpoint-active
                     Checkpoint active conversations into retrieval
+    backup           Back up runtime state
+    restore          Restore runtime state from a backup
 """
 
 import argparse
 import getpass
 import sys
+from pathlib import Path
 
 from tir.memory.db import (
     init_databases,
@@ -35,6 +38,7 @@ from tir.memory.audit import (
     checkpoint_active_conversations,
     repair_memory_integrity,
 )
+from tir.ops.backup import BackupError, create_backup, restore_backup
 
 
 def cmd_init_db(args):
@@ -248,6 +252,51 @@ def _print_memory_checkpoint_active(summary: dict):
             print(f"  {failure['conversation_id']}: {failure['error']}")
 
 
+def _print_backup_summary(summary: dict):
+    """Print a readable backup summary."""
+    manifest = summary["manifest"]
+    print("Backup complete")
+    print(f"Backup path: {summary['backup_path']}")
+    print(f"Manifest: {summary['manifest_path']}")
+    print(f"Project: {manifest['project']}")
+    print(f"Created at: {manifest['created_at']}")
+    for key, entry in manifest["paths"].items():
+        if entry["exists"]:
+            size = entry.get("bytes", 0)
+            if "file_count" in entry:
+                print(f"{key}: copied ({entry['file_count']} files, {size} bytes)")
+            else:
+                print(f"{key}: copied ({size} bytes)")
+        else:
+            print(f"{key}: missing")
+
+
+def _print_restore_summary(summary: dict):
+    """Print a readable restore summary."""
+    print("Restore")
+    print("Warning: restore should be run with the app stopped.")
+    print(f"Backup path: {summary['backup_path']}")
+    print(f"Dry run: {summary['dry_run']}")
+
+    if not summary.get("ok"):
+        print(f"Refused: {summary['error']}")
+        return
+
+    if summary["dry_run"]:
+        print("Would replace:")
+        for target in summary["would_replace"]:
+            if target["backup_entry_exists"]:
+                print(f"  {target['key']} -> {target['destination']}")
+            else:
+                print(f"  {target['key']}: not present in backup")
+        return
+
+    print(f"Pre-restore safety backup: {summary['pre_restore_backup']}")
+    print("Restored:")
+    for target in summary["restored"]:
+        print(f"  {target['key']} -> {target['destination']}")
+
+
 def cmd_memory_audit(args):
     """Run memory integrity audit."""
     audit = audit_memory_integrity(limit=args.limit)
@@ -267,6 +316,28 @@ def cmd_memory_checkpoint_active(args):
         dry_run=args.dry_run,
     )
     _print_memory_checkpoint_active(summary)
+
+
+def cmd_backup(args):
+    """Create a runtime state backup."""
+    summary = create_backup(destination_root=args.destination)
+    _print_backup_summary(summary)
+
+
+def cmd_restore(args):
+    """Restore runtime state from a backup."""
+    try:
+        summary = restore_backup(
+            Path(args.backup_path),
+            force=args.force,
+            dry_run=args.dry_run,
+        )
+    except BackupError as exc:
+        print(f"Restore failed: {exc}")
+        sys.exit(1)
+    _print_restore_summary(summary)
+    if not summary.get("ok"):
+        sys.exit(1)
 
 
 def main():
@@ -318,14 +389,30 @@ def main():
     p.add_argument("--limit", type=int, default=None, help="Max conversations to checkpoint")
     p.add_argument("--dry-run", action="store_true", help="Report checkpoint targets only")
 
+    # backup
+    p = sub.add_parser("backup", help="Back up runtime state")
+    p.add_argument(
+        "--destination",
+        type=Path,
+        default=None,
+        help="Root directory for the timestamped backup folder",
+    )
+
+    # restore
+    p = sub.add_parser("restore", help="Restore runtime state from a backup")
+    p.add_argument("backup_path", help="Backup folder containing manifest.json")
+    p.add_argument("--dry-run", action="store_true", help="Report restore plan only")
+    p.add_argument("--force", action="store_true", help="Required to mutate runtime state")
+
     args = parser.parse_args()
 
     if not args.command:
         parser.print_help()
         sys.exit(1)
 
-    # Ensure databases exist for all commands except init-db
-    if args.command != "init-db":
+    # Ensure databases exist for DB-facing commands. Backup/restore must not
+    # create or mutate runtime state before their own safety checks run.
+    if args.command not in {"init-db", "backup", "restore"}:
         init_databases()
 
     commands = {
@@ -338,6 +425,8 @@ def main():
         "memory-audit": cmd_memory_audit,
         "memory-repair": cmd_memory_repair,
         "memory-checkpoint-active": cmd_memory_checkpoint_active,
+        "backup": cmd_backup,
+        "restore": cmd_restore,
     }
 
     commands[args.command](args)
