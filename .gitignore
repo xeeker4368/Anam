@@ -7,6 +7,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 .pyanam/
+backups/
 
 # Node / frontend build output
 node_modules/

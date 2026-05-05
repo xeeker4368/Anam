@@ -15,6 +15,8 @@ function formatValue(value) {
 
 function statusTone(value) {
   if (value === true || value === 'ok' || value === 'available') return 'ok'
+  if (value === 'unavailable' || value === 'not_configured') return 'warn'
+  if (value === 'staged_only') return 'neutral'
   if (value === false || value === 'disabled' || value === 'not_implemented') return 'muted'
   return 'neutral'
 }
@@ -42,22 +44,121 @@ function SystemSection({ title, children }) {
   )
 }
 
-function CapabilityRow({ label, capability }) {
-  const enabled = capability?.available ?? capability?.enabled ?? false
-  const details = []
-  if (capability?.configured !== undefined) {
-    details.push(`configured: ${formatValue(capability.configured)}`)
+function humanize(value) {
+  if (value === null || value === undefined || value === '') return 'n/a'
+  return String(value).replaceAll('_', ' ')
+}
+
+function capabilityGroup(capability) {
+  if (capability?.requires_approval === true || capability?.mode === 'staged_only') {
+    return 'restricted'
   }
-  if (capability?.source) details.push(`source: ${capability.source}`)
-  if (capability?.status) details.push(capability.status)
+  if (capability?.implemented === false) {
+    return 'planned'
+  }
+  if (
+    capability?.status === 'unavailable' ||
+    capability?.status === 'not_configured' ||
+    capability?.available === false ||
+    capability?.configured === false ||
+    capability?.enabled === false
+  ) {
+    return 'config'
+  }
+  if (
+    capability?.implemented === true &&
+    capability?.enabled === true &&
+    capability?.available === true &&
+    capability?.status === 'available'
+  ) {
+    return 'active'
+  }
+  return 'config'
+}
+
+function groupCapabilities(capabilityData) {
+  const groups = {
+    active: [],
+    config: [],
+    planned: [],
+    restricted: [],
+  }
+  Object.values(capabilityData || {}).forEach(capability => {
+    groups[capabilityGroup(capability)].push(capability)
+  })
+  return groups
+}
+
+function CapabilityBadge({ value, label }) {
+  return (
+    <SystemBadge
+      value={value}
+      label={label || humanize(value)}
+    />
+  )
+}
+
+function CapabilityCard({ capability }) {
+  const label = capability?.label || capability?.key || 'Unknown capability'
+  return (
+    <article className="system-capability-card">
+      <div className="system-capability-header">
+        <h4>{label}</h4>
+        <CapabilityBadge value={capability?.status} />
+      </div>
+      <div className="system-capability-badges">
+        <CapabilityBadge value={capability?.mode} />
+        <CapabilityBadge
+          value={capability?.enabled}
+          label={capability?.enabled ? 'enabled' : 'disabled'}
+        />
+        <CapabilityBadge
+          value={capability?.available}
+          label={capability?.available ? 'available' : 'unavailable'}
+        />
+        {capability?.configured !== undefined && (
+          <CapabilityBadge
+            value={capability.configured}
+            label={capability.configured ? 'configured' : 'not configured'}
+          />
+        )}
+        {capability?.requires_approval && (
+          <CapabilityBadge value="not_configured" label="approval required" />
+        )}
+        {capability?.real_time && <CapabilityBadge value="available" label="real time" />}
+        {capability?.source_of_truth && (
+          <CapabilityBadge value="available" label="source of truth" />
+        )}
+      </div>
+      {capability?.reason && (
+        <p className="system-capability-note">
+          <strong>Reason:</strong> {humanize(capability.reason)}
+        </p>
+      )}
+      {capability?.notes && (
+        <p className="system-capability-note">{capability.notes}</p>
+      )}
+    </article>
+  )
+}
+
+function CapabilityGroup({ title, capabilities }) {
+  if (!capabilities || capabilities.length === 0) return null
 
   return (
-    <div className="system-capability-row">
-      <div>
-        <strong>{label}</strong>
-        {details.length > 0 && <span>{details.join(' · ')}</span>}
+    <div className="system-capability-group">
+      <div className="registry-section-header">
+        <h2>{title}</h2>
+        <span>{capabilities.length}</span>
       </div>
-      <SystemBadge value={enabled} label={enabled ? 'available' : 'disabled'} />
+      <div className="system-capability-list">
+        {capabilities.map(capability => (
+          <CapabilityCard
+            key={capability.key || capability.label}
+            capability={capability}
+          />
+        ))}
+      </div>
     </div>
   )
 }
@@ -79,6 +180,7 @@ function WarningList({ warnings }) {
 function SystemPanel({ health, memory, capabilities, loading, error, onRefresh }) {
   const audit = memory?.audit || {}
   const capabilityData = capabilities?.capabilities || {}
+  const capabilityGroups = groupCapabilities(capabilityData)
 
   return (
     <div className="system-content">
@@ -154,23 +256,22 @@ function SystemPanel({ health, memory, capabilities, loading, error, onRefresh }
 
       {capabilities && (
         <SystemSection title="Capabilities">
-          <div className="system-capability-list">
-            <CapabilityRow label="Memory Search" capability={capabilityData.memory_search} />
-            <CapabilityRow label="Web Search" capability={capabilityData.web_search} />
-            <CapabilityRow label="Web Fetch" capability={capabilityData.web_fetch} />
-            <CapabilityRow label="Moltbook Read-Only" capability={capabilityData.moltbook_read_only} />
-            <CapabilityRow label="Backups" capability={capabilityData.backups} />
-            <CapabilityRow label="File Uploads" capability={capabilityData.file_uploads} />
-            <CapabilityRow label="Image Generation" capability={capabilityData.image_generation} />
-            <CapabilityRow
-              label="Autonomous Research"
-              capability={capabilityData.autonomous_research}
-            />
-            <CapabilityRow label="Speech" capability={capabilityData.speech} />
-            <CapabilityRow label="Vision" capability={capabilityData.vision} />
-            <CapabilityRow label="Write Actions" capability={capabilityData.write_actions} />
-            <CapabilityRow label="Self-Modification" capability={capabilityData.self_modification} />
-          </div>
+          <CapabilityGroup
+            title="Active / Available"
+            capabilities={capabilityGroups.active}
+          />
+          <CapabilityGroup
+            title="Config Needed / Unavailable"
+            capabilities={capabilityGroups.config}
+          />
+          <CapabilityGroup
+            title="Planned / Not Implemented"
+            capabilities={capabilityGroups.planned}
+          />
+          <CapabilityGroup
+            title="Restricted / Requires Approval"
+            capabilities={capabilityGroups.restricted}
+          />
         </SystemSection>
       )}
     </div>

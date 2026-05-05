@@ -929,6 +929,11 @@ body {
   color: #9aa6b2;
 }
 
+.system-badge-warn {
+  background: #3a3320;
+  color: #e0c46c;
+}
+
 .system-warning-block {
   display: grid;
   gap: 8px;
@@ -955,36 +960,59 @@ body {
   gap: 8px;
 }
 
-.system-capability-row {
+.system-capability-group {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.system-capability-group:last-child {
+  margin-bottom: 0;
+}
+
+.system-capability-card {
+  display: grid;
+  gap: 8px;
+  background: #151528;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  padding: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.system-capability-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(42, 42, 74, 0.55);
+  gap: 8px;
 }
 
-.system-capability-row:last-child {
-  padding-bottom: 0;
-  border-bottom: none;
+.system-capability-header h4 {
+  color: #d0d0d0;
+  font-size: 13px;
+  line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.system-capability-row div {
-  display: grid;
-  gap: 3px;
+.system-capability-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   min-width: 0;
 }
 
-.system-capability-row strong {
-  color: #d0d0d0;
-  font-size: 12px;
-}
-
-.system-capability-row span {
+.system-capability-note {
   color: #888;
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.system-capability-note strong {
+  color: #aaa;
+  font-weight: 700;
 }
 
 /* --- Buttons --- */
