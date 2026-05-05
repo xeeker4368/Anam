@@ -202,3 +202,52 @@ def repair_memory_integrity(
         "repairable_ended_unchunked_count": len(repairable),
         **summary,
     }
+
+
+def checkpoint_active_conversations(
+    limit: int | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Checkpoint active conversations into retrieval without closing them."""
+    active_conversations = get_active_conversations()
+    checkpointable = [
+        conv
+        for conv in active_conversations
+        if int(conv.get("message_count") or 0) > 0
+    ]
+    targets = checkpointable[:limit] if limit is not None else checkpointable
+    conversation_ids = [conv["id"] for conv in targets]
+
+    summary = {
+        "dry_run": dry_run,
+        "active_conversation_count": len(active_conversations),
+        "checkpointable_active_count": len(checkpointable),
+        "attempted": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "chunks_written": 0,
+        "conversation_ids": conversation_ids,
+        "failures": [],
+    }
+
+    if dry_run:
+        return summary
+
+    for conv in targets:
+        conversation_id = conv["id"]
+        summary["attempted"] += 1
+        try:
+            chunks_written = chunking.checkpoint_conversation(
+                conversation_id,
+                conv["user_id"],
+            )
+            summary["chunks_written"] += chunks_written
+            summary["succeeded"] += 1
+        except Exception as exc:
+            summary["failed"] += 1
+            summary["failures"].append({
+                "conversation_id": conversation_id,
+                "error": str(exc),
+            })
+
+    return summary

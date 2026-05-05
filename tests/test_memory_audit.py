@@ -38,6 +38,12 @@ def _make_conversation(db_mod, *, ended=False, turns=1):
     return user, conversation_id
 
 
+def _make_empty_active_conversation(db_mod):
+    user = db_mod.create_user("Empty")
+    conversation_id = db_mod.start_conversation(user["id"])
+    return user, conversation_id
+
+
 def test_audit_reports_working_archive_message_parity(temp_memory_audit):
     db_mod, audit_mod, _admin_mod = temp_memory_audit
     _make_conversation(db_mod, ended=False, turns=1)
@@ -183,6 +189,95 @@ def test_repair_non_dry_run_calls_recovery_with_limit(temp_memory_audit):
     assert summary["chunks_written"] == 1
 
 
+def test_checkpoint_active_dry_run_reports_targets_without_mutation(
+    temp_memory_audit,
+):
+    db_mod, audit_mod, _admin_mod = temp_memory_audit
+    _empty_user, empty_id = _make_empty_active_conversation(db_mod)
+    _user, conversation_id = _make_conversation(db_mod, ended=False, turns=1)
+
+    with patch(
+        "tir.memory.audit.chunking.checkpoint_conversation"
+    ) as mock_checkpoint:
+        summary = audit_mod.checkpoint_active_conversations(dry_run=True)
+
+    mock_checkpoint.assert_not_called()
+    assert summary["dry_run"] is True
+    assert summary["active_conversation_count"] == 2
+    assert summary["checkpointable_active_count"] == 1
+    assert summary["attempted"] == 0
+    assert summary["conversation_ids"] == [conversation_id]
+    assert empty_id not in summary["conversation_ids"]
+    assert db_mod.get_conversation(conversation_id)["ended_at"] is None
+    assert db_mod.get_conversation(conversation_id)["chunked"] == 0
+
+
+def test_checkpoint_active_calls_checkpoint_for_active_conversations(
+    temp_memory_audit,
+):
+    db_mod, audit_mod, _admin_mod = temp_memory_audit
+    user, conversation_id = _make_conversation(db_mod, ended=False, turns=1)
+
+    with patch(
+        "tir.memory.audit.chunking.checkpoint_conversation",
+        return_value=1,
+    ) as mock_checkpoint:
+        summary = audit_mod.checkpoint_active_conversations()
+
+    mock_checkpoint.assert_called_once_with(conversation_id, user["id"])
+    assert summary["dry_run"] is False
+    assert summary["attempted"] == 1
+    assert summary["succeeded"] == 1
+    assert summary["failed"] == 0
+    assert summary["chunks_written"] == 1
+    assert summary["conversation_ids"] == [conversation_id]
+    assert db_mod.get_conversation(conversation_id)["ended_at"] is None
+    assert db_mod.get_conversation(conversation_id)["chunked"] == 0
+
+
+def test_checkpoint_active_limit_bounds_attempted_targets(temp_memory_audit):
+    db_mod, audit_mod, _admin_mod = temp_memory_audit
+    _first_user, _first_id = _make_conversation(db_mod, ended=False, turns=1)
+    _second_user, _second_id = _make_conversation(db_mod, ended=False, turns=1)
+
+    with patch(
+        "tir.memory.audit.chunking.checkpoint_conversation",
+        return_value=1,
+    ) as mock_checkpoint:
+        summary = audit_mod.checkpoint_active_conversations(limit=1)
+
+    assert mock_checkpoint.call_count == 1
+    assert summary["active_conversation_count"] == 2
+    assert summary["checkpointable_active_count"] == 2
+    assert summary["attempted"] == 1
+    assert summary["succeeded"] == 1
+    assert summary["failed"] == 0
+    assert len(summary["conversation_ids"]) == 1
+
+
+def test_checkpoint_active_reports_failure_and_continues(temp_memory_audit):
+    db_mod, audit_mod, _admin_mod = temp_memory_audit
+    _first_user, first_id = _make_conversation(db_mod, ended=False, turns=1)
+    _second_user, second_id = _make_conversation(db_mod, ended=False, turns=1)
+
+    with patch(
+        "tir.memory.audit.chunking.checkpoint_conversation",
+        side_effect=[RuntimeError("checkpoint failed"), 1],
+    ):
+        summary = audit_mod.checkpoint_active_conversations()
+
+    assert summary["attempted"] == 2
+    assert summary["succeeded"] == 1
+    assert summary["failed"] == 1
+    assert summary["chunks_written"] == 1
+    assert summary["failures"] == [{
+        "conversation_id": summary["conversation_ids"][0],
+        "error": "checkpoint failed",
+    }]
+    assert db_mod.get_conversation(first_id)["ended_at"] is None
+    assert db_mod.get_conversation(second_id)["ended_at"] is None
+
+
 def test_admin_memory_audit_command_runs_and_prints_summary(
     temp_memory_audit,
     capsys,
@@ -213,4 +308,23 @@ def test_admin_memory_repair_dry_run_runs_and_does_not_mutate(
     assert "Dry run: True" in output
     assert "Would attempt: 1" in output
     assert conversation_id in output
+    assert db_mod.get_conversation(conversation_id)["chunked"] == 0
+
+
+def test_admin_memory_checkpoint_active_dry_run_prints_summary(
+    temp_memory_audit,
+    capsys,
+):
+    db_mod, _audit_mod, admin_mod = temp_memory_audit
+    _user, conversation_id = _make_conversation(db_mod, ended=False, turns=1)
+
+    admin_mod.cmd_memory_checkpoint_active(SimpleNamespace(limit=None, dry_run=True))
+
+    output = capsys.readouterr().out
+    assert "Active conversation checkpoint" in output
+    assert "Dry run: True" in output
+    assert "Checkpointable active conversations: 1" in output
+    assert "Would attempt: 1" in output
+    assert conversation_id in output
+    assert db_mod.get_conversation(conversation_id)["ended_at"] is None
     assert db_mod.get_conversation(conversation_id)["chunked"] == 0

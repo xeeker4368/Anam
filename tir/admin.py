@@ -14,6 +14,8 @@ Commands:
     show-user        Show user details including channel identifiers
     memory-audit     Report memory retrieval integrity status
     memory-repair    Repair ended unchunked conversations
+    memory-checkpoint-active
+                    Checkpoint active conversations into retrieval
 """
 
 import argparse
@@ -28,7 +30,11 @@ from tir.memory.db import (
     add_channel_identifier,
     upsert_channel_auth,
 )
-from tir.memory.audit import audit_memory_integrity, repair_memory_integrity
+from tir.memory.audit import (
+    audit_memory_integrity,
+    checkpoint_active_conversations,
+    repair_memory_integrity,
+)
 
 
 def cmd_init_db(args):
@@ -215,6 +221,33 @@ def _print_memory_repair(summary: dict):
             print(f"  {failure['conversation_id']}: {failure['error']}")
 
 
+def _print_memory_checkpoint_active(summary: dict):
+    """Print a readable active conversation checkpoint summary."""
+    print("Active conversation checkpoint")
+    print(f"Dry run: {summary['dry_run']}")
+    print(f"Active conversations: {summary['active_conversation_count']}")
+    print(
+        "Checkpointable active conversations: "
+        f"{summary['checkpointable_active_count']}"
+    )
+    if summary["dry_run"]:
+        print(f"Would attempt: {len(summary['conversation_ids'])}")
+        if summary["conversation_ids"]:
+            print("Would checkpoint conversation IDs:")
+            for conversation_id in summary["conversation_ids"]:
+                print(f"  {conversation_id}")
+        return
+
+    print(f"Attempted: {summary['attempted']}")
+    print(f"Succeeded: {summary['succeeded']}")
+    print(f"Failed: {summary['failed']}")
+    print(f"Chunks written: {summary['chunks_written']}")
+    if summary["failures"]:
+        print("Failures:")
+        for failure in summary["failures"]:
+            print(f"  {failure['conversation_id']}: {failure['error']}")
+
+
 def cmd_memory_audit(args):
     """Run memory integrity audit."""
     audit = audit_memory_integrity(limit=args.limit)
@@ -225,6 +258,15 @@ def cmd_memory_repair(args):
     """Repair ended unchunked conversations."""
     summary = repair_memory_integrity(limit=args.limit, dry_run=args.dry_run)
     _print_memory_repair(summary)
+
+
+def cmd_memory_checkpoint_active(args):
+    """Checkpoint active conversations into retrieval."""
+    summary = checkpoint_active_conversations(
+        limit=args.limit,
+        dry_run=args.dry_run,
+    )
+    _print_memory_checkpoint_active(summary)
 
 
 def main():
@@ -268,6 +310,14 @@ def main():
     p.add_argument("--limit", type=int, default=None, help="Max conversations to repair")
     p.add_argument("--dry-run", action="store_true", help="Report repair targets only")
 
+    # memory-checkpoint-active
+    p = sub.add_parser(
+        "memory-checkpoint-active",
+        help="Checkpoint active conversations into retrieval",
+    )
+    p.add_argument("--limit", type=int, default=None, help="Max conversations to checkpoint")
+    p.add_argument("--dry-run", action="store_true", help="Report checkpoint targets only")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -287,6 +337,7 @@ def main():
         "show-user": cmd_show_user,
         "memory-audit": cmd_memory_audit,
         "memory-repair": cmd_memory_repair,
+        "memory-checkpoint-active": cmd_memory_checkpoint_active,
     }
 
     commands[args.command](args)
