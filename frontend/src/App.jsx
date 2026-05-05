@@ -173,14 +173,6 @@ function App() {
     }
   }
 
-  function handleNewConversation() {
-    setActiveConversationId(null)
-    setViewingConversation(null)
-    setViewingMessages([])
-    setDebugData(null)
-    if (isMobile) setActiveTab('chat')
-  }
-
   async function handleCloseConversation() {
     if (!activeConversationId) return
     try {
@@ -260,9 +252,6 @@ function App() {
       </div>
 
       <div className="sidebar-actions">
-        <button onClick={handleNewConversation} className="btn btn-new">
-          New Conversation
-        </button>
         {activeConversationId && (
           <button onClick={handleCloseConversation} className="btn btn-close">
             Close Conversation
@@ -376,9 +365,6 @@ function App() {
               Close
             </button>
           )}
-          <button onClick={handleNewConversation} className="btn btn-small">
-            New
-          </button>
         </div>
         <div className="m-body">
           {activeTab === 'chat' && mainContent}

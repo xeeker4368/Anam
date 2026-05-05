@@ -833,15 +833,6 @@ body {
   font-weight: 500;
 }
 
-.btn-new {
-  background: #2d6a4f;
-  color: #b7e4c7;
-}
-
-.btn-new:hover {
-  background: #3a7d5f;
-}
-
 .btn-close {
   background: #5a2a2a;
   color: #e8a0a0;
