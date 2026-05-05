@@ -52,7 +52,7 @@ def _fake_message(role, content, message_id):
     }
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -68,7 +68,7 @@ def test_stream_chat_no_tool_path_preserves_basic_events(
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
     app.state.registry = FakeRegistry(has_tools=False)
     mock_resolve_user.return_value = _fake_user()
@@ -106,13 +106,73 @@ def test_stream_chat_no_tool_path_preserves_basic_events(
     ]
     assert "timings" in events[0]
     assert "retrieval_ms" in events[0]["timings"]
+    assert events[0]["retrieval_policy"] == {
+        "mode": "normal",
+        "reason": "normal",
+    }
     assert "total_backend_ms" in events[-2]["timings"]
     assert events[-1]["conversation_id"] == "conv-1"
     assistant_call = mock_save_message.call_args_list[-1]
     assert assistant_call.kwargs["tool_trace"] is None
+    mock_checkpoint_conversation.assert_called_once_with("conv-1", "user-1")
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_checkpoint_failure_does_not_break_response(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    app.state.registry = FakeRegistry(has_tools=False)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = []
+    mock_save_message.side_effect = [
+        _fake_message("user", "Hello", "msg-user"),
+        _fake_message("assistant", "Hello back", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", "Hello", "msg-user")]
+    mock_checkpoint_conversation.side_effect = RuntimeError("checkpoint failed")
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "Hello back"},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="Hello back",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": "Hello"})
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    assert events[-1] == {
+        "type": "done",
+        "conversation_id": "conv-1",
+        "message_id": "msg-assistant",
+    }
+    assert mock_save_message.call_count == 2
+    mock_checkpoint_conversation.assert_called_once_with("conv-1", "user-1")
+
+
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -128,7 +188,7 @@ def test_stream_chat_tool_trace_is_emitted_and_persisted(
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
     app.state.registry = FakeRegistry(has_tools=True)
     mock_resolve_user.return_value = _fake_user()
@@ -191,6 +251,191 @@ def test_stream_chat_tool_trace_is_emitted_and_persisted(
     assistant_call = mock_save_message.call_args_list[-1]
     persisted_trace = json.loads(assistant_call.kwargs["tool_trace"])
     assert persisted_trace[0]["tool_calls"][0]["name"] == "memory_search"
+    mock_checkpoint_conversation.assert_called_once_with("conv-1", "user-1")
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_skips_retrieval_for_direct_moltbook_state_prompt(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    app.state.registry = FakeRegistry(has_tools=True)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_save_message.side_effect = [
+        _fake_message("user", "Can you check Moltbook for posts by xkai?", "msg-user"),
+        _fake_message("assistant", "I will check Moltbook.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [
+        _fake_message("user", "Can you check Moltbook for posts by xkai?", "msg-user")
+    ]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "I will check Moltbook."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="I will check Moltbook.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat/stream",
+        json={"text": "Can you check Moltbook for posts by xkai?"},
+    )
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    assert events[0]["retrieval_skipped"] is True
+    assert events[0]["retrieval_policy"] == {
+        "mode": "skip_memory",
+        "reason": "direct_moltbook_state",
+    }
+    assert events[0]["chunks_retrieved"] == 0
+    assert events[0]["retrieved_chunks"] == []
+    mock_retrieve.assert_not_called()
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_skips_retrieval_for_direct_web_current_prompt(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    app.state.registry = FakeRegistry(has_tools=True)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_save_message.side_effect = [
+        _fake_message("user", "Search the web for current SearXNG info", "msg-user"),
+        _fake_message("assistant", "I will search.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [
+        _fake_message("user", "Search the web for current SearXNG info", "msg-user")
+    ]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "I will search."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="I will search.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat/stream",
+        json={"text": "Search the web for current SearXNG info"},
+    )
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    assert events[0]["retrieval_skipped"] is True
+    assert events[0]["retrieval_policy"] == {
+        "mode": "skip_memory",
+        "reason": "direct_web_current",
+    }
+    mock_retrieve.assert_not_called()
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_normal_retrieval_still_runs(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    app.state.registry = FakeRegistry(has_tools=True)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = [
+        {
+            "chunk_id": "chunk-1",
+            "text": "Relevant memory.",
+            "source_type": "conversation",
+        }
+    ]
+    mock_save_message.side_effect = [
+        _fake_message("user", "What did we decide about Moltbook integration?", "msg-user"),
+        _fake_message("assistant", "We chose read-only first.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [
+        _fake_message("user", "What did we decide about Moltbook integration?", "msg-user")
+    ]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "We chose read-only first."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="We chose read-only first.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat/stream",
+        json={"text": "What did we decide about Moltbook integration?"},
+    )
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    assert events[0]["retrieval_skipped"] is False
+    assert events[0]["retrieval_policy"] == {
+        "mode": "normal",
+        "reason": "normal",
+    }
+    assert events[0]["chunks_retrieved"] == 1
+    mock_retrieve.assert_called_once_with(
+        query="What did we decide about Moltbook integration?",
+        active_conversation_id="conv-1",
+    )
 
 
 @patch("tir.api.routes.save_message")
@@ -212,7 +457,7 @@ def test_stream_chat_unknown_explicit_user_id_returns_404_without_saving(
     mock_save_message.assert_not_called()
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -230,7 +475,7 @@ def test_stream_chat_ended_conversation_starts_new_conversation(
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
     app.state.registry = FakeRegistry(has_tools=False)
     mock_resolve_user.return_value = _fake_user()
@@ -300,7 +545,7 @@ def test_stream_chat_mismatched_conversation_user_returns_403_without_saving(
     mock_save_message.assert_not_called()
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -316,7 +561,7 @@ def test_stream_chat_agent_loop_exception_does_not_save_synthetic_assistant_mess
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
     app.state.registry = FakeRegistry(has_tools=False)
     mock_resolve_user.return_value = _fake_user()
@@ -336,10 +581,10 @@ def test_stream_chat_agent_loop_exception_does_not_save_synthetic_assistant_mess
     assert events[-1]["message_id"] is None
     assert mock_save_message.call_count == 1
     assert mock_save_message.call_args.args[:3] == ("conv-1", "user-1", "user")
-    mock_maybe_chunk_live.assert_not_called()
+    mock_checkpoint_conversation.assert_not_called()
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -355,7 +600,7 @@ def test_stream_chat_iteration_limit_does_not_save_synthetic_assistant_message(
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
     app.state.registry = FakeRegistry(has_tools=True)
     mock_resolve_user.return_value = _fake_user()
@@ -382,10 +627,10 @@ def test_stream_chat_iteration_limit_does_not_save_synthetic_assistant_message(
     assert [event["type"] for event in events] == ["debug", "error", "debug_update", "done"]
     assert events[-1]["message_id"] is None
     assert mock_save_message.call_count == 1
-    mock_maybe_chunk_live.assert_not_called()
+    mock_checkpoint_conversation.assert_not_called()
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -401,7 +646,7 @@ def test_stream_chat_unknown_termination_does_not_save_synthetic_assistant_messa
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
     app.state.registry = FakeRegistry(has_tools=False)
     mock_resolve_user.return_value = _fake_user()
@@ -432,10 +677,10 @@ def test_stream_chat_unknown_termination_does_not_save_synthetic_assistant_messa
     )
     assert events[-1]["message_id"] is None
     assert mock_save_message.call_count == 1
-    mock_maybe_chunk_live.assert_not_called()
+    mock_checkpoint_conversation.assert_not_called()
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -451,7 +696,7 @@ def test_stream_chat_empty_complete_output_does_not_save_synthetic_assistant_mes
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
     app.state.registry = FakeRegistry(has_tools=False)
     mock_resolve_user.return_value = _fake_user()
@@ -481,4 +726,4 @@ def test_stream_chat_empty_complete_output_does_not_save_synthetic_assistant_mes
     )
     assert events[-1]["message_id"] is None
     assert mock_save_message.call_count == 1
-    mock_maybe_chunk_live.assert_not_called()
+    mock_checkpoint_conversation.assert_not_called()

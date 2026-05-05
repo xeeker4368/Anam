@@ -45,9 +45,10 @@ from tir.memory.db import (
     list_conversations,
 )
 from tir.memory.retrieval import retrieve
-from tir.memory.chunking import maybe_chunk_live, chunk_conversation_final
+from tir.memory.chunking import checkpoint_conversation, chunk_conversation_final
 from tir.engine.context import build_system_prompt
 from tir.engine.agent_loop import run_agent_loop
+from tir.engine.retrieval_policy import classify_retrieval_policy
 from tir.engine.tool_trace_context import build_moltbook_selection_context
 from tir.engine.url_prefetch import get_url_prefetch_candidate
 from tir.memory.chroma import get_collection_count
@@ -219,7 +220,11 @@ def stream_chat(req: ChatRequest):
         # --- Retrieval ---
         phase_start = time.perf_counter()
         retrieved_chunks = []
-        retrieval_skipped = _is_greeting(req.text)
+        retrieval_policy = classify_retrieval_policy(req.text)
+        retrieval_skipped = (
+            _is_greeting(req.text)
+            or retrieval_policy["mode"] == "skip_memory"
+        )
 
         if not retrieval_skipped:
             try:
@@ -276,6 +281,7 @@ def stream_chat(req: ChatRequest):
             "conversation_id": conversation_id,
             "user_message_id": user_msg["id"],
             "retrieval_skipped": retrieval_skipped,
+            "retrieval_policy": retrieval_policy,
             "chunks_retrieved": len(retrieved_chunks),
             "retrieved_chunks": [
                 {
@@ -455,13 +461,13 @@ def stream_chat(req: ChatRequest):
         else:
             save_assistant_message_ms = 0.0
 
-        # --- Live chunking ---
+        # --- Active conversation checkpointing ---
         phase_start = time.perf_counter()
         if should_persist_assistant:
             try:
-                maybe_chunk_live(conversation_id, user_id)
+                checkpoint_conversation(conversation_id, user_id)
             except Exception as e:
-                logger.warning(f"Live chunking failed: {e}")
+                logger.warning(f"Conversation checkpointing failed: {e}")
         chunking_ms = elapsed_ms(phase_start)
 
         post_model_timings = {

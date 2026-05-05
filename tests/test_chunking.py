@@ -31,6 +31,78 @@ def _make_ended_conversation(db_mod, user_name="Lyle", turns=6):
     return user, conversation_id
 
 
+def _make_active_conversation(db_mod, user_name="Lyle", turns=1):
+    user = db_mod.create_user(user_name)
+    conversation_id = db_mod.start_conversation(user["id"])
+
+    for i in range(turns):
+        db_mod.save_message(conversation_id, user["id"], "user", f"Question {i}")
+        db_mod.save_message(conversation_id, user["id"], "assistant", f"Answer {i}")
+
+    return user, conversation_id
+
+
+def test_checkpoint_conversation_writes_active_tail_chunk(temp_chunking):
+    db_mod, chunking_mod = temp_chunking
+    user, conversation_id = _make_active_conversation(db_mod, turns=1)
+
+    with patch.object(chunking_mod, "_store_chunk") as mock_store_chunk:
+        chunks_written = chunking_mod.checkpoint_conversation(
+            conversation_id,
+            user["id"],
+        )
+
+    assert chunks_written == 1
+    assert mock_store_chunk.call_count == 1
+    call = mock_store_chunk.call_args
+    assert call.kwargs["chunk_id"] == f"{conversation_id}_chunk_0"
+    assert call.kwargs["chunk_index"] == 0
+    assert call.kwargs["message_count"] == 2
+    assert "Question 0" in call.kwargs["text"]
+    assert "Answer 0" in call.kwargs["text"]
+
+
+def test_checkpoint_conversation_does_not_mark_active_conversation_chunked(
+    temp_chunking,
+):
+    db_mod, chunking_mod = temp_chunking
+    user, conversation_id = _make_active_conversation(db_mod, turns=1)
+
+    with patch.object(chunking_mod, "_store_chunk"):
+        chunks_written = chunking_mod.checkpoint_conversation(
+            conversation_id,
+            user["id"],
+        )
+
+    assert chunks_written == 1
+    assert db_mod.get_conversation(conversation_id)["chunked"] == 0
+
+
+def test_checkpoint_conversation_overwrites_tail_chunk_without_duplicate_fts_rows(
+    temp_chunking,
+):
+    db_mod, chunking_mod = temp_chunking
+    user, conversation_id = _make_active_conversation(db_mod, turns=1)
+
+    with patch.object(chunking_mod, "upsert_chunk"):
+        assert chunking_mod.checkpoint_conversation(conversation_id, user["id"]) == 1
+        db_mod.save_message(conversation_id, user["id"], "user", "Question 1")
+        db_mod.save_message(conversation_id, user["id"], "assistant", "Answer 1")
+        assert chunking_mod.checkpoint_conversation(conversation_id, user["id"]) == 1
+
+    with db_mod.get_connection() as conn:
+        rows = conn.execute(
+            "SELECT chunk_id, text FROM main.chunks_fts WHERE chunk_id = ?",
+            (f"{conversation_id}_chunk_0",),
+        ).fetchall()
+
+    assert len(rows) == 1
+    assert "Question 0" in rows[0]["text"]
+    assert "Question 1" in rows[0]["text"]
+    assert "Answer 1" in rows[0]["text"]
+    assert db_mod.get_conversation(conversation_id)["chunked"] == 0
+
+
 def test_final_chunking_marks_chunked_when_all_chunks_succeed(temp_chunking):
     db_mod, chunking_mod = temp_chunking
     user, conversation_id = _make_ended_conversation(db_mod, turns=6)

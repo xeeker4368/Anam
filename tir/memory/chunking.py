@@ -7,15 +7,17 @@ both ChromaDB (vector search) and FTS5 (lexical search).
 Chunk boundaries are turn-based. A turn completes when an assistant
 message is saved. 5 turns per chunk. No overlap.
 
-Two entry points:
+Three entry points:
 - maybe_chunk_live(): called after every assistant message. Fires a
   chunk if we just completed a multiple-of-5 turn.
+- checkpoint_conversation(): called after a completed assistant turn to
+  upsert the latest active-conversation tail chunk without closing it.
 - chunk_conversation_final(): called at conversation close. Re-chunks
   the whole conversation from scratch for correctness.
 
-Both use the same chunk-assembly logic. Live chunking is the optimization
-(makes chunks retrievable during conversation). Final chunking is the
-correctness guarantee (catches anything live chunking missed).
+All use the same chunk-assembly logic. Live chunking/checkpointing make
+chunks retrievable during conversation. Final chunking is the correctness
+guarantee (catches anything live chunking missed).
 """
 
 import logging
@@ -248,6 +250,59 @@ def maybe_chunk_live(conversation_id: str, user_id: str) -> bool:
         f"{conversation_id[:8]} ({len(chunk_messages)} messages)"
     )
     return True
+
+
+# ---------------------------------------------------------------------------
+# Active conversation checkpointing (called after completed assistant turns)
+# ---------------------------------------------------------------------------
+
+def checkpoint_conversation(conversation_id: str, user_id: str) -> int:
+    """Upsert the latest chunk group for an active conversation.
+
+    This makes completed turns retrievable before final close without ending
+    the conversation or marking it fully chunked. It intentionally writes only
+    the latest/tail chunk group in v1. Existing deterministic chunk IDs make
+    repeated checkpoints overwrite the same FTS/Chroma records instead of
+    creating duplicates.
+
+    Args:
+        conversation_id: The active conversation.
+        user_id: UUID of the user in the conversation.
+
+    Returns:
+        Number of chunks written. For v1 this is 0 or 1.
+    """
+    messages = get_conversation_messages(conversation_id)
+    chunk_groups = _assign_messages_to_chunks(messages)
+
+    if not chunk_groups:
+        return 0
+
+    chunk_index = len(chunk_groups) - 1
+    chunk_messages = chunk_groups[chunk_index]
+
+    user = get_user(user_id)
+    user_name = user["name"] if user else "Unknown"
+
+    chunk_text = _format_chunk_text(chunk_messages, user_name)
+    chunk_id = f"{conversation_id}_chunk_{chunk_index}"
+
+    _store_chunk(
+        chunk_id=chunk_id,
+        text=chunk_text,
+        conversation_id=conversation_id,
+        user_id=user_id,
+        message_count=len(chunk_messages),
+        chunk_index=chunk_index,
+    )
+
+    logger.info(
+        "Checkpointed conversation %s chunk %s (%s messages)",
+        conversation_id[:8],
+        chunk_index,
+        len(chunk_messages),
+    )
+    return 1
 
 
 # ---------------------------------------------------------------------------
