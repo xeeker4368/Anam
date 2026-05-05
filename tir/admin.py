@@ -12,6 +12,8 @@ Commands:
     add-channel      Add a channel identifier (phone, username, etc.)
     set-password     Set web login password for a user
     show-user        Show user details including channel identifiers
+    memory-audit     Report memory retrieval integrity status
+    memory-repair    Repair ended unchunked conversations
 """
 
 import argparse
@@ -26,6 +28,7 @@ from tir.memory.db import (
     add_channel_identifier,
     upsert_channel_auth,
 )
+from tir.memory.audit import audit_memory_integrity, repair_memory_integrity
 
 
 def cmd_init_db(args):
@@ -137,6 +140,93 @@ def cmd_show_user(args):
         print("Channels:   none")
 
 
+def _print_memory_audit(audit: dict):
+    """Print a readable memory audit summary."""
+    print("Memory audit")
+    print(f"Working messages: {audit['working_message_count']}")
+    print(f"Archive messages: {audit['archive_message_count']}")
+    print(f"Message parity: {'ok' if audit['message_id_parity_ok'] else 'problem'}")
+    print(
+        "Missing messages: "
+        f"from_archive={audit['missing_from_archive_count']} "
+        f"from_working={audit['missing_from_working_count']}"
+    )
+    print(
+        "Conversations: "
+        f"total={audit['total_conversations']} "
+        f"active={audit['active_conversation_count']} "
+        f"ended={audit['ended_conversation_count']} "
+        f"ended_unchunked={audit['ended_unchunked_count']}"
+    )
+    print(f"FTS chunks: {audit['fts_chunk_count']}")
+    print(f"Chroma chunks: {audit['chroma_chunk_count']}")
+    print(f"FTS/Chroma count match: {audit['fts_chroma_count_match']}")
+    print(
+        "Chunked conversations missing FTS chunks: "
+        f"{audit['chunked_conversations_missing_fts_chunks']}"
+    )
+
+    if audit["missing_from_archive"]:
+        print("Missing from archive IDs:")
+        for message_id in audit["missing_from_archive"]:
+            print(f"  {message_id}")
+    if audit["missing_from_working"]:
+        print("Missing from working IDs:")
+        for message_id in audit["missing_from_working"]:
+            print(f"  {message_id}")
+    if audit["ended_unchunked_ids"]:
+        print("Ended unchunked conversation IDs:")
+        for conversation_id in audit["ended_unchunked_ids"]:
+            print(f"  {conversation_id}")
+    if audit["chunked_conversations_missing_fts_chunk_ids"]:
+        print("Chunked conversations missing FTS chunk IDs:")
+        for conversation_id in audit["chunked_conversations_missing_fts_chunk_ids"]:
+            print(f"  {conversation_id}")
+    if audit["warnings"]:
+        print("Warnings:")
+        for warning in audit["warnings"]:
+            print(f"  - {warning}")
+
+
+def _print_memory_repair(summary: dict):
+    """Print a readable memory repair summary."""
+    print("Memory repair")
+    print(f"Dry run: {summary['dry_run']}")
+    print(f"Active conversations: {summary['active_conversation_count']}")
+    print(
+        "Repairable ended unchunked conversations: "
+        f"{summary['repairable_ended_unchunked_count']}"
+    )
+    if summary["dry_run"]:
+        print(f"Would attempt: {summary['would_attempt']}")
+        if summary["conversation_ids"]:
+            print("Would repair conversation IDs:")
+            for conversation_id in summary["conversation_ids"]:
+                print(f"  {conversation_id}")
+        return
+
+    print(f"Attempted: {summary['attempted']}")
+    print(f"Succeeded: {summary['succeeded']}")
+    print(f"Failed: {summary['failed']}")
+    print(f"Chunks written: {summary['chunks_written']}")
+    if summary["failures"]:
+        print("Failures:")
+        for failure in summary["failures"]:
+            print(f"  {failure['conversation_id']}: {failure['error']}")
+
+
+def cmd_memory_audit(args):
+    """Run memory integrity audit."""
+    audit = audit_memory_integrity(limit=args.limit)
+    _print_memory_audit(audit)
+
+
+def cmd_memory_repair(args):
+    """Repair ended unchunked conversations."""
+    summary = repair_memory_integrity(limit=args.limit, dry_run=args.dry_run)
+    _print_memory_repair(summary)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -169,6 +259,15 @@ def main():
     p = sub.add_parser("show-user", help="Show user details")
     p.add_argument("user", help="User name")
 
+    # memory-audit
+    p = sub.add_parser("memory-audit", help="Report memory retrieval integrity")
+    p.add_argument("--limit", type=int, default=25, help="Max IDs to show")
+
+    # memory-repair
+    p = sub.add_parser("memory-repair", help="Repair ended unchunked conversations")
+    p.add_argument("--limit", type=int, default=None, help="Max conversations to repair")
+    p.add_argument("--dry-run", action="store_true", help="Report repair targets only")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -186,6 +285,8 @@ def main():
         "add-channel": cmd_add_channel,
         "set-password": cmd_set_password,
         "show-user": cmd_show_user,
+        "memory-audit": cmd_memory_audit,
+        "memory-repair": cmd_memory_repair,
     }
 
     commands[args.command](args)
