@@ -219,8 +219,10 @@ def test_system_capabilities_reports_available_and_disabled_features(
     assert capabilities["backups"]["mode"] == "manual"
     assert capabilities["memory_maintenance"]["available"] is True
     assert capabilities["memory_maintenance"]["mode"] == "manual"
-    assert capabilities["file_uploads"]["enabled"] is False
-    assert capabilities["file_uploads"]["status"] == "not_implemented"
+    assert capabilities["file_uploads"]["enabled"] is True
+    assert capabilities["file_uploads"]["available"] is True
+    assert capabilities["file_uploads"]["mode"] == "manual"
+    assert capabilities["file_uploads"]["status"] == "available"
     assert capabilities["image_generation"]["status"] == "not_implemented"
     assert capabilities["autonomous_research"]["status"] == "not_implemented"
     assert capabilities["reflection_journal"]["status"] == "not_implemented"

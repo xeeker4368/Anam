@@ -18,10 +18,12 @@ import logging
 import time
 
 import requests as http_requests
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 
 from tir.config import (
@@ -36,6 +38,7 @@ from tir.memory.db import (
     get_user,
     get_user_by_name,
     get_all_users,
+    get_connection,
     update_user_last_seen,
     save_message,
     start_conversation,
@@ -58,6 +61,11 @@ from tir.artifacts.service import (
     ArtifactValidationError,
     get_artifact,
     list_artifacts,
+)
+from tir.artifacts.ingestion import (
+    ArtifactIngestionError,
+    MAX_INGEST_BYTES,
+    ingest_artifact_file,
 )
 from tir.open_loops.service import (
     OpenLoopValidationError,
@@ -98,6 +106,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(request: Request, exc: RequestValidationError):
+    """Return the approved upload error envelope for malformed upload requests."""
+    if request.url.path == "/api/artifacts/upload":
+        return _error_response(400, "Invalid artifact upload request")
+
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.on_event("startup")
@@ -156,6 +173,56 @@ def _resolve_user(user_id: str | None) -> dict:
         return next((u for u in users if u["role"] == "admin"), users[0])
 
     raise HTTPException(status_code=500, detail="No users exist")
+
+
+def _error_response(status_code: int, error: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "ok": False,
+            "error": error,
+        },
+    )
+
+
+def _validate_artifact_upload_provenance(
+    *,
+    user_id: str,
+    source_conversation_id: str | None,
+    source_message_id: str | None,
+) -> tuple[str | None, str | None] | JSONResponse:
+    """Validate conversation/message provenance for artifact uploads."""
+    if source_conversation_id:
+        conv = get_conversation(source_conversation_id)
+        if conv is None:
+            return _error_response(404, "Source conversation not found")
+        if conv["user_id"] != user_id:
+            return _error_response(403, "Source conversation does not belong to user")
+
+    if source_message_id:
+        with get_connection() as conn:
+            row = conn.execute(
+                """SELECT m.id as message_id,
+                          m.conversation_id as conversation_id,
+                          c.user_id as user_id
+                   FROM main.messages m
+                   JOIN main.conversations c ON c.id = m.conversation_id
+                   WHERE m.id = ?""",
+                (source_message_id,),
+            ).fetchone()
+
+        if row is None:
+            return _error_response(404, "Source message not found")
+        if row["user_id"] != user_id:
+            return _error_response(403, "Source message does not belong to user")
+        if source_conversation_id and row["conversation_id"] != source_conversation_id:
+            return _error_response(
+                403,
+                "Source message does not belong to source conversation",
+            )
+        source_conversation_id = source_conversation_id or row["conversation_id"]
+
+    return source_conversation_id, source_message_id
 
 
 # ---------------------------------------------------------------------------
@@ -560,6 +627,66 @@ def api_close_conversation(conversation_id: str):
 # ---------------------------------------------------------------------------
 # Artifacts
 # ---------------------------------------------------------------------------
+
+@app.post("/api/artifacts/upload")
+async def api_upload_artifact(
+    file: UploadFile = File(...),
+    user_id: str | None = Form(None),
+    title: str | None = Form(None),
+    description: str | None = Form(None),
+    authority: str = Form("source_material"),
+    status: str = Form("active"),
+    source_conversation_id: str | None = Form(None),
+    source_message_id: str | None = Form(None),
+    revision_of: str | None = Form(None),
+):
+    """Upload a file as an artifact and index it as source material."""
+    try:
+        user = _resolve_user(user_id)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "User resolution failed"
+        return _error_response(exc.status_code, detail)
+
+    provenance = _validate_artifact_upload_provenance(
+        user_id=user["id"],
+        source_conversation_id=source_conversation_id,
+        source_message_id=source_message_id,
+    )
+    if isinstance(provenance, JSONResponse):
+        return provenance
+    source_conversation_id, source_message_id = provenance
+
+    content = await file.read(MAX_INGEST_BYTES + 1)
+    await file.close()
+    if len(content) > MAX_INGEST_BYTES:
+        return _error_response(400, "Uploaded file exceeds 10485760 byte limit")
+
+    try:
+        result = ingest_artifact_file(
+            filename=file.filename or "",
+            content=content,
+            user_id=user["id"],
+            title=title,
+            description=description,
+            authority=authority,
+            status=status,
+            source_conversation_id=source_conversation_id,
+            source_message_id=source_message_id,
+            revision_of=revision_of,
+        )
+    except (ArtifactIngestionError, ArtifactValidationError, ValueError) as exc:
+        return _error_response(400, str(exc))
+    except Exception:
+        logger.exception("Artifact upload failed")
+        return _error_response(500, "Artifact upload failed")
+
+    return {
+        "ok": True,
+        "artifact": result["artifact"],
+        "file": result["file"],
+        "indexing": result["indexing"],
+    }
+
 
 @app.get("/api/artifacts")
 def api_list_artifacts(

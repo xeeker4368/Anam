@@ -90,12 +90,15 @@ _CAPABILITY_DEFINITIONS = [
     {
         "key": "file_uploads",
         "label": "File Uploads",
-        "implemented": False,
-        "mode": "disabled",
+        "implemented": True,
+        "mode": "manual",
         "requires_approval": False,
         "source_of_truth": False,
         "real_time": False,
-        "notes": "Not implemented.",
+        "notes": (
+            "Uploads are saved as artifacts and indexed as source material; "
+            "unsupported files are metadata-only."
+        ),
     },
     {
         "key": "image_generation",
@@ -292,7 +295,7 @@ def _resolve_capability(definition: dict, tool_names: set[str]) -> dict:
                 "tool_not_loaded" if not available else "not_configured"
             ),
         )
-    elif key in {"backups", "memory_maintenance"}:
+    elif key in {"backups", "memory_maintenance", "file_uploads"}:
         capability.update(
             available=True,
             configured=True,
