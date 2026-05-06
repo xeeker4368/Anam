@@ -31,6 +31,8 @@ ALLOWED_ARTIFACT_TYPES = {
     "vision_observation",
     "self_mod_proposal",
     "self_mod_patch",
+    "uploaded_file",
+    "generated_file",
     "generic",
 }
 
@@ -122,6 +124,7 @@ def artifact_to_dict(row) -> dict | None:
 
 def create_artifact(
     *,
+    artifact_id: str | None = None,
     artifact_type: str,
     title: str,
     description: str | None = None,
@@ -140,7 +143,7 @@ def create_artifact(
     _validate_status(status)
     normalized_title = _validate_title(title)
 
-    artifact_id = str(uuid.uuid4())
+    artifact_id = artifact_id or str(uuid.uuid4())
     now = _now()
     normalized_path = _normalize_workspace_path(path, workspace_root)
     metadata_json = _metadata_to_json(metadata)

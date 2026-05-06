@@ -167,6 +167,14 @@ def _format_retrieved_memories(chunks: list[dict]) -> str:
         elif source_type == "article":
             title = chunk.get("title", "untitled")
             formatted_chunks.append(f"[External source you read: {title}, ingested {created_at}]\n{text}")
+        elif source_type == "artifact_document":
+            metadata = chunk.get("metadata", {})
+            title = chunk.get("title") or metadata.get("title", "untitled artifact")
+            filename = metadata.get("filename", "unknown file")
+            authority = metadata.get("authority", "unknown")
+            formatted_chunks.append(
+                f"[Artifact source: {title}, authority: {authority}, file: {filename}]\n{text}"
+            )
         else:
             formatted_chunks.append(f"[{source_type} — {created_at}]\n{text}")
 

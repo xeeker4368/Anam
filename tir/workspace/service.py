@@ -20,6 +20,8 @@ DEFAULT_WORKSPACE_DIRS = (
     "voice",
     "vision",
     "drafts",
+    "uploads",
+    "generated",
     "self_mod",
     "staged_outputs",
 )
