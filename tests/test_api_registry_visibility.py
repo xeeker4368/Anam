@@ -64,6 +64,7 @@ def test_list_artifacts_returns_existing_metadata(client, temp_stores):
     assert data[0]["title"] == "Visible Note"
     assert data[0]["path"] == "research/visible.md"
     assert data[0]["metadata"] == {"topic": "visibility"}
+    assert data[0]["revised_by_count"] == 0
     assert "content" not in data[0]
     assert "Private workspace content" not in str(data[0])
 

@@ -238,6 +238,8 @@ def _init_working():
             ON artifacts(path);
         CREATE INDEX IF NOT EXISTS idx_artifacts_created_at
             ON artifacts(created_at);
+        CREATE INDEX IF NOT EXISTS idx_artifacts_revision_of
+            ON artifacts(revision_of);
 
         CREATE TABLE IF NOT EXISTS open_loops (
             open_loop_id TEXT PRIMARY KEY,

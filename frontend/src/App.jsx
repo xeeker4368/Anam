@@ -49,6 +49,9 @@ function App() {
   const [openLoops, setOpenLoops] = useState([])
   const [registryLoading, setRegistryLoading] = useState(false)
   const [registryError, setRegistryError] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState(null)
+  const [uploadResult, setUploadResult] = useState(null)
   const [systemHealth, setSystemHealth] = useState(null)
   const [systemMemory, setSystemMemory] = useState(null)
   const [systemCapabilities, setSystemCapabilities] = useState(null)
@@ -180,6 +183,44 @@ function App() {
     }
   }
 
+  async function uploadArtifact(form) {
+    setUploading(true)
+    setUploadError(null)
+    setUploadResult(null)
+    try {
+      const body = new FormData()
+      body.append('file', form.file)
+      if (activeUserId) body.append('user_id', activeUserId)
+      if (form.title?.trim()) body.append('title', form.title.trim())
+      if (form.description?.trim()) body.append('description', form.description.trim())
+      if (form.revisionOf?.trim()) body.append('revision_of', form.revisionOf.trim())
+      body.append('authority', 'source_material')
+
+      const resp = await fetch('/api/artifacts/upload', {
+        method: 'POST',
+        body,
+      })
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, 'Artifact upload failed'))
+      }
+
+      const data = await resp.json()
+      if (!data || typeof data !== 'object' || data.ok !== true) {
+        throw new Error(data?.error || 'Artifact upload returned an invalid response')
+      }
+
+      setUploadResult(data)
+      await fetchRegistries()
+      return data
+    } catch (e) {
+      const message = e.message || 'Artifact upload failed'
+      setUploadError(message)
+      throw e
+    } finally {
+      setUploading(false)
+    }
+  }
+
   async function fetchSystemStatus() {
     setSystemLoading(true)
     setSystemError(null)
@@ -290,6 +331,12 @@ function App() {
     fetchHealth()
     fetchRegistries()
   }, [])
+
+  function handleRegistryRefresh() {
+    setUploadResult(null)
+    setUploadError(null)
+    fetchRegistries()
+  }
 
   function openSystemPanel() {
     setRightPanelView('system')
@@ -453,7 +500,11 @@ function App() {
                 openLoops={openLoops}
                 loading={registryLoading}
                 error={registryError}
-                onRefresh={fetchRegistries}
+                uploading={uploading}
+                uploadError={uploadError}
+                uploadResult={uploadResult}
+                onUpload={uploadArtifact}
+                onRefresh={handleRegistryRefresh}
               />
             </div>
           )}
@@ -538,7 +589,11 @@ function App() {
               openLoops={openLoops}
               loading={registryLoading}
               error={registryError}
-              onRefresh={fetchRegistries}
+              uploading={uploading}
+              uploadError={uploadError}
+              uploadResult={uploadResult}
+              onUpload={uploadArtifact}
+              onRefresh={handleRegistryRefresh}
             />
           )}
           {rightPanelView === 'system' && (

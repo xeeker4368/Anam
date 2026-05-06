@@ -103,8 +103,9 @@ def artifact_to_dict(row) -> dict | None:
     data = dict(row)
     metadata_json = data.get("metadata_json")
     data["metadata"] = json.loads(metadata_json) if metadata_json else None
+    artifact_id = data["artifact_id"]
     return {
-        "artifact_id": data["artifact_id"],
+        "artifact_id": artifact_id,
         "artifact_type": data["artifact_type"],
         "title": data["title"],
         "description": data.get("description"),
@@ -117,6 +118,7 @@ def artifact_to_dict(row) -> dict | None:
         "source_message_id": data.get("source_message_id"),
         "source_tool_name": data.get("source_tool_name"),
         "revision_of": data.get("revision_of"),
+        "revised_by_count": count_artifact_revisions(artifact_id),
         "metadata_json": metadata_json,
         "metadata": data["metadata"],
     }
@@ -334,6 +336,30 @@ def get_artifact(artifact_id: str) -> dict | None:
             (artifact_id,),
         ).fetchone()
     return artifact_to_dict(row)
+
+
+def count_artifact_revisions(artifact_id: str) -> int:
+    """Count direct artifact revisions for an artifact."""
+    db_mod = _db()
+    with db_mod.get_connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM main.artifacts WHERE revision_of = ?",
+            (artifact_id,),
+        ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def list_artifact_revisions(artifact_id: str) -> list[dict]:
+    """List direct artifact revisions, newest first."""
+    db_mod = _db()
+    with db_mod.get_connection() as conn:
+        rows = conn.execute(
+            """SELECT * FROM main.artifacts
+               WHERE revision_of = ?
+               ORDER BY created_at DESC""",
+            (artifact_id,),
+        ).fetchall()
+    return [artifact_to_dict(row) for row in rows]
 
 
 def list_artifacts(

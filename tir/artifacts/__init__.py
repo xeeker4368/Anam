@@ -9,7 +9,9 @@ from tir.artifacts.service import (
     create_artifact_file,
     create_artifact_file_with_open_loop,
     get_artifact,
+    list_artifact_revisions,
     list_artifacts,
+    count_artifact_revisions,
     update_artifact_status,
 )
 from tir.artifacts.ingestion import ArtifactIngestionError, ingest_artifact_file
@@ -23,8 +25,10 @@ __all__ = [
     "create_artifact",
     "create_artifact_file",
     "create_artifact_file_with_open_loop",
+    "count_artifact_revisions",
     "ingest_artifact_file",
     "get_artifact",
+    "list_artifact_revisions",
     "list_artifacts",
     "update_artifact_status",
 ]

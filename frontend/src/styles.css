@@ -747,6 +747,13 @@ body {
   text-transform: uppercase;
 }
 
+.artifact-upload-field em {
+  color: #888;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
 .artifact-upload-field input,
 .artifact-upload-field textarea {
   width: 100%;

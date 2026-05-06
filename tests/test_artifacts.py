@@ -11,7 +11,9 @@ from tir.artifacts.service import (
     create_artifact,
     create_artifact_file,
     create_artifact_file_with_open_loop,
+    count_artifact_revisions,
     get_artifact,
+    list_artifact_revisions,
     list_artifacts,
     update_artifact_status,
 )
@@ -214,6 +216,35 @@ def test_list_filters_by_path(temp_stores):
     listed = list_artifacts(path="coding/a.py", workspace_root=workspace_root)
 
     assert [item["artifact_id"] for item in listed] == [first["artifact_id"]]
+
+
+def test_artifact_revision_count_and_list(temp_stores):
+    workspace_root = temp_stores["workspace_root"]
+    original = create_artifact(
+        artifact_type="research_note",
+        title="Original",
+        path="research/original.md",
+        status="active",
+        workspace_root=workspace_root,
+    )
+    revision = create_artifact(
+        artifact_type="research_note",
+        title="Revision",
+        path="research/revision.md",
+        status="active",
+        revision_of=original["artifact_id"],
+        workspace_root=workspace_root,
+    )
+
+    fetched_original = get_artifact(original["artifact_id"])
+    fetched_revision = get_artifact(revision["artifact_id"])
+    revisions = list_artifact_revisions(original["artifact_id"])
+
+    assert fetched_original["revised_by_count"] == 1
+    assert count_artifact_revisions(original["artifact_id"]) == 1
+    assert fetched_revision["revision_of"] == original["artifact_id"]
+    assert [item["artifact_id"] for item in revisions] == [revision["artifact_id"]]
+    assert get_artifact(original["artifact_id"])["status"] == "active"
 
 
 def test_create_artifact_file_creates_file_and_metadata(temp_stores):

@@ -225,6 +225,31 @@ def _validate_artifact_upload_provenance(
     return source_conversation_id, source_message_id
 
 
+def _validate_artifact_revision_target(
+    *,
+    user_id: str,
+    revision_of: str | None,
+) -> str | None | JSONResponse:
+    """Validate an optional artifact revision target for uploads."""
+    if revision_of is None:
+        return None
+
+    normalized = revision_of.strip()
+    if not normalized:
+        return _error_response(400, "revision_of cannot be empty")
+
+    artifact = get_artifact(normalized)
+    if artifact is None:
+        return _error_response(404, "Revision artifact not found")
+
+    metadata = artifact.get("metadata") or {}
+    artifact_user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
+    if artifact_user_id and artifact_user_id != user_id:
+        return _error_response(403, "Revision artifact does not belong to user")
+
+    return normalized
+
+
 # ---------------------------------------------------------------------------
 # Streaming chat
 # ---------------------------------------------------------------------------
@@ -656,6 +681,13 @@ async def api_upload_artifact(
         return provenance
     source_conversation_id, source_message_id = provenance
 
+    revision_target = _validate_artifact_revision_target(
+        user_id=user["id"],
+        revision_of=revision_of,
+    )
+    if isinstance(revision_target, JSONResponse):
+        return revision_target
+
     content = await file.read(MAX_INGEST_BYTES + 1)
     await file.close()
     if len(content) > MAX_INGEST_BYTES:
@@ -672,7 +704,7 @@ async def api_upload_artifact(
             status=status,
             source_conversation_id=source_conversation_id,
             source_message_id=source_message_id,
-            revision_of=revision_of,
+            revision_of=revision_target,
         )
     except (ArtifactIngestionError, ArtifactValidationError, ValueError) as exc:
         return _error_response(400, str(exc))

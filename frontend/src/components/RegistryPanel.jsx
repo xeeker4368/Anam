@@ -91,6 +91,11 @@ function ArtifactDetails({ artifact }) {
           <ArtifactDetailRow label="Message" value={artifact.source_message_id} />
           <ArtifactDetailRow label="Tool" value={artifact.source_tool_name} />
           <ArtifactDetailRow label="Revision of" value={artifact.revision_of} />
+          <ArtifactDetailRow label="Revised by" value={
+            artifact.revised_by_count === undefined
+              ? null
+              : `${artifact.revised_by_count} artifact(s)`
+          } />
         </ArtifactDetailGroup>
 
         <ArtifactDetailGroup title="Indexing">
@@ -206,6 +211,7 @@ function ArtifactUpload({ uploading, uploadError, uploadResult, onUpload }) {
   const [file, setFile] = useState(null)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [revisionOf, setRevisionOf] = useState('')
   const [localError, setLocalError] = useState(null)
   const fileInputRef = useRef(null)
 
@@ -218,10 +224,11 @@ function ArtifactUpload({ uploading, uploadError, uploadResult, onUpload }) {
     }
 
     try {
-      await onUpload({ file, title, description })
+      await onUpload({ file, title, description, revisionOf })
       setFile(null)
       setTitle('')
       setDescription('')
+      setRevisionOf('')
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch {
       // App-level upload state renders the backend error.
@@ -265,6 +272,17 @@ function ArtifactUpload({ uploading, uploadError, uploadResult, onUpload }) {
             rows={3}
             placeholder="Optional context for retrieval"
           />
+        </label>
+        <label className="artifact-upload-field">
+          <span>Revision of artifact ID</span>
+          <input
+            type="text"
+            value={revisionOf}
+            onChange={e => setRevisionOf(e.target.value)}
+            disabled={uploading}
+            placeholder="Optional existing artifact id"
+          />
+          <em>Optional. Use when this upload is an updated version of an existing artifact.</em>
         </label>
         <button type="submit" className="btn btn-small" disabled={uploading || !file}>
           {uploading ? 'Uploading...' : 'Upload'}

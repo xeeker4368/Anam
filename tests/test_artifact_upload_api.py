@@ -307,3 +307,139 @@ def test_response_does_not_expose_absolute_paths_or_secrets(upload_env, monkeypa
     assert "secret-token" not in response.text
     # JSON serialization should not accidentally include raw absolute paths.
     json.dumps(response.json())
+
+
+def test_upload_accepts_valid_revision_of_and_does_not_mutate_original_status(upload_env):
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        original_response = _post_upload(
+            upload_env["client"],
+            filename="original.md",
+            content=b"old lineage marker",
+            data={
+                "user_id": upload_env["user"]["id"],
+                "title": "Original",
+            },
+        )
+
+    original = original_response.json()["artifact"]
+    assert original["status"] == "active"
+
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        revision_response = _post_upload(
+            upload_env["client"],
+            filename="revision.md",
+            content=b"new lineage marker",
+            data={
+                "user_id": upload_env["user"]["id"],
+                "title": "Revision",
+                "revision_of": original["artifact_id"],
+            },
+        )
+
+    assert revision_response.status_code == 200
+    revision = revision_response.json()["artifact"]
+    assert revision["revision_of"] == original["artifact_id"]
+
+    from tir.artifacts.service import get_artifact
+
+    fetched_original = get_artifact(original["artifact_id"])
+    fetched_revision = get_artifact(revision["artifact_id"])
+    assert fetched_original["status"] == "active"
+    assert fetched_original["revised_by_count"] == 1
+    assert fetched_revision["status"] == "active"
+
+
+def test_revision_upload_keeps_old_and_new_artifacts_retrievable(upload_env):
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        original_response = _post_upload(
+            upload_env["client"],
+            filename="old.md",
+            content=b"olduniqueartifactmarker",
+            data={"user_id": upload_env["user"]["id"]},
+        )
+        revision_response = _post_upload(
+            upload_env["client"],
+            filename="new.md",
+            content=b"newuniqueartifactmarker",
+            data={
+                "user_id": upload_env["user"]["id"],
+                "revision_of": original_response.json()["artifact"]["artifact_id"],
+            },
+        )
+
+    assert revision_response.status_code == 200
+
+    from tir.memory.retrieval import retrieve
+
+    with patch("tir.memory.retrieval.query_similar", return_value=[]):
+        old_results = retrieve("olduniqueartifactmarker", max_results=5)
+        new_results = retrieve("newuniqueartifactmarker", max_results=5)
+
+    assert any("olduniqueartifactmarker" in item["text"] for item in old_results)
+    assert any("newuniqueartifactmarker" in item["text"] for item in new_results)
+
+
+def test_upload_rejects_missing_revision_of_artifact(upload_env):
+    response = _post_upload(
+        upload_env["client"],
+        filename="revision.md",
+        content=b"revision",
+        data={
+            "user_id": upload_env["user"]["id"],
+            "revision_of": "missing-artifact",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "ok": False,
+        "error": "Revision artifact not found",
+    }
+
+
+def test_upload_rejects_empty_revision_of(upload_env):
+    response = _post_upload(
+        upload_env["client"],
+        filename="revision.md",
+        content=b"revision",
+        data={
+            "user_id": upload_env["user"]["id"],
+            "revision_of": "   ",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "error": "revision_of cannot be empty",
+    }
+
+
+def test_upload_rejects_wrong_user_revision_of(upload_env):
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        other_response = _post_upload(
+            upload_env["client"],
+            filename="other.md",
+            content=b"other user original",
+            data={
+                "user_id": upload_env["other_user"]["id"],
+                "title": "Other Original",
+            },
+        )
+
+    other_artifact = other_response.json()["artifact"]
+    response = _post_upload(
+        upload_env["client"],
+        filename="revision.md",
+        content=b"wrong user revision",
+        data={
+            "user_id": upload_env["user"]["id"],
+            "revision_of": other_artifact["artifact_id"],
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "ok": False,
+        "error": "Revision artifact does not belong to user",
+    }
