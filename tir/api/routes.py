@@ -88,6 +88,12 @@ from tir.ops.status import (
     build_memory_status,
     build_system_health,
 )
+from tir.review.service import (
+    ReviewValidationError,
+    create_review_item,
+    list_review_items,
+    update_review_item_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +150,24 @@ class ChatRequest(BaseModel):
     text: str
     conversation_id: str | None = None
     user_id: str | None = None
+
+
+class ReviewCreateRequest(BaseModel):
+    title: str
+    description: str | None = None
+    category: str = "other"
+    priority: str = "normal"
+    source_type: str | None = None
+    source_conversation_id: str | None = None
+    source_message_id: str | None = None
+    source_artifact_id: str | None = None
+    source_tool_name: str | None = None
+    created_by: str = "operator"
+    metadata: dict | None = None
+
+
+class ReviewUpdateRequest(BaseModel):
+    status: str
 
 
 # ---------------------------------------------------------------------------
@@ -867,6 +891,84 @@ def api_get_open_loop(open_loop_id: str):
     if not open_loop:
         raise HTTPException(status_code=404, detail="Open loop not found")
     return open_loop
+
+
+# ---------------------------------------------------------------------------
+# Review queue
+# ---------------------------------------------------------------------------
+
+@app.get("/api/review")
+def api_list_review_items(
+    status: str | None = None,
+    category: str | None = None,
+    priority: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """List operator review queue items."""
+    try:
+        return {
+            "ok": True,
+            "items": list_review_items(
+                status=status,
+                category=category,
+                priority=priority,
+                limit=limit,
+                offset=offset,
+            ),
+        }
+    except ReviewValidationError as exc:
+        return _error_response(400, str(exc))
+    except Exception:
+        logger.exception("Review list failed")
+        return _error_response(500, "Review list failed")
+
+
+@app.post("/api/review")
+def api_create_review_item(req: ReviewCreateRequest):
+    """Create an operator review queue item."""
+    try:
+        return {
+            "ok": True,
+            "item": create_review_item(
+                title=req.title,
+                description=req.description,
+                category=req.category,
+                priority=req.priority,
+                source_type=req.source_type,
+                source_conversation_id=req.source_conversation_id,
+                source_message_id=req.source_message_id,
+                source_artifact_id=req.source_artifact_id,
+                source_tool_name=req.source_tool_name,
+                created_by=req.created_by,
+                metadata=req.metadata,
+            ),
+        }
+    except ReviewValidationError as exc:
+        return _error_response(400, str(exc))
+    except Exception:
+        logger.exception("Review create failed")
+        return _error_response(500, "Review create failed")
+
+
+@app.patch("/api/review/{item_id}")
+def api_update_review_item(item_id: str, req: ReviewUpdateRequest):
+    """Update only a review queue item's status."""
+    try:
+        item = update_review_item_status(item_id, req.status)
+    except ReviewValidationError as exc:
+        return _error_response(400, str(exc))
+    except Exception:
+        logger.exception("Review update failed")
+        return _error_response(500, "Review update failed")
+
+    if item is None:
+        return _error_response(404, "Review item not found")
+
+    return {
+        "ok": True,
+        "item": item,
+    }
 
 
 # ---------------------------------------------------------------------------
