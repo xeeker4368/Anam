@@ -1,3 +1,20 @@
+import { useState } from 'react'
+
+const REVIEW_STATUSES = ['open', 'reviewed', 'dismissed', 'resolved']
+const REVIEW_CATEGORIES = [
+  'research',
+  'follow_up',
+  'contradiction',
+  'correction',
+  'artifact',
+  'tool_failure',
+  'memory',
+  'decision',
+  'safety',
+  'other',
+]
+const REVIEW_PRIORITIES = ['low', 'normal', 'high']
+
 function formatDate(value) {
   if (!value) return 'n/a'
   const date = new Date(value)
@@ -177,7 +194,242 @@ function WarningList({ warnings }) {
   )
 }
 
-function SystemPanel({ health, memory, capabilities, loading, error, onRefresh }) {
+function ReviewFilterSelect({ label, value, options, onChange }) {
+  return (
+    <label className="system-review-field">
+      <span>{label}</span>
+      <select value={value || ''} onChange={e => onChange(e.target.value)}>
+        <option value="">All</option>
+        {options.map(option => (
+          <option key={option} value={option}>{humanize(option)}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function ReviewItemSource({ item }) {
+  const sourceRows = [
+    ['Source type', item.source_type],
+    ['Conversation', item.source_conversation_id],
+    ['Message', item.source_message_id],
+    ['Artifact', item.source_artifact_id],
+    ['Tool', item.source_tool_name],
+  ].filter(([, value]) => value)
+
+  if (sourceRows.length === 0) return null
+
+  return (
+    <div className="system-review-source">
+      {sourceRows.map(([label, value]) => (
+        <div key={label}>
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ReviewItemCard({ item, updatingId, onStatusUpdate }) {
+  const isUpdating = updatingId === item.item_id
+
+  return (
+    <article className="system-review-item">
+      <div className="system-review-item-header">
+        <h4>{item.title}</h4>
+        <SystemBadge value={item.status} label={humanize(item.status)} />
+      </div>
+      {item.description && (
+        <p className="system-review-description">{item.description}</p>
+      )}
+      <div className="system-review-badges">
+        <SystemBadge value={item.priority} label={humanize(item.priority)} />
+        <SystemBadge value={item.category} label={humanize(item.category)} />
+        <SystemBadge value="neutral" label={formatDate(item.created_at)} />
+      </div>
+      <ReviewItemSource item={item} />
+      <div className="system-review-actions" aria-label={`Update status for ${item.title}`}>
+        {REVIEW_STATUSES.map(status => (
+          <button
+            key={status}
+            type="button"
+            className="btn btn-small"
+            disabled={isUpdating || item.status === status}
+            onClick={() => onStatusUpdate(item.item_id, status)}
+          >
+            {humanize(status)}
+          </button>
+        ))}
+      </div>
+    </article>
+  )
+}
+
+function ReviewCreateForm({ submitting, onCreate }) {
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [category, setCategory] = useState('other')
+  const [priority, setPriority] = useState('normal')
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle || submitting) return
+
+    await onCreate({
+      title: trimmedTitle,
+      description: description.trim(),
+      category,
+      priority,
+    })
+    setTitle('')
+    setDescription('')
+    setCategory('other')
+    setPriority('normal')
+  }
+
+  return (
+    <form className="system-review-form" onSubmit={handleSubmit}>
+      <div className="system-review-form-grid">
+        <label className="system-review-field">
+          <span>Title</span>
+          <input
+            type="text"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Manual review item"
+            required
+          />
+        </label>
+        <label className="system-review-field">
+          <span>Category</span>
+          <select value={category} onChange={e => setCategory(e.target.value)}>
+            {REVIEW_CATEGORIES.map(option => (
+              <option key={option} value={option}>{humanize(option)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="system-review-field">
+          <span>Priority</span>
+          <select value={priority} onChange={e => setPriority(e.target.value)}>
+            {REVIEW_PRIORITIES.map(option => (
+              <option key={option} value={option}>{humanize(option)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="system-review-field">
+        <span>Description</span>
+        <textarea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          placeholder="Optional context for the operator"
+          rows="3"
+        />
+      </label>
+      <div className="system-review-form-footer">
+        <span>Created by: operator</span>
+        <button type="submit" className="btn btn-small" disabled={submitting || !title.trim()}>
+          {submitting ? 'Adding...' : 'Add item'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function ReviewQueueSection({
+  items,
+  filters,
+  loading,
+  error,
+  submitting,
+  updatingId,
+  onRefresh,
+  onFiltersChange,
+  onCreate,
+  onStatusUpdate,
+}) {
+  const reviewItems = Array.isArray(items) ? items : []
+  const activeFilters = filters || {}
+
+  function updateFilter(key, value) {
+    onFiltersChange({
+      ...activeFilters,
+      [key]: value,
+    })
+  }
+
+  return (
+    <SystemSection title="Review Queue">
+      <div className="system-review-panel">
+        <div className="system-review-toolbar">
+          <div className="system-review-filters">
+            <ReviewFilterSelect
+              label="Status"
+              value={activeFilters.status}
+              options={REVIEW_STATUSES}
+              onChange={value => updateFilter('status', value)}
+            />
+            <ReviewFilterSelect
+              label="Category"
+              value={activeFilters.category}
+              options={REVIEW_CATEGORIES}
+              onChange={value => updateFilter('category', value)}
+            />
+            <ReviewFilterSelect
+              label="Priority"
+              value={activeFilters.priority}
+              options={REVIEW_PRIORITIES}
+              onChange={value => updateFilter('priority', value)}
+            />
+          </div>
+          <button type="button" className="btn btn-small" onClick={onRefresh} disabled={loading}>
+            {loading ? 'Loading...' : 'Refresh'}
+          </button>
+        </div>
+
+        {error && <p className="system-error">{error}</p>}
+
+        <ReviewCreateForm submitting={submitting} onCreate={onCreate} />
+
+        <div className="system-review-list">
+          {loading && <p className="debug-note">Loading review queue...</p>}
+          {!loading && reviewItems.length === 0 && (
+            <p className="system-empty">No review items match these filters.</p>
+          )}
+          {reviewItems.map(item => (
+            <ReviewItemCard
+              key={item.item_id}
+              item={item}
+              updatingId={updatingId}
+              onStatusUpdate={onStatusUpdate}
+            />
+          ))}
+        </div>
+      </div>
+    </SystemSection>
+  )
+}
+
+function SystemPanel({
+  health,
+  memory,
+  capabilities,
+  loading,
+  error,
+  onRefresh,
+  reviewItems,
+  reviewFilters,
+  reviewLoading,
+  reviewError,
+  reviewSubmitting,
+  reviewUpdatingId,
+  onReviewRefresh,
+  onReviewFiltersChange,
+  onReviewCreate,
+  onReviewStatusUpdate,
+}) {
   const audit = memory?.audit || {}
   const capabilityData = capabilities?.capabilities || {}
   const capabilityGroups = groupCapabilities(capabilityData)
@@ -253,6 +505,19 @@ function SystemPanel({ health, memory, capabilities, loading, error, onRefresh }
           )}
         </SystemSection>
       )}
+
+      <ReviewQueueSection
+        items={reviewItems}
+        filters={reviewFilters}
+        loading={reviewLoading}
+        error={reviewError}
+        submitting={reviewSubmitting}
+        updatingId={reviewUpdatingId}
+        onRefresh={onReviewRefresh}
+        onFiltersChange={onReviewFiltersChange}
+        onCreate={onReviewCreate}
+        onStatusUpdate={onReviewStatusUpdate}
+      />
 
       {capabilities && (
         <SystemSection title="Capabilities">

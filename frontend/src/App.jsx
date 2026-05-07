@@ -5,6 +5,12 @@ import RegistryPanel from './components/RegistryPanel'
 import SystemPanel from './components/SystemPanel'
 import './styles.css'
 
+const DEFAULT_REVIEW_FILTERS = {
+  status: '',
+  category: '',
+  priority: '',
+}
+
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(window.innerWidth < breakpoint)
   useEffect(() => {
@@ -58,6 +64,12 @@ function App() {
   const [systemLoading, setSystemLoading] = useState(false)
   const [systemError, setSystemError] = useState(null)
   const [systemLoaded, setSystemLoaded] = useState(false)
+  const [reviewItems, setReviewItems] = useState([])
+  const [reviewFilters, setReviewFilters] = useState(DEFAULT_REVIEW_FILTERS)
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const [reviewError, setReviewError] = useState(null)
+  const [reviewSubmitting, setReviewSubmitting] = useState(false)
+  const [reviewUpdatingId, setReviewUpdatingId] = useState(null)
   const healthWarnedRef = useRef(false)
   const isMobile = useIsMobile()
   useViewportHeight()
@@ -223,6 +235,7 @@ function App() {
   async function fetchSystemStatus() {
     setSystemLoading(true)
     setSystemError(null)
+    const reviewPromise = fetchReviewItems()
     try {
       const [healthResp, memoryResp, capabilitiesResp] = await Promise.all([
         fetch('/api/system/health'),
@@ -267,7 +280,115 @@ function App() {
       console.warn('Failed to fetch system status:', e)
       setSystemError(e.message || 'Failed to fetch system status')
     } finally {
+      await reviewPromise
       setSystemLoading(false)
+    }
+  }
+
+  async function fetchReviewItems(filters = reviewFilters) {
+    setReviewLoading(true)
+    setReviewError(null)
+    try {
+      const params = new URLSearchParams()
+      if (filters.status) params.set('status', filters.status)
+      if (filters.category) params.set('category', filters.category)
+      if (filters.priority) params.set('priority', filters.priority)
+      params.set('limit', '50')
+
+      const query = params.toString()
+      const resp = await fetch(`/api/review${query ? `?${query}` : ''}`)
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, 'Failed to fetch review queue'))
+      }
+
+      const data = await resp.json()
+      if (!data || typeof data !== 'object' || !Array.isArray(data.items)) {
+        throw new Error('Review queue response was not a valid item list')
+      }
+
+      setReviewItems(data.items)
+      return data.items
+    } catch (e) {
+      console.warn('Failed to fetch review queue:', e)
+      setReviewError(e.message || 'Failed to fetch review queue')
+      return []
+    } finally {
+      setReviewLoading(false)
+    }
+  }
+
+  function updateReviewFilters(nextFilters) {
+    setReviewFilters(nextFilters)
+    fetchReviewItems(nextFilters)
+  }
+
+  async function createReviewItem(form) {
+    setReviewSubmitting(true)
+    setReviewError(null)
+    try {
+      const payload = {
+        title: form.title,
+        description: form.description || null,
+        category: form.category || 'other',
+        priority: form.priority || 'normal',
+        created_by: 'operator',
+      }
+
+      const resp = await fetch('/api/review', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, 'Failed to create review item'))
+      }
+
+      const data = await resp.json()
+      if (!data || typeof data !== 'object' || data.ok !== true || !data.item) {
+        throw new Error(data?.error || 'Review create returned an invalid response')
+      }
+
+      await fetchReviewItems(reviewFilters)
+      return data.item
+    } catch (e) {
+      const message = e.message || 'Failed to create review item'
+      setReviewError(message)
+      throw e
+    } finally {
+      setReviewSubmitting(false)
+    }
+  }
+
+  async function updateReviewItemStatus(itemId, status) {
+    setReviewUpdatingId(itemId)
+    setReviewError(null)
+    try {
+      const resp = await fetch(`/api/review/${encodeURIComponent(itemId)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status }),
+      })
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, 'Failed to update review item'))
+      }
+
+      const data = await resp.json()
+      if (!data || typeof data !== 'object' || data.ok !== true || !data.item) {
+        throw new Error(data?.error || 'Review update returned an invalid response')
+      }
+
+      await fetchReviewItems(reviewFilters)
+      return data.item
+    } catch (e) {
+      const message = e.message || 'Failed to update review item'
+      setReviewError(message)
+      throw e
+    } finally {
+      setReviewUpdatingId(null)
     }
   }
 
@@ -516,6 +637,16 @@ function App() {
                 loading={systemLoading}
                 error={systemError}
                 onRefresh={fetchSystemStatus}
+                reviewItems={reviewItems}
+                reviewFilters={reviewFilters}
+                reviewLoading={reviewLoading}
+                reviewError={reviewError}
+                reviewSubmitting={reviewSubmitting}
+                reviewUpdatingId={reviewUpdatingId}
+                onReviewRefresh={() => fetchReviewItems(reviewFilters)}
+                onReviewFiltersChange={updateReviewFilters}
+                onReviewCreate={createReviewItem}
+                onReviewStatusUpdate={updateReviewItemStatus}
               />
             </div>
           )}
@@ -603,6 +734,16 @@ function App() {
               loading={systemLoading}
               error={systemError}
               onRefresh={fetchSystemStatus}
+              reviewItems={reviewItems}
+              reviewFilters={reviewFilters}
+              reviewLoading={reviewLoading}
+              reviewError={reviewError}
+              reviewSubmitting={reviewSubmitting}
+              reviewUpdatingId={reviewUpdatingId}
+              onReviewRefresh={() => fetchReviewItems(reviewFilters)}
+              onReviewFiltersChange={updateReviewFilters}
+              onReviewCreate={createReviewItem}
+              onReviewStatusUpdate={updateReviewItemStatus}
             />
           )}
         </aside>

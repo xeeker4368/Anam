@@ -1163,6 +1163,155 @@ body {
   font-style: italic;
 }
 
+.system-review-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.system-review-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.system-review-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.system-review-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.system-review-field span,
+.system-review-form-footer span,
+.system-review-source span {
+  color: #777;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.system-review-field input,
+.system-review-field select,
+.system-review-field textarea {
+  width: 100%;
+  min-width: 0;
+  background: #111122;
+  color: #d0d0d0;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  padding: 7px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.system-review-field textarea {
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.system-review-form {
+  display: grid;
+  gap: 9px;
+  background: #151528;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  padding: 10px;
+  min-width: 0;
+}
+
+.system-review-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 0.8fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.system-review-form-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.system-review-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.system-review-item {
+  display: grid;
+  gap: 8px;
+  background: #151528;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  padding: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.system-review-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.system-review-item-header h4 {
+  color: #d0d0d0;
+  font-size: 13px;
+  line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.system-review-description {
+  color: #aaa;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.system-review-badges,
+.system-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.system-review-source {
+  display: grid;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.system-review-source div {
+  display: grid;
+  grid-template-columns: minmax(86px, 0.38fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.system-review-source strong {
+  color: #c8c8c8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .system-capability-list {
   display: grid;
   gap: 8px;
@@ -1221,6 +1370,19 @@ body {
 .system-capability-note strong {
   color: #aaa;
   font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .system-review-toolbar,
+  .system-review-form-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .system-review-filters,
+  .system-review-form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* --- Buttons --- */
