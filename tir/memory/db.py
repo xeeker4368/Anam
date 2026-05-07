@@ -358,6 +358,40 @@ def _init_working():
             ON diagnostic_issues(target_type, target_id);
         CREATE INDEX IF NOT EXISTS idx_diagnostic_issues_created_at
             ON diagnostic_issues(created_at);
+
+        CREATE TABLE IF NOT EXISTS review_items (
+            item_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL DEFAULT 'other',
+            status TEXT NOT NULL DEFAULT 'open',
+            priority TEXT NOT NULL DEFAULT 'normal',
+            source_type TEXT,
+            source_conversation_id TEXT,
+            source_message_id TEXT,
+            source_artifact_id TEXT,
+            source_tool_name TEXT,
+            created_by TEXT NOT NULL DEFAULT 'operator',
+            owner TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            reviewed_at TEXT,
+            metadata_json TEXT,
+            FOREIGN KEY (source_artifact_id) REFERENCES artifacts(artifact_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_review_items_status
+            ON review_items(status);
+        CREATE INDEX IF NOT EXISTS idx_review_items_category
+            ON review_items(category);
+        CREATE INDEX IF NOT EXISTS idx_review_items_priority
+            ON review_items(priority);
+        CREATE INDEX IF NOT EXISTS idx_review_items_artifact
+            ON review_items(source_artifact_id);
+        CREATE INDEX IF NOT EXISTS idx_review_items_conversation
+            ON review_items(source_conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_review_items_created_at
+            ON review_items(created_at);
     """)
 
     # FTS5 virtual table — separate because executescript can't mix

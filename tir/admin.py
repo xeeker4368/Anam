@@ -22,6 +22,7 @@ Commands:
 
 import argparse
 import getpass
+import json
 import sys
 from pathlib import Path
 
@@ -39,6 +40,12 @@ from tir.memory.audit import (
     repair_memory_integrity,
 )
 from tir.ops.backup import BackupError, create_backup, restore_backup
+from tir.review.service import (
+    ReviewValidationError,
+    create_review_item,
+    list_review_items,
+    update_review_item_status,
+)
 
 
 def cmd_init_db(args):
@@ -297,6 +304,31 @@ def _print_restore_summary(summary: dict):
         print(f"  {target['key']} -> {target['destination']}")
 
 
+def _print_review_item(item: dict):
+    """Print one compact review item row."""
+    print(
+        f"{item['item_id']}  "
+        f"status={item['status']}  "
+        f"priority={item['priority']}  "
+        f"category={item['category']}  "
+        f"created={item['created_at']}  "
+        f"title={item['title']}"
+    )
+
+
+def _parse_metadata_json(raw: str | None) -> dict | None:
+    """Parse optional CLI metadata JSON."""
+    if raw is None:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid metadata JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("metadata JSON must be an object")
+    return parsed
+
+
 def cmd_memory_audit(args):
     """Run memory integrity audit."""
     audit = audit_memory_integrity(limit=args.limit)
@@ -338,6 +370,68 @@ def cmd_restore(args):
     _print_restore_summary(summary)
     if not summary.get("ok"):
         sys.exit(1)
+
+
+def cmd_review_list(args):
+    """List review queue items."""
+    try:
+        items = list_review_items(
+            status=args.status,
+            category=args.category,
+            priority=args.priority,
+            limit=args.limit,
+        )
+    except ReviewValidationError as exc:
+        print(f"Review list failed: {exc}")
+        sys.exit(1)
+
+    if not items:
+        print("No review items.")
+        return
+
+    for item in items:
+        _print_review_item(item)
+
+
+def cmd_review_add(args):
+    """Create a review queue item."""
+    try:
+        metadata = _parse_metadata_json(args.metadata_json)
+        item = create_review_item(
+            title=args.title,
+            description=args.description,
+            category=args.category,
+            priority=args.priority,
+            source_type=args.source_type,
+            source_conversation_id=args.source_conversation_id,
+            source_message_id=args.source_message_id,
+            source_artifact_id=args.source_artifact_id,
+            source_tool_name=args.source_tool_name,
+            created_by=args.created_by,
+            metadata=metadata,
+        )
+    except (ReviewValidationError, ValueError) as exc:
+        print(f"Review add failed: {exc}")
+        sys.exit(1)
+
+    print("Review item created")
+    _print_review_item(item)
+
+
+def cmd_review_update(args):
+    """Update review queue item status."""
+    try:
+        item = update_review_item_status(args.item_id, args.status)
+    except ReviewValidationError as exc:
+        print(f"Review update failed: {exc}")
+        sys.exit(1)
+
+    if item is None:
+        print(f"Review update failed: item not found: {args.item_id}")
+        sys.exit(1)
+
+    print("Review item updated")
+    _print_review_item(item)
 
 
 def main():
@@ -404,6 +498,32 @@ def main():
     p.add_argument("--dry-run", action="store_true", help="Report restore plan only")
     p.add_argument("--force", action="store_true", help="Required to mutate runtime state")
 
+    # review-list
+    p = sub.add_parser("review-list", help="List review queue items")
+    p.add_argument("--status", default=None, help="Filter by status")
+    p.add_argument("--category", default=None, help="Filter by category")
+    p.add_argument("--priority", default=None, help="Filter by priority")
+    p.add_argument("--limit", type=int, default=50, help="Max items to show")
+
+    # review-add
+    p = sub.add_parser("review-add", help="Create a review queue item")
+    p.add_argument("--title", required=True, help="Review item title")
+    p.add_argument("--description", default=None, help="Optional description")
+    p.add_argument("--category", default="other", help="Review category")
+    p.add_argument("--priority", default="normal", help="Review priority")
+    p.add_argument("--source-type", default=None, help="Optional source type")
+    p.add_argument("--source-conversation-id", default=None, help="Optional source conversation ID")
+    p.add_argument("--source-message-id", default=None, help="Optional source message ID")
+    p.add_argument("--source-artifact-id", default=None, help="Optional source artifact ID")
+    p.add_argument("--source-tool-name", default=None, help="Optional source tool name")
+    p.add_argument("--created-by", default="operator", help="Creator label")
+    p.add_argument("--metadata-json", default=None, help="Optional metadata JSON object")
+
+    # review-update
+    p = sub.add_parser("review-update", help="Update review item status")
+    p.add_argument("item_id", help="Review item ID")
+    p.add_argument("--status", required=True, help="New status")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -427,6 +547,9 @@ def main():
         "memory-checkpoint-active": cmd_memory_checkpoint_active,
         "backup": cmd_backup,
         "restore": cmd_restore,
+        "review-list": cmd_review_list,
+        "review-add": cmd_review_add,
+        "review-update": cmd_review_update,
     }
 
     commands[args.command](args)
