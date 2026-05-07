@@ -52,11 +52,24 @@ function SystemMetric({ label, value, badge = false }) {
   )
 }
 
-function SystemSection({ title, children }) {
+function SystemSection({ title, summary, defaultExpanded = false, children }) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+
   return (
     <section className="system-section">
-      <h3>{title}</h3>
-      <div className="system-card">{children}</div>
+      <button
+        type="button"
+        className="system-section-toggle"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(current => !current)}
+      >
+        <span className="system-section-title">
+          <span className="system-section-caret">{expanded ? 'v' : '>'}</span>
+          {title}
+        </span>
+        {summary && <span className="system-section-summary">{summary}</span>}
+      </button>
+      {expanded && <div className="system-card">{children}</div>}
     </section>
   )
 }
@@ -352,6 +365,7 @@ function ReviewQueueSection({
 }) {
   const reviewItems = Array.isArray(items) ? items : []
   const activeFilters = filters || {}
+  const openCount = reviewItems.filter(item => item.status === 'open').length
 
   function updateFilter(key, value) {
     onFiltersChange({
@@ -361,7 +375,12 @@ function ReviewQueueSection({
   }
 
   return (
-    <SystemSection title="Review Queue">
+    <SystemSection
+      key={openCount > 0 ? 'review-open' : 'review-closed'}
+      title="Review Queue"
+      summary={`${openCount} open`}
+      defaultExpanded={openCount > 0}
+    >
       <div className="system-review-panel">
         <div className="system-review-toolbar">
           <div className="system-review-filters">
@@ -433,6 +452,11 @@ function SystemPanel({
   const audit = memory?.audit || {}
   const capabilityData = capabilities?.capabilities || {}
   const capabilityGroups = groupCapabilities(capabilityData)
+  const capabilityCount = Object.keys(capabilityData).length
+  const healthSummary = health?.api_ok ? 'ok' : 'problem'
+  const memorySummary = memory?.ok === false
+    ? 'problem'
+    : `active=${formatValue(audit.active_conversation_count)}, chunks=${formatValue(audit.fts_chunk_count)}`
 
   return (
     <div className="system-content">
@@ -450,7 +474,7 @@ function SystemPanel({
       )}
 
       {health && (
-        <SystemSection title="Health">
+        <SystemSection title="Health" summary={healthSummary} defaultExpanded>
           <SystemMetric label="API" value={health.api_ok} badge />
           <SystemMetric label="Project" value={health.project} />
           <SystemMetric label="Timestamp" value={formatDate(health.timestamp)} />
@@ -478,7 +502,7 @@ function SystemPanel({
       )}
 
       {memory && (
-        <SystemSection title="Memory">
+        <SystemSection title="Memory" summary={memorySummary}>
           {memory.ok === false ? (
             <SystemMetric label="Audit error" value={memory.error} />
           ) : (
@@ -520,7 +544,7 @@ function SystemPanel({
       />
 
       {capabilities && (
-        <SystemSection title="Capabilities">
+        <SystemSection title="Capabilities" summary={`${capabilityCount} capabilities`}>
           <CapabilityGroup
             title="Active / Available"
             capabilities={capabilityGroups.active}

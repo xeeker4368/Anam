@@ -1067,12 +1067,59 @@ body {
   margin-bottom: 16px;
 }
 
-.system-section h3 {
+.system-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.system-section-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  min-width: 0;
+}
+
+.system-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   color: #888;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 8px;
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.system-section-caret {
+  color: #7faacc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1;
+  width: 10px;
+  flex: 0 0 auto;
+}
+
+.system-section-summary {
+  color: #777;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .system-card {
