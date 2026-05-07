@@ -403,6 +403,34 @@ def list_artifacts(
     return [artifact_to_dict(row) for row in rows]
 
 
+def list_recent_artifacts_for_user(
+    user_id: str,
+    limit: int = 5,
+    scan_limit: int = 100,
+) -> list[dict]:
+    """List recent artifacts visible to a user using metadata ownership.
+
+    V1 uses Python-side metadata filtering to avoid DB schema or JSON-query
+    changes. Artifacts with a different metadata.user_id are excluded. Legacy
+    artifacts without user_id metadata are included conservatively.
+    """
+    if limit < 1:
+        return []
+
+    candidates = list_artifacts(limit=max(scan_limit, limit), offset=0)
+    visible = []
+    for artifact in candidates:
+        metadata = artifact.get("metadata") or {}
+        artifact_user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
+        if artifact_user_id and artifact_user_id != user_id:
+            continue
+        visible.append(artifact)
+        if len(visible) >= limit:
+            break
+
+    return visible
+
+
 def update_artifact_status(artifact_id: str, status: str) -> dict | None:
     """Update only an artifact's status."""
     _validate_status(status)

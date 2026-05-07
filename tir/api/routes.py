@@ -57,6 +57,11 @@ from tir.engine.context_budget import (
     RETRIEVED_CONTEXT_CHAR_BUDGET,
     budget_retrieved_chunks,
 )
+from tir.engine.artifact_context import (
+    RECENT_ARTIFACT_LIMIT,
+    build_recent_artifacts_context,
+    has_recent_artifact_intent,
+)
 from tir.engine.retrieval_policy import classify_retrieval_policy
 from tir.engine.tool_trace_context import build_moltbook_selection_context
 from tir.engine.url_prefetch import get_url_prefetch_candidate
@@ -382,27 +387,51 @@ def stream_chat(req: ChatRequest):
             len(m.get("content") or "")
             for m in model_messages
         )
+        current_user_index = next(
+            (
+                index
+                for index, message in enumerate(all_messages)
+                if message.get("id") == user_msg["id"]
+            ),
+            len(model_messages),
+        )
+        recent_artifact_context = None
+        recent_artifact_context_meta = {
+            "included": False,
+            "artifact_count": 0,
+            "limit": RECENT_ARTIFACT_LIMIT,
+            "chars": 0,
+            "truncated": False,
+        }
+        if has_recent_artifact_intent(req.text):
+            recent_artifact_context, recent_artifact_context_meta = (
+                build_recent_artifacts_context(
+                    user_id=user_id,
+                    limit=RECENT_ARTIFACT_LIMIT,
+                )
+            )
+            if recent_artifact_context:
+                model_messages.insert(
+                    current_user_index,
+                    {"role": "system", "content": recent_artifact_context},
+                )
+                current_user_index += 1
+
         moltbook_selection_context = build_moltbook_selection_context(all_messages)
         selection_context_chars = len(moltbook_selection_context or "")
         if moltbook_selection_context:
-            current_user_index = next(
-                (
-                    index
-                    for index, message in enumerate(all_messages)
-                    if message.get("id") == user_msg["id"]
-                ),
-                len(model_messages),
-            )
             model_messages.insert(
                 current_user_index,
                 {"role": "system", "content": moltbook_selection_context},
             )
         timings["history_load_ms"] = elapsed_ms(phase_start)
-        artifact_context_chars = 0
+        recent_artifact_context_chars = len(recent_artifact_context or "")
+        artifact_context_chars = recent_artifact_context_chars
         prompt_breakdown = {
             **prompt_breakdown,
             "conversation_history_chars": conversation_history_chars,
             "artifact_context_chars": artifact_context_chars,
+            "recent_artifact_context_chars": recent_artifact_context_chars,
             "selection_context_chars": selection_context_chars,
         }
         prompt_breakdown["total_chars"] = (
@@ -441,6 +470,7 @@ def stream_chat(req: ChatRequest):
             "system_prompt_length": len(system_prompt),
             "prompt_budget_warning": prompt_budget_warning,
             "prompt_breakdown": prompt_breakdown,
+            "recent_artifact_context": recent_artifact_context_meta,
             "history_message_count": len(model_messages),
             "timings": timings,
         }

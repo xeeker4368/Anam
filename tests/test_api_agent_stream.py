@@ -150,6 +150,14 @@ def test_stream_chat_no_tool_path_preserves_basic_events(
     assert events[0]["prompt_breakdown"]["conversation_history_chars"] == len("Hello")
     assert events[0]["prompt_breakdown"]["selection_context_chars"] == 0
     assert events[0]["prompt_breakdown"]["artifact_context_chars"] == 0
+    assert events[0]["prompt_breakdown"]["recent_artifact_context_chars"] == 0
+    assert events[0]["recent_artifact_context"] == {
+        "included": False,
+        "artifact_count": 0,
+        "limit": 5,
+        "chars": 0,
+        "truncated": False,
+    }
     assert events[0]["prompt_breakdown"]["total_chars"] >= events[0]["system_prompt_length"]
     assert events[0]["prompt_breakdown"]["other_chars"] >= 0
     assert "total_backend_ms" in events[-2]["timings"]
@@ -546,6 +554,143 @@ def test_stream_chat_normal_retrieval_still_runs(
         active_conversation_id="conv-1",
         max_results=AUTO_RETRIEVAL_RESULTS,
     )
+
+
+@patch("tir.api.routes.build_recent_artifacts_context")
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_injects_recent_artifact_context_for_artifact_prompt(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+    mock_build_recent_artifacts_context,
+):
+    app.state.registry = FakeRegistry(has_tools=True)
+    context = (
+        "Recent artifacts available as uploaded source material:\n"
+        "- Upload Note, file=upload.md, type=uploaded_file, role=Uploaded source, "
+        "origin=User upload, indexing=indexed, status=active, id=artifact"
+    )
+    mock_build_recent_artifacts_context.return_value = (
+        context,
+        {
+            "included": True,
+            "artifact_count": 1,
+            "limit": 5,
+            "chars": len(context),
+            "truncated": False,
+        },
+    )
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = []
+    current_text = "I just uploaded two files, can you see them?"
+    mock_save_message.side_effect = [
+        _fake_message("user", current_text, "msg-user"),
+        _fake_message("assistant", "I can see one recent upload.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [
+        _fake_message("user", current_text, "msg-user")
+    ]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "I can see one recent upload."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="I can see one recent upload.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": current_text})
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    model_messages = mock_loop.call_args.kwargs["messages"]
+    assert model_messages[0] == {"role": "system", "content": context}
+    assert model_messages[1]["content"] == current_text
+    assert events[0]["recent_artifact_context"]["included"] is True
+    assert events[0]["recent_artifact_context"]["artifact_count"] == 1
+    assert events[0]["prompt_breakdown"]["recent_artifact_context_chars"] == len(context)
+    assert events[0]["prompt_breakdown"]["artifact_context_chars"] == len(context)
+    assert events[0]["prompt_breakdown"]["total_chars"] >= (
+        events[0]["system_prompt_length"] + len(current_text) + len(context)
+    )
+    mock_build_recent_artifacts_context.assert_called_once_with(
+        user_id="user-1",
+        limit=5,
+    )
+
+
+@patch("tir.api.routes.build_recent_artifacts_context")
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_does_not_inject_recent_artifact_context_for_unrelated_prompt(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+    mock_build_recent_artifacts_context,
+):
+    app.state.registry = FakeRegistry(has_tools=True)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = []
+    current_text = "What did we decide about Moltbook integration?"
+    mock_save_message.side_effect = [
+        _fake_message("user", current_text, "msg-user"),
+        _fake_message("assistant", "Read-only first.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [
+        _fake_message("user", current_text, "msg-user")
+    ]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "Read-only first."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="Read-only first.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": current_text})
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    assert events[0]["recent_artifact_context"]["included"] is False
+    assert events[0]["prompt_breakdown"]["recent_artifact_context_chars"] == 0
+    assert events[0]["prompt_breakdown"]["artifact_context_chars"] == 0
+    mock_build_recent_artifacts_context.assert_not_called()
 
 
 @patch("tir.api.routes.checkpoint_conversation")
