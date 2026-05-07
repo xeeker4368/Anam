@@ -553,6 +553,7 @@ def test_stream_chat_normal_retrieval_still_runs(
         query="What did we decide about Moltbook integration?",
         active_conversation_id="conv-1",
         max_results=AUTO_RETRIEVAL_RESULTS,
+        artifact_intent=False,
     )
 
 
@@ -635,6 +636,12 @@ def test_stream_chat_injects_recent_artifact_context_for_artifact_prompt(
         user_id="user-1",
         limit=5,
     )
+    mock_retrieve.assert_called_once_with(
+        query=current_text,
+        active_conversation_id="conv-1",
+        max_results=AUTO_RETRIEVAL_RESULTS,
+        artifact_intent=True,
+    )
 
 
 @patch("tir.api.routes.build_recent_artifacts_context")
@@ -691,6 +698,12 @@ def test_stream_chat_does_not_inject_recent_artifact_context_for_unrelated_promp
     assert events[0]["prompt_breakdown"]["recent_artifact_context_chars"] == 0
     assert events[0]["prompt_breakdown"]["artifact_context_chars"] == 0
     mock_build_recent_artifacts_context.assert_not_called()
+    mock_retrieve.assert_called_once_with(
+        query=current_text,
+        active_conversation_id="conv-1",
+        max_results=AUTO_RETRIEVAL_RESULTS,
+        artifact_intent=False,
+    )
 
 
 @patch("tir.api.routes.checkpoint_conversation")

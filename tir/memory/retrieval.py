@@ -27,6 +27,24 @@ from tir.memory.db import search_bm25
 logger = logging.getLogger(__name__)
 
 
+_ARTIFACT_SOURCE_TYPE = "artifact_document"
+_ARTIFACT_BASE_BOOST = 1.25
+_ARTIFACT_STRONG_BOOST = 2.25
+_FILENAME_TOKEN_RE = re.compile(r"\b[\w.\-]+\.[A-Za-z0-9]{1,12}\b")
+_COMMON_TITLES = {
+    "file",
+    "document",
+    "note",
+    "notes",
+    "source",
+    "artifact",
+    "upload",
+    "uploaded",
+    "draft",
+    "log",
+}
+
+
 # ---------------------------------------------------------------------------
 # FTS5 query sanitization
 # ---------------------------------------------------------------------------
@@ -68,6 +86,97 @@ def _sanitize_fts5_query(query: str) -> str:
         return ""
 
     return " OR ".join(safe_tokens)
+
+
+def _normalize_match_text(value: str | None) -> str:
+    """Normalize text for artifact metadata/header matching."""
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def _filename_tokens(query: str) -> set[str]:
+    """Extract filename-like tokens from a query."""
+    return {
+        token.lower().strip(".,!?;:()[]{}\"'")
+        for token in _FILENAME_TOKEN_RE.findall(query or "")
+    }
+
+
+def _meaningful_title(title: str) -> bool:
+    """Return whether a title is specific enough for a strong boost."""
+    normalized = _normalize_match_text(title)
+    if not normalized or normalized in _COMMON_TITLES:
+        return False
+    words = [word for word in re.split(r"\W+", normalized) if word]
+    return len(words) >= 2 or len(normalized) >= 12
+
+
+def _artifact_header_value(text: str, label: str) -> str | None:
+    """Extract a simple value from artifact chunk headers."""
+    prefix = f"{label}:"
+    for line in (text or "").splitlines()[:12]:
+        if line.lower().startswith(prefix.lower()):
+            return line[len(prefix):].strip()
+    return None
+
+
+def _artifact_match(chunk: dict, query: str) -> tuple[bool, str | None]:
+    """Detect exact/strong artifact matches for opt-in artifact ranking."""
+    metadata = chunk.get("metadata") or {}
+    text = chunk.get("text") or ""
+    normalized_query = _normalize_match_text(query)
+    filename_tokens = _filename_tokens(query)
+
+    artifact_id = (
+        metadata.get("artifact_id")
+        or _artifact_header_value(text, "Artifact ID")
+    )
+    if artifact_id:
+        normalized_id = _normalize_match_text(artifact_id)
+        if normalized_id and normalized_id in normalized_query:
+            return True, "artifact_id"
+
+    filename = (
+        metadata.get("filename")
+        or _artifact_header_value(text, "File")
+    )
+    if filename:
+        normalized_filename = _normalize_match_text(filename)
+        if normalized_filename and normalized_filename in normalized_query:
+            return True, "filename"
+        if normalized_filename in filename_tokens:
+            return True, "filename"
+
+    title = (
+        metadata.get("title")
+        or _artifact_header_value(text, "Artifact source")
+    )
+    if title and _meaningful_title(title):
+        normalized_title = _normalize_match_text(title)
+        if normalized_title and normalized_title in normalized_query:
+            return True, "title"
+
+    return False, None
+
+
+def _apply_artifact_boosts(chunks: list[dict], query: str) -> None:
+    """Apply opt-in artifact ranking boosts in place."""
+    for chunk in chunks:
+        metadata = chunk.get("metadata") or {}
+        source_type = metadata.get("source_type") or chunk.get("source_type")
+        boost = 1.0
+        exact_match = False
+        match_field = None
+
+        if source_type == _ARTIFACT_SOURCE_TYPE:
+            boost = _ARTIFACT_BASE_BOOST
+            exact_match, match_field = _artifact_match(chunk, query)
+            if exact_match:
+                boost = _ARTIFACT_STRONG_BOOST
+
+        chunk["artifact_boost"] = boost
+        chunk["artifact_exact_match"] = exact_match
+        chunk["artifact_match_field"] = match_field
+        chunk["adjusted_score"] *= boost
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +267,7 @@ def retrieve(
     trust_weights: dict | None = None,
     rrf_k: int = RRF_K,
     top_k_per_signal: int = 30,
+    artifact_intent: bool = False,
 ) -> list[dict]:
     """
     Hybrid retrieve from ChromaDB + FTS5, fused via RRF.
@@ -176,6 +286,9 @@ def retrieve(
             Defaults to config values.
         rrf_k: RRF fusion constant (default 60).
         top_k_per_signal: Candidates per signal before fusion (default 30).
+        artifact_intent: If True, modestly prefer artifact_document chunks
+            and strongly prefer exact filename/title/artifact ID matches.
+            Defaults to False to preserve memory_search and normal retrieval.
 
     Returns:
         Ranked list (most relevant first) of dicts:
@@ -251,6 +364,9 @@ def retrieve(
         if weight == 1.0 and source_trust not in trust_weights:
             logger.warning(f"Unknown source_trust '{source_trust}', using weight 1.0")
         chunk["adjusted_score"] = chunk["rrf_score"] * weight
+
+    if artifact_intent:
+        _apply_artifact_boosts(fused, query)
 
     # --- Re-sort by adjusted score and trim ---
     fused.sort(key=lambda x: x["adjusted_score"], reverse=True)

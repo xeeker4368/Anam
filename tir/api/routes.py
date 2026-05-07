@@ -337,6 +337,7 @@ def stream_chat(req: ChatRequest):
             "used_chars": 0,
         }
         retrieval_policy = classify_retrieval_policy(req.text)
+        artifact_intent = has_recent_artifact_intent(req.text)
         retrieval_skipped = (
             _is_greeting(req.text)
             or retrieval_policy["mode"] == "skip_memory"
@@ -348,6 +349,7 @@ def stream_chat(req: ChatRequest):
                     query=req.text,
                     active_conversation_id=conversation_id,
                     max_results=AUTO_RETRIEVAL_RESULTS,
+                    artifact_intent=artifact_intent,
                 )
                 retrieved_chunks, retrieval_budget = budget_retrieved_chunks(
                     retrieved_chunks
@@ -403,7 +405,7 @@ def stream_chat(req: ChatRequest):
             "chars": 0,
             "truncated": False,
         }
-        if has_recent_artifact_intent(req.text):
+        if artifact_intent:
             recent_artifact_context, recent_artifact_context_meta = (
                 build_recent_artifacts_context(
                     user_id=user_id,
@@ -450,6 +452,7 @@ def stream_chat(req: ChatRequest):
             "user_message_id": user_msg["id"],
             "retrieval_skipped": retrieval_skipped,
             "retrieval_policy": retrieval_policy,
+            "artifact_intent": artifact_intent,
             "retrieval_budget": retrieval_budget,
             "chunks_retrieved": len(retrieved_chunks),
             "retrieved_chunks": [
@@ -460,6 +463,9 @@ def stream_chat(req: ChatRequest):
                     "vector_rank": c.get("vector_rank"),
                     "bm25_rank": c.get("bm25_rank"),
                     "adjusted_score": c.get("adjusted_score"),
+                    "artifact_boost": c.get("artifact_boost"),
+                    "artifact_exact_match": c.get("artifact_exact_match"),
+                    "artifact_match_field": c.get("artifact_match_field"),
                     "source_type": (
                         c.get("metadata", {}).get("source_type")
                         or c.get("source_type", "unknown")
