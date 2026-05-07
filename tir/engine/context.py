@@ -106,19 +106,56 @@ def build_system_prompt(
     Returns:
         The complete system prompt string.
     """
+    prompt, _debug = build_system_prompt_with_debug(
+        user_name=user_name,
+        user_message=user_message,
+        active_conversation_id=active_conversation_id,
+        retrieved_chunks=retrieved_chunks,
+        tool_descriptions=tool_descriptions,
+        autonomous=autonomous,
+    )
+    return prompt
+
+
+def build_system_prompt_with_debug(
+    user_name: str,
+    user_message: str | None = None,
+    active_conversation_id: str | None = None,
+    retrieved_chunks: list[dict] | None = None,
+    tool_descriptions: str | None = None,
+    autonomous: bool = False,
+) -> tuple[str, dict]:
+    """
+    Assemble the full system prompt and return best-effort section counts.
+
+    This preserves build_system_prompt() output exactly. Counts are character
+    counts, not token counts, and include section text while separator/wrapper
+    overhead is reported in other_chars.
+    """
     sections = []
+    section_counts = {
+        "soul_chars": 0,
+        "operational_guidance_chars": 0,
+        "tool_descriptions_chars": 0,
+        "retrieved_context_chars": 0,
+        "situation_chars": 0,
+    }
 
     # Section 1: Seed identity
-    sections.append(_load_soul())
+    soul = _load_soul()
+    sections.append(soul)
+    section_counts["soul_chars"] = len(soul)
 
     # Section 2: Operational guidance
     operational_guidance = _load_operational_guidance()
     if operational_guidance:
         sections.append(operational_guidance)
+        section_counts["operational_guidance_chars"] = len(operational_guidance)
 
     # Section 3: Available tools
     if tool_descriptions:
         sections.append(tool_descriptions)
+        section_counts["tool_descriptions_chars"] = len(tool_descriptions)
 
     # Section 4: Retrieved memories
     if retrieved_chunks is None and user_message and not _is_greeting(user_message):
@@ -133,15 +170,27 @@ def build_system_prompt(
             retrieved_chunks = []
 
     if retrieved_chunks:
-        sections.append(_format_retrieved_memories(retrieved_chunks))
+        retrieved_context = _format_retrieved_memories(retrieved_chunks)
+        sections.append(retrieved_context)
+        section_counts["retrieved_context_chars"] = len(retrieved_context)
 
     # Section 5: Current situation
     if autonomous:
-        sections.append(_autonomous_situation())
+        situation = _autonomous_situation()
     else:
-        sections.append(_current_situation(user_name))
+        situation = _current_situation(user_name)
+    sections.append(situation)
+    section_counts["situation_chars"] = len(situation)
 
-    return "\n\n".join(sections)
+    prompt = "\n\n".join(sections)
+    known_chars = sum(section_counts.values())
+    debug = {
+        "system_prompt_chars": len(prompt),
+        **section_counts,
+        "other_chars": max(0, len(prompt) - known_chars),
+        "best_effort": True,
+    }
+    return prompt, debug
 
 
 def _format_retrieved_memories(chunks: list[dict]) -> str:

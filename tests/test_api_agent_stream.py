@@ -5,6 +5,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from tir.api.routes import app
+from tir.engine.context_budget import AUTO_RETRIEVAL_RESULTS, PROMPT_BUDGET_WARNING_CHARS
 
 
 @dataclass
@@ -50,6 +51,32 @@ def _fake_message(role, content, message_id):
         "content": content,
         "timestamp": "2026-04-27T12:00:00+00:00",
     }
+
+
+def _selection_trace():
+    return json.dumps([
+        {
+            "tool_results": [
+                {
+                    "selection": {
+                        "kind": "moltbook_authored_posts",
+                        "tool_name": "moltbook_find_author_posts",
+                        "author_name": "xkai",
+                        "posts": [
+                            {
+                                "index": 1,
+                                "id": "post-1",
+                                "title": "Token Budget Notes",
+                                "author_name": "xkai",
+                                "created_at": "2026-05-04T01:00:00Z",
+                                "submolt": "agents",
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+    ])
 
 
 @patch("tir.api.routes.checkpoint_conversation")
@@ -110,6 +137,21 @@ def test_stream_chat_no_tool_path_preserves_basic_events(
         "mode": "normal",
         "reason": "normal",
     }
+    assert events[0]["retrieval_budget"] == {
+        "input_chunks": 0,
+        "included_chunks": 0,
+        "skipped_chunks": 0,
+        "truncated_chunks": 0,
+        "max_chars": 14000,
+        "used_chars": 0,
+    }
+    assert events[0]["prompt_budget_warning"] is None
+    assert events[0]["prompt_breakdown"]["system_prompt_chars"] == events[0]["system_prompt_length"]
+    assert events[0]["prompt_breakdown"]["conversation_history_chars"] == len("Hello")
+    assert events[0]["prompt_breakdown"]["selection_context_chars"] == 0
+    assert events[0]["prompt_breakdown"]["artifact_context_chars"] == 0
+    assert events[0]["prompt_breakdown"]["total_chars"] >= events[0]["system_prompt_length"]
+    assert events[0]["prompt_breakdown"]["other_chars"] >= 0
     assert "total_backend_ms" in events[-2]["timings"]
     assert events[-1]["conversation_id"] == "conv-1"
     assistant_call = mock_save_message.call_args_list[-1]
@@ -378,6 +420,64 @@ def test_stream_chat_skips_retrieval_for_direct_web_current_prompt(
 @patch("tir.api.routes.retrieve")
 @patch("tir.api.routes._resolve_user")
 @patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_skips_retrieval_for_context_inspection_prompt(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    app.state.registry = FakeRegistry(has_tools=True)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_save_message.side_effect = [
+        _fake_message("user", "What is in your current context?", "msg-user"),
+        _fake_message("assistant", "I can describe the current visible context.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [
+        _fake_message("user", "What is in your current context?", "msg-user")
+    ]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "I can describe the current visible context."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="I can describe the current visible context.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat/stream",
+        json={"text": "What is in your current context?"},
+    )
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    assert events[0]["retrieval_skipped"] is True
+    assert events[0]["retrieval_policy"] == {
+        "mode": "skip_memory",
+        "reason": "context_inspection",
+    }
+    assert events[0]["retrieval_budget"]["input_chunks"] == 0
+    mock_retrieve.assert_not_called()
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
 def test_stream_chat_normal_retrieval_still_runs(
     mock_loop,
     mock_resolve_user,
@@ -432,10 +532,154 @@ def test_stream_chat_normal_retrieval_still_runs(
         "reason": "normal",
     }
     assert events[0]["chunks_retrieved"] == 1
+    assert events[0]["retrieval_budget"]["input_chunks"] == 1
+    assert events[0]["retrieval_budget"]["included_chunks"] == 1
+    assert events[0]["prompt_budget_warning"] is None
+    assert "prompt_breakdown" in events[0]
+    assert events[0]["prompt_breakdown"]["tool_descriptions_chars"] > 0
+    assert events[0]["prompt_breakdown"]["retrieved_context_chars"] > 0
+    assert events[0]["prompt_breakdown"]["conversation_history_chars"] == len(
+        "What did we decide about Moltbook integration?"
+    )
     mock_retrieve.assert_called_once_with(
         query="What did we decide about Moltbook integration?",
         active_conversation_id="conv-1",
+        max_results=AUTO_RETRIEVAL_RESULTS,
     )
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_prompt_breakdown_counts_selection_context_separately(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    app.state.registry = FakeRegistry(has_tools=True)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = []
+    prior_assistant = _fake_message("assistant", "I found posts.", "msg-prior")
+    prior_assistant["tool_trace"] = _selection_trace()
+    current_user = _fake_message("user", "read the first one", "msg-user")
+    mock_save_message.side_effect = [
+        current_user,
+        _fake_message("assistant", "I will read it.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [
+        prior_assistant,
+        current_user,
+    ]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "I will read it."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="I will read it.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": "read the first one"})
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    breakdown = events[0]["prompt_breakdown"]
+    assert breakdown["selection_context_chars"] > 0
+    assert breakdown["conversation_history_chars"] == len("I found posts.") + len(
+        "read the first one"
+    )
+    model_messages = mock_loop.call_args.kwargs["messages"]
+    assert any(
+        message["role"] == "system"
+        and "[Recent Moltbook Selection]" in message["content"]
+        for message in model_messages
+    )
+
+
+@patch("tir.api.routes.build_system_prompt_with_debug")
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_debug_warns_when_prompt_exceeds_budget(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+    mock_build_system_prompt_with_debug,
+):
+    app.state.registry = FakeRegistry(has_tools=True)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = []
+    mock_build_system_prompt_with_debug.return_value = (
+        "x" * (PROMPT_BUDGET_WARNING_CHARS + 1),
+        {
+            "system_prompt_chars": PROMPT_BUDGET_WARNING_CHARS + 1,
+            "soul_chars": PROMPT_BUDGET_WARNING_CHARS + 1,
+            "operational_guidance_chars": 0,
+            "tool_descriptions_chars": 0,
+            "retrieved_context_chars": 0,
+            "situation_chars": 0,
+            "other_chars": 0,
+            "best_effort": True,
+        },
+    )
+    mock_save_message.side_effect = [
+        _fake_message("user", "Please recall this", "msg-user"),
+        _fake_message("assistant", "Done.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [
+        _fake_message("user", "Please recall this", "msg-user")
+    ]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "Done."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="Done.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat/stream",
+        json={"text": "Please recall this"},
+    )
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    assert events[0]["system_prompt_length"] == PROMPT_BUDGET_WARNING_CHARS + 1
+    assert events[0]["prompt_budget_warning"] == "prompt_chars_over_budget"
+    assert events[0]["prompt_breakdown"]["total_chars"] > PROMPT_BUDGET_WARNING_CHARS
 
 
 @patch("tir.api.routes.save_message")

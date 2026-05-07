@@ -49,8 +49,14 @@ from tir.memory.db import (
 )
 from tir.memory.retrieval import retrieve
 from tir.memory.chunking import checkpoint_conversation, chunk_conversation_final
-from tir.engine.context import build_system_prompt
+from tir.engine.context import build_system_prompt_with_debug
 from tir.engine.agent_loop import run_agent_loop
+from tir.engine.context_budget import (
+    AUTO_RETRIEVAL_RESULTS,
+    PROMPT_BUDGET_WARNING_CHARS,
+    RETRIEVED_CONTEXT_CHAR_BUDGET,
+    budget_retrieved_chunks,
+)
 from tir.engine.retrieval_policy import classify_retrieval_policy
 from tir.engine.tool_trace_context import build_moltbook_selection_context
 from tir.engine.url_prefetch import get_url_prefetch_candidate
@@ -317,6 +323,14 @@ def stream_chat(req: ChatRequest):
         # --- Retrieval ---
         phase_start = time.perf_counter()
         retrieved_chunks = []
+        retrieval_budget = {
+            "input_chunks": 0,
+            "included_chunks": 0,
+            "skipped_chunks": 0,
+            "truncated_chunks": 0,
+            "max_chars": RETRIEVED_CONTEXT_CHAR_BUDGET,
+            "used_chars": 0,
+        }
         retrieval_policy = classify_retrieval_policy(req.text)
         retrieval_skipped = (
             _is_greeting(req.text)
@@ -328,6 +342,10 @@ def stream_chat(req: ChatRequest):
                 retrieved_chunks = retrieve(
                     query=req.text,
                     active_conversation_id=conversation_id,
+                    max_results=AUTO_RETRIEVAL_RESULTS,
+                )
+                retrieved_chunks, retrieval_budget = budget_retrieved_chunks(
+                    retrieved_chunks
                 )
             except Exception as e:
                 logger.warning(f"Retrieval failed: {e}")
@@ -341,10 +359,15 @@ def stream_chat(req: ChatRequest):
             if registry and registry.has_tools()
             else None
         )
-        system_prompt = build_system_prompt(
+        system_prompt, prompt_breakdown = build_system_prompt_with_debug(
             user_name=user_name,
             retrieved_chunks=retrieved_chunks,
             tool_descriptions=tool_descriptions,
+        )
+        prompt_budget_warning = (
+            "prompt_chars_over_budget"
+            if len(system_prompt) > PROMPT_BUDGET_WARNING_CHARS
+            else None
         )
         timings["context_build_ms"] = elapsed_ms(phase_start)
 
@@ -355,7 +378,12 @@ def stream_chat(req: ChatRequest):
             {"role": m["role"], "content": m["content"]}
             for m in all_messages
         ]
+        conversation_history_chars = sum(
+            len(m.get("content") or "")
+            for m in model_messages
+        )
         moltbook_selection_context = build_moltbook_selection_context(all_messages)
+        selection_context_chars = len(moltbook_selection_context or "")
         if moltbook_selection_context:
             current_user_index = next(
                 (
@@ -370,6 +398,20 @@ def stream_chat(req: ChatRequest):
                 {"role": "system", "content": moltbook_selection_context},
             )
         timings["history_load_ms"] = elapsed_ms(phase_start)
+        artifact_context_chars = 0
+        prompt_breakdown = {
+            **prompt_breakdown,
+            "conversation_history_chars": conversation_history_chars,
+            "artifact_context_chars": artifact_context_chars,
+            "selection_context_chars": selection_context_chars,
+        }
+        prompt_breakdown["total_chars"] = (
+            prompt_breakdown["system_prompt_chars"]
+            + conversation_history_chars
+            + artifact_context_chars
+            + selection_context_chars
+        )
+        prompt_breakdown["other_chars"] = max(0, prompt_breakdown.get("other_chars", 0))
 
         # --- Emit debug event ---
         timings["debug_emit_elapsed_ms"] = elapsed_ms(request_start)
@@ -379,6 +421,7 @@ def stream_chat(req: ChatRequest):
             "user_message_id": user_msg["id"],
             "retrieval_skipped": retrieval_skipped,
             "retrieval_policy": retrieval_policy,
+            "retrieval_budget": retrieval_budget,
             "chunks_retrieved": len(retrieved_chunks),
             "retrieved_chunks": [
                 {
@@ -396,6 +439,8 @@ def stream_chat(req: ChatRequest):
                 for c in retrieved_chunks
             ],
             "system_prompt_length": len(system_prompt),
+            "prompt_budget_warning": prompt_budget_warning,
+            "prompt_breakdown": prompt_breakdown,
             "history_message_count": len(model_messages),
             "timings": timings,
         }
