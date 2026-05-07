@@ -13,6 +13,12 @@ from tir.artifacts.service import (
     create_artifact,
 )
 from tir.config import WORKSPACE_DIR
+from tir.artifacts.source_roles import (
+    default_origin,
+    default_source_role,
+    validate_origin,
+    validate_source_role,
+)
 from tir.memory.artifact_indexing import index_artifact_file
 from tir.workspace.service import resolve_workspace_path
 
@@ -123,7 +129,9 @@ def ingest_artifact_file(
     source_message_id: str | None = None,
     source_tool_name: str | None = None,
     created_by: str = "user",
-    authority: str = "source_material",
+    authority: str | None = None,
+    origin: str | None = None,
+    source_role: str | None = None,
     status: str = "active",
     revision_of: str | None = None,
     metadata: dict | None = None,
@@ -139,12 +147,25 @@ def ingest_artifact_file(
         raise ArtifactIngestionError(f"Invalid artifact_type: {artifact_type}")
     if status not in ALLOWED_ARTIFACT_STATUSES:
         raise ArtifactIngestionError(f"Invalid artifact status: {status}")
-    effective_authority = (
-        "draft"
-        if artifact_type == "generated_file" and authority == "source_material"
-        else authority
+    if authority is not None:
+        _validate_authority(authority)
+    effective_origin = validate_origin(
+        origin
+        or default_origin(
+            artifact_type=artifact_type,
+            source=source,
+            created_by=created_by,
+        )
     )
-    _validate_authority(effective_authority)
+    effective_source_role = validate_source_role(
+        source_role
+        or default_source_role(
+            artifact_type=artifact_type,
+            status=status,
+            origin=effective_origin,
+            authority=authority,
+        )
+    )
 
     artifact_id = str(uuid.uuid4())
     safe_filename = _safe_filename(filename)
@@ -173,7 +194,8 @@ def ingest_artifact_file(
         "size_bytes": size_bytes,
         "sha256": sha256,
         "created_by": created_by,
-        "authority": effective_authority,
+        "origin": effective_origin,
+        "source_role": effective_source_role,
         "source_type": "artifact_document",
         "user_id": user_id,
     }
@@ -192,7 +214,8 @@ def ingest_artifact_file(
         size_bytes=size_bytes,
         sha256=sha256,
         source=source,
-        authority=effective_authority,
+        origin=effective_origin,
+        source_role=effective_source_role,
         source_conversation_id=source_conversation_id,
         source_message_id=source_message_id,
         user_id=user_id,

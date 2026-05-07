@@ -194,7 +194,6 @@ function App() {
       if (form.title?.trim()) body.append('title', form.title.trim())
       if (form.description?.trim()) body.append('description', form.description.trim())
       if (form.revisionOf?.trim()) body.append('revision_of', form.revisionOf.trim())
-      body.append('authority', 'source_material')
 
       const resp = await fetch('/api/artifacts/upload', {
         method: 'POST',

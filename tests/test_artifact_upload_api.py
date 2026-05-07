@@ -84,6 +84,9 @@ def test_successful_text_upload_creates_artifact_and_returns_ok(upload_env):
     assert data["artifact"]["title"] == "Source Note"
     assert data["artifact"]["artifact_type"] == "uploaded_file"
     assert data["artifact"]["metadata"]["user_id"] == upload_env["user"]["id"]
+    assert data["artifact"]["metadata"]["origin"] == "user_upload"
+    assert data["artifact"]["metadata"]["source_role"] == "uploaded_source"
+    assert "authority" not in data["artifact"]["metadata"]
     assert data["file"]["sha256"]
     assert data["indexing"]["status"] == "indexed"
     assert data["indexing"]["event_chunks_written"] == 1

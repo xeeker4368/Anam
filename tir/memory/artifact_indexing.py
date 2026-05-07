@@ -3,6 +3,11 @@
 import re
 from datetime import datetime, timezone
 
+from tir.artifacts.source_roles import (
+    display_origin,
+    display_source_role,
+    source_trust_for_source_role,
+)
 from tir.memory.chroma import upsert_chunk
 from tir.memory.db import upsert_chunk_fts
 
@@ -36,12 +41,6 @@ def is_supported_text_file(filename: str, mime_type: str | None = None) -> bool:
     if mime_type and mime_type.startswith("text/"):
         return True
     return False
-
-
-def _source_trust_for_authority(authority: str) -> str:
-    if authority in {"correction", "current_project_state", "draft", "log"}:
-        return "firsthand"
-    return "thirdhand"
 
 
 def _normalize_text(text: str) -> str:
@@ -79,7 +78,8 @@ def _event_text(
     path: str,
     artifact_id: str,
     source: str,
-    authority: str,
+    origin: str,
+    source_role: str,
     mime_type: str | None,
     size_bytes: int,
     sha256: str,
@@ -91,7 +91,8 @@ def _event_text(
         f"File: {filename}",
         f"Stored path: {path}",
         f"Source: {source}",
-        f"Authority: {authority}",
+        f"Origin: {display_origin(origin)}",
+        f"Source role: {display_source_role(source_role)}",
         f"MIME type: {mime_type or 'unknown'}",
         f"Size: {size_bytes} bytes",
         f"SHA256: {sha256}",
@@ -105,14 +106,16 @@ def _content_text_header(
     *,
     title: str,
     filename: str,
-    authority: str,
+    origin: str,
+    source_role: str,
     artifact_id: str,
     chunk_index: int,
 ) -> str:
     return (
         f"Artifact source: {title}\n"
         f"File: {filename}\n"
-        f"Authority: {authority}\n"
+        f"Origin: {display_origin(origin)}\n"
+        f"Source role: {display_source_role(source_role)}\n"
         f"Artifact ID: {artifact_id}\n"
         f"Content chunk: {chunk_index}\n\n"
     )
@@ -156,7 +159,8 @@ def index_artifact_file(
     size_bytes: int,
     sha256: str,
     source: str,
-    authority: str,
+    origin: str,
+    source_role: str,
     source_conversation_id: str | None = None,
     source_message_id: str | None = None,
     user_id: str | None = None,
@@ -165,7 +169,7 @@ def index_artifact_file(
     """Write a retrievable artifact event chunk and optional content chunks."""
     created_at = datetime.now(timezone.utc).isoformat()
     source_type = "artifact_document"
-    source_trust = _source_trust_for_authority(authority)
+    source_trust = source_trust_for_source_role(source_role)
     base_metadata = {
         "source_type": source_type,
         "source_trust": source_trust,
@@ -173,7 +177,8 @@ def index_artifact_file(
         "title": title,
         "filename": filename,
         "path": path,
-        "authority": authority,
+        "origin": origin,
+        "source_role": source_role,
         "source_conversation_id": source_conversation_id or "",
         "source_message_id": source_message_id or "",
         "user_id": user_id or "",
@@ -201,7 +206,8 @@ def index_artifact_file(
                 path=path,
                 artifact_id=artifact_id,
                 source=source,
-                authority=authority,
+                origin=origin,
+                source_role=source_role,
                 mime_type=mime_type,
                 size_bytes=size_bytes,
                 sha256=sha256,
@@ -230,7 +236,8 @@ def index_artifact_file(
             chunk_text = _content_text_header(
                 title=title,
                 filename=filename,
-                authority=authority,
+                origin=origin,
+                source_role=source_role,
                 artifact_id=artifact_id,
                 chunk_index=index,
             ) + chunk

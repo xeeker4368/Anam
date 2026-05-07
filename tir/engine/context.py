@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from tir.config import TIMEZONE, PROJECT_ROOT
+from tir.artifacts.source_roles import display_origin, display_source_role
 from tir.memory.retrieval import retrieve
 
 import logging
@@ -171,9 +172,14 @@ def _format_retrieved_memories(chunks: list[dict]) -> str:
             metadata = chunk.get("metadata", {})
             title = chunk.get("title") or metadata.get("title", "untitled artifact")
             filename = metadata.get("filename", "unknown file")
-            authority = metadata.get("authority", "unknown")
+            source_role = display_source_role(
+                metadata.get("source_role"),
+                authority=metadata.get("authority"),
+            )
+            origin = display_origin(metadata.get("origin"))
             formatted_chunks.append(
-                f"[Artifact source: {title}, authority: {authority}, file: {filename}]\n{text}"
+                f"[Artifact source: {title}, role: {source_role}, origin: {origin}, "
+                f"file: {filename}]\n{text}"
             )
         else:
             formatted_chunks.append(f"[{source_type} — {created_at}]\n{text}")

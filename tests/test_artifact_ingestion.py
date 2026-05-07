@@ -112,7 +112,9 @@ def test_ingest_computes_hash_and_creates_artifact_metadata(temp_ingestion_env):
     assert metadata["size_bytes"] == len(b"Project Anam roadmap")
     assert metadata["sha256"] == result["file"]["sha256"]
     assert metadata["created_by"] == "user"
-    assert metadata["authority"] == "source_material"
+    assert metadata["origin"] == "user_upload"
+    assert metadata["source_role"] == "uploaded_source"
+    assert "authority" not in metadata
     assert metadata["indexing_status"] == "indexed"
     assert metadata["source_type"] == "artifact_document"
     assert metadata["user_id"] == "user-2"
@@ -154,7 +156,9 @@ def test_supported_text_file_writes_event_and_content_chunks(temp_ingestion_env)
         assert metadata["title"] == "Concept Notes"
         assert metadata["filename"] == "notes.md"
         assert metadata["path"] == result["artifact"]["path"]
-        assert metadata["authority"] == "source_material"
+        assert metadata["origin"] == "user_upload"
+        assert metadata["source_role"] == "uploaded_source"
+        assert "authority" not in metadata
         assert metadata["source_conversation_id"] == "conv-3"
         assert metadata["source_message_id"] == "msg-3"
         assert metadata["user_id"] == "user-3"
@@ -240,13 +244,15 @@ def test_uploaded_content_is_not_operational_guidance_or_core_belief(temp_ingest
         )
 
     metadata = result["artifact"]["metadata"]
-    assert metadata["authority"] == "source_material"
-    assert metadata["authority"] != "current_project_state"
+    assert metadata["origin"] == "user_upload"
+    assert metadata["source_role"] == "uploaded_source"
+    assert metadata["source_role"] != "current_project_state"
+    assert "authority" not in metadata
     assert "operational_guidance" not in metadata
     assert "core_belief" not in metadata
 
 
-def test_generated_file_defaults_to_draft_authority(temp_ingestion_env):
+def test_generated_file_defaults_to_generated_origin_and_role(temp_ingestion_env):
     with patch("tir.memory.artifact_indexing.upsert_chunk"):
         result = ingest_artifact_file(
             filename="generated-note.md",
@@ -258,7 +264,25 @@ def test_generated_file_defaults_to_draft_authority(temp_ingestion_env):
         )
 
     assert result["artifact"]["path"].startswith("generated/")
-    assert result["artifact"]["metadata"]["authority"] == "draft"
+    assert result["artifact"]["metadata"]["origin"] == "generated"
+    assert result["artifact"]["metadata"]["source_role"] == "generated_artifact"
+    assert "authority" not in result["artifact"]["metadata"]
+
+
+def test_generated_draft_defaults_to_draft_source_role(temp_ingestion_env):
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        result = ingest_artifact_file(
+            filename="generated-draft.md",
+            content=b"Generated draft",
+            artifact_type="generated_file",
+            source="generation",
+            created_by="tool",
+            status="draft",
+            workspace_root=temp_ingestion_env["workspace_root"],
+        )
+
+    assert result["artifact"]["metadata"]["origin"] == "generated"
+    assert result["artifact"]["metadata"]["source_role"] == "draft"
 
 
 def test_artifact_document_context_formatting_identifies_source_material():
@@ -271,12 +295,40 @@ def test_artifact_document_context_formatting_identifies_source_material():
                     "source_type": "artifact_document",
                     "title": "Project Anam Roadmap",
                     "filename": "roadmap.md",
-                    "authority": "source_material",
+                    "origin": "user_upload",
+                    "source_role": "uploaded_source",
                     "created_at": "2026-05-05T12:00:00+00:00",
                 },
             }
         ],
     )
 
-    assert "[Artifact source: Project Anam Roadmap, authority: source_material, file: roadmap.md]" in prompt
+    assert (
+        "[Artifact source: Project Anam Roadmap, role: Uploaded source, "
+        "origin: User upload, file: roadmap.md]"
+    ) in prompt
     assert "Artifact body text" in prompt
+    assert "authority: source_material" not in prompt
+
+
+def test_artifact_document_context_falls_back_from_old_authority_metadata():
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[
+            {
+                "text": "Old artifact body text",
+                "metadata": {
+                    "source_type": "artifact_document",
+                    "title": "Old Upload",
+                    "filename": "old.md",
+                    "authority": "source_material",
+                },
+            }
+        ],
+    )
+
+    assert (
+        "[Artifact source: Old Upload, role: Uploaded source, "
+        "origin: Unknown origin, file: old.md]"
+    ) in prompt
+    assert "authority: source_material" not in prompt

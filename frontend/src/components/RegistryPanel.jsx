@@ -42,6 +42,45 @@ function formatBytes(value) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function sourceRoleFromAuthority(authority) {
+  const mapping = {
+    source_material: 'uploaded_source',
+    draft: 'draft',
+    log: 'log',
+    correction: 'correction',
+    current_project_state: 'current_project_state',
+    operational_guidance: 'runtime_guidance',
+    unknown: 'unknown',
+  }
+  return mapping[authority || 'unknown'] || 'unknown'
+}
+
+function humanizeSourceValue(value) {
+  const labels = {
+    user_upload: 'User upload',
+    generated: 'Generated',
+    autonomous_research: 'Autonomous research',
+    runtime: 'Runtime',
+    conversation: 'Conversation',
+    tool: 'Tool',
+    system: 'System',
+    uploaded_source: 'Uploaded source',
+    generated_artifact: 'Generated artifact',
+    research_reference: 'Research reference',
+    runtime_guidance: 'Runtime guidance',
+    current_project_state: 'Current project state',
+    correction: 'Correction',
+    draft: 'Draft',
+    log: 'Log',
+    unknown: 'Unknown',
+  }
+  return labels[value] || String(value || 'Unknown').replaceAll('_', ' ')
+}
+
+function artifactSourceRole(metadata) {
+  return metadata.source_role || sourceRoleFromAuthority(metadata.authority)
+}
+
 function ArtifactDetailRow({ label, value }) {
   if (value === null || value === undefined || value === '') return null
   return (
@@ -83,7 +122,14 @@ function ArtifactDetails({ artifact }) {
         </ArtifactDetailGroup>
 
         <ArtifactDetailGroup title="Source / Provenance">
-          <ArtifactDetailRow label="Authority" value={metadata.authority} />
+          <ArtifactDetailRow
+            label="Source role"
+            value={humanizeSourceValue(artifactSourceRole(metadata))}
+          />
+          <ArtifactDetailRow
+            label="Origin"
+            value={humanizeSourceValue(metadata.origin)}
+          />
           <ArtifactDetailRow label="Source" value={artifact.source} />
           <ArtifactDetailRow label="Created by" value={metadata.created_by} />
           <ArtifactDetailRow label="Source type" value={metadata.source_type} />
@@ -122,7 +168,9 @@ function ArtifactCard({ artifact }) {
       </div>
       <div className="registry-badge-row">
         <RegistryBadge>{artifact.artifact_type || 'generic'}</RegistryBadge>
-        {metadata.authority && <RegistryBadge>{metadata.authority}</RegistryBadge>}
+        {(metadata.source_role || metadata.authority) && (
+          <RegistryBadge>{humanizeSourceValue(artifactSourceRole(metadata))}</RegistryBadge>
+        )}
         {metadata.indexing_status && (
           <RegistryBadge tone={metadata.indexing_status}>
             {metadata.indexing_status}
@@ -239,7 +287,7 @@ function ArtifactUpload({ uploading, uploadError, uploadResult, onUpload }) {
     <section className="artifact-upload">
       <div className="artifact-upload-header">
         <h2>Upload Artifact</h2>
-        <span>source_material</span>
+        <span>Source role: Uploaded source</span>
       </div>
       <form onSubmit={handleSubmit}>
         <label className="artifact-upload-field">
