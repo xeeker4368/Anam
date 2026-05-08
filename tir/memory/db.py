@@ -21,6 +21,7 @@ from pathlib import Path
 from contextlib import contextmanager
 
 from tir.config import ARCHIVE_DB, WORKING_DB, DATA_DIR
+from tir.memory.migrations import run_working_migrations
 
 
 # ---------------------------------------------------------------------------
@@ -452,6 +453,7 @@ def _init_working():
         pass
 
     conn.commit()
+    run_working_migrations(conn)
     conn.close()
 
 
