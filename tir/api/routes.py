@@ -26,6 +26,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 
+from tir.api.auth import (
+    API_SECRET_HEADER,
+    is_api_secret_configured,
+    is_public_api_path,
+    verify_api_secret,
+)
 from tir.config import (
     CONVERSATION_ITERATION_LIMIT,
     DEFAULT_USER,
@@ -139,11 +145,32 @@ async def request_validation_handler(request: Request, exc: RequestValidationErr
     return await request_validation_exception_handler(request, exc)
 
 
+@app.middleware("http")
+async def api_secret_middleware(request: Request, call_next):
+    """Protect non-public API routes with ANAM_API_SECRET when configured."""
+    path = request.url.path
+    if (
+        request.method == "OPTIONS"
+        or not path.startswith("/api")
+        or is_public_api_path(path)
+        or not is_api_secret_configured()
+    ):
+        return await call_next(request)
+
+    provided = request.headers.get(API_SECRET_HEADER)
+    if not verify_api_secret(provided):
+        return _error_response(401, "unauthorized")
+
+    return await call_next(request)
+
+
 @app.on_event("startup")
 def startup():
     init_databases()
     app.state.registry = SkillRegistry.from_directory(SKILLS_DIR)
     tool_count = len(app.state.registry.list_tools())
+    if not is_api_secret_configured():
+        logger.warning("ANAM_API_SECRET is not configured; API routes are unauthenticated.")
     logger.info(f"Tír API started — {tool_count} tools loaded")
 
 

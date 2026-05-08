@@ -3,6 +3,7 @@ import Chat from './components/Chat'
 import DebugPanel from './components/DebugPanel'
 import RegistryPanel from './components/RegistryPanel'
 import SystemPanel from './components/SystemPanel'
+import { apiFetch, readErrorMessage } from './api'
 import './styles.css'
 
 const DEFAULT_REVIEW_FILTERS = {
@@ -86,23 +87,6 @@ function App() {
   const isMobile = useIsMobile()
   useViewportHeight()
 
-  async function readErrorMessage(resp, fallback) {
-    const fallbackMessage = fallback || `HTTP ${resp.status} ${resp.statusText}`.trim()
-    try {
-      const contentType = resp.headers.get('content-type') || ''
-      if (contentType.includes('application/json')) {
-        const data = await resp.json()
-        const message = data?.detail || data?.message || data?.error
-        return typeof message === 'string' ? message : JSON.stringify(message || data)
-      }
-
-      const text = await resp.text()
-      return text.trim() || fallbackMessage
-    } catch {
-      return fallbackMessage
-    }
-  }
-
   useEffect(() => {
     fetchConversations()
     fetchHealth()
@@ -114,7 +98,7 @@ function App() {
 
   async function fetchConversations() {
     try {
-      const resp = await fetch('/api/conversations')
+      const resp = await apiFetch('/api/conversations')
       if (!resp.ok) {
         throw new Error(await readErrorMessage(resp, 'Failed to fetch conversations'))
       }
@@ -132,7 +116,7 @@ function App() {
 
   async function fetchHealth() {
     try {
-      const resp = await fetch('/api/health')
+      const resp = await apiFetch('/api/health')
       setHealth(await resp.json())
       healthWarnedRef.current = false
     } catch (e) {
@@ -152,7 +136,7 @@ function App() {
 
   async function fetchUsers() {
     try {
-      const resp = await fetch('/api/users')
+      const resp = await apiFetch('/api/users')
       if (!resp.ok) {
         throw new Error(await readErrorMessage(resp, 'Failed to fetch users'))
       }
@@ -177,8 +161,8 @@ function App() {
     setRegistryError(null)
     try {
       const [artifactResp, openLoopResp] = await Promise.all([
-        fetch('/api/artifacts'),
-        fetch('/api/open-loops'),
+        apiFetch('/api/artifacts'),
+        apiFetch('/api/open-loops'),
       ])
 
       if (!artifactResp.ok) {
@@ -219,7 +203,7 @@ function App() {
       if (form.description?.trim()) body.append('description', form.description.trim())
       if (form.revisionOf?.trim()) body.append('revision_of', form.revisionOf.trim())
 
-      const resp = await fetch('/api/artifacts/upload', {
+      const resp = await apiFetch('/api/artifacts/upload', {
         method: 'POST',
         body,
       })
@@ -251,9 +235,9 @@ function App() {
     const behavioralGuidancePromise = fetchBehavioralGuidanceProposals()
     try {
       const [healthResp, memoryResp, capabilitiesResp] = await Promise.all([
-        fetch('/api/system/health'),
-        fetch('/api/system/memory'),
-        fetch('/api/system/capabilities'),
+        apiFetch('/api/system/health'),
+        apiFetch('/api/system/memory'),
+        apiFetch('/api/system/capabilities'),
       ])
 
       if (!healthResp.ok) {
@@ -310,7 +294,7 @@ function App() {
       params.set('limit', '50')
 
       const query = params.toString()
-      const resp = await fetch(`/api/review${query ? `?${query}` : ''}`)
+      const resp = await apiFetch(`/api/review${query ? `?${query}` : ''}`)
       if (!resp.ok) {
         throw new Error(await readErrorMessage(resp, 'Failed to fetch review queue'))
       }
@@ -348,7 +332,7 @@ function App() {
         created_by: 'operator',
       }
 
-      const resp = await fetch('/api/review', {
+      const resp = await apiFetch('/api/review', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -379,7 +363,7 @@ function App() {
     setReviewUpdatingId(itemId)
     setReviewError(null)
     try {
-      const resp = await fetch(`/api/review/${encodeURIComponent(itemId)}`, {
+      const resp = await apiFetch(`/api/review/${encodeURIComponent(itemId)}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -416,7 +400,7 @@ function App() {
       params.set('limit', '50')
 
       const query = params.toString()
-      const resp = await fetch(
+      const resp = await apiFetch(
         `/api/behavioral-guidance/proposals${query ? `?${query}` : ''}`
       )
       if (!resp.ok) {
@@ -457,7 +441,7 @@ function App() {
         review_decision_reason: form.reviewDecisionReason || null,
       }
 
-      const resp = await fetch(
+      const resp = await apiFetch(
         `/api/behavioral-guidance/proposals/${encodeURIComponent(proposalId)}`,
         {
           method: 'PATCH',
@@ -492,7 +476,7 @@ function App() {
   async function handleCloseConversation() {
     if (!activeConversationId) return
     try {
-      const resp = await fetch(`/api/conversations/${activeConversationId}/close`, {
+      const resp = await apiFetch(`/api/conversations/${activeConversationId}/close`, {
         method: 'POST',
       })
       if (!resp.ok) {
@@ -511,7 +495,7 @@ function App() {
 
   async function handleViewConversation(conv) {
     try {
-      const resp = await fetch(`/api/conversations/${conv.id}/messages`)
+      const resp = await apiFetch(`/api/conversations/${conv.id}/messages`)
       if (!resp.ok) {
         throw new Error(await readErrorMessage(resp, 'Failed to fetch messages'))
       }

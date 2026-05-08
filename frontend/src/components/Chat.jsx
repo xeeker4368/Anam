@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { apiFetch, readErrorMessage } from '../api'
 
 function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRefresh }) {
   const [messages, setMessages] = useState([])
@@ -17,23 +18,6 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
     const text = typeof value === 'string' ? value : JSON.stringify(value)
     if (!text) return ''
     return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text
-  }
-
-  async function readErrorMessage(resp, fallback) {
-    const fallbackMessage = fallback || `HTTP ${resp.status} ${resp.statusText}`.trim()
-    try {
-      const contentType = resp.headers.get('content-type') || ''
-      if (contentType.includes('application/json')) {
-        const data = await resp.json()
-        const message = data?.detail || data?.message || data?.error
-        return typeof message === 'string' ? message : JSON.stringify(message || data)
-      }
-
-      const text = await resp.text()
-      return text.trim() || fallbackMessage
-    } catch {
-      return fallbackMessage
-    }
   }
 
   function publishDebug(nextDebug) {
@@ -160,7 +144,7 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
 
   async function fetchMessages(convId) {
     try {
-      const resp = await fetch(`/api/conversations/${convId}/messages`)
+      const resp = await apiFetch(`/api/conversations/${convId}/messages`)
       if (!resp.ok) {
         throw new Error(await readErrorMessage(resp, 'Failed to fetch messages'))
       }
@@ -198,7 +182,7 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
     setMessages(prev => [...prev, { role: 'assistant', content: '', streaming: true }])
 
     try {
-      const resp = await fetch('/api/chat/stream', {
+      const resp = await apiFetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

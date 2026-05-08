@@ -1210,6 +1210,52 @@ body {
   font-style: italic;
 }
 
+.system-api-secret {
+  display: grid;
+  gap: 8px;
+  background: #151528;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+.system-api-secret-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.system-api-secret-header h3 {
+  color: #d0d0d0;
+  font-size: 13px;
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.system-api-secret-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  min-width: 0;
+}
+
+.system-api-secret-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.system-api-secret-note {
+  color: #9aa6b2;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .system-review-panel {
   display: grid;
   gap: 12px;
@@ -1526,7 +1572,8 @@ body {
 
   .system-review-filters,
   .system-review-form-grid,
-  .system-guidance-filters {
+  .system-guidance-filters,
+  .system-api-secret-form {
     grid-template-columns: 1fr;
   }
 }

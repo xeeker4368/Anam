@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { clearApiSecret, getApiSecret, setApiSecret } from '../api'
 
 const REVIEW_STATUSES = ['open', 'reviewed', 'dismissed', 'resolved']
 const REVIEW_CATEGORIES = [
@@ -617,6 +618,60 @@ function BehavioralGuidanceSection({
   )
 }
 
+function ApiSecretControl() {
+  const [secretInput, setSecretInput] = useState('')
+  const [hasSavedSecret, setHasSavedSecret] = useState(Boolean(getApiSecret()))
+  const [message, setMessage] = useState(null)
+
+  function saveSecret(e) {
+    e.preventDefault()
+    setApiSecret(secretInput)
+    setHasSavedSecret(Boolean(getApiSecret()))
+    setSecretInput('')
+    setMessage(secretInput.trim() ? 'API secret saved for this browser.' : 'API secret cleared.')
+  }
+
+  function clearSecret() {
+    clearApiSecret()
+    setSecretInput('')
+    setHasSavedSecret(false)
+    setMessage('API secret cleared.')
+  }
+
+  return (
+    <section className="system-api-secret">
+      <div className="system-api-secret-header">
+        <h3>API Secret</h3>
+        <SystemBadge
+          value={hasSavedSecret ? 'available' : 'not_configured'}
+          label={hasSavedSecret ? 'saved locally' : 'not saved'}
+        />
+      </div>
+      <form className="system-api-secret-form" onSubmit={saveSecret}>
+        <label className="system-review-field">
+          <span>Shared secret</span>
+          <input
+            type="password"
+            value={secretInput}
+            onChange={e => setSecretInput(e.target.value)}
+            placeholder={hasSavedSecret ? 'Saved; enter a new value to replace' : 'Enter API secret'}
+            autoComplete="off"
+          />
+        </label>
+        <div className="system-api-secret-actions">
+          <button type="submit" className="btn btn-small">
+            Save
+          </button>
+          <button type="button" className="btn btn-small" onClick={clearSecret}>
+            Clear
+          </button>
+        </div>
+      </form>
+      {message && <p className="system-api-secret-note">{message}</p>}
+    </section>
+  )
+}
+
 function SystemPanel({
   health,
   memory,
@@ -666,6 +721,8 @@ function SystemPanel({
       {!health && !memory && !capabilities && !loading && !error && (
         <p className="debug-note">Open or refresh this panel to load system status.</p>
       )}
+
+      <ApiSecretControl />
 
       {health && (
         <SystemSection title="Health" summary={healthSummary} defaultExpanded>
