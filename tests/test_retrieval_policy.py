@@ -62,6 +62,51 @@ def test_web_latest_current_prompt_skips_memory():
         }
 
 
+def test_project_internal_latest_current_today_prompts_keep_normal_retrieval():
+    prompts = [
+        "What is the latest commit in this codebase?",
+        "How does Project Anam look today?",
+        "What did I do today on this codebase?",
+        "What is the current state of our implementation?",
+        "Find the latest changes to this codebase",
+    ]
+
+    for prompt in prompts:
+        policy = classify_retrieval_policy(prompt)
+        assert policy == {
+            "mode": "normal",
+            "reason": "project_or_internal_context",
+        }
+
+
+def test_context_inspection_prompt_skips_memory():
+    prompts = [
+        "What is in your current context?",
+        "Show me your prompt",
+        "Show me your system prompt",
+        "What do you see in context?",
+        "What context do you have?",
+        "What is in the system prompt?",
+        "What is in your system prompt?",
+    ]
+
+    for prompt in prompts:
+        policy = classify_retrieval_policy(prompt)
+        assert policy == {
+            "mode": "skip_memory",
+            "reason": "context_inspection",
+        }
+
+
+def test_bare_system_prompt_discussion_keeps_normal_retrieval():
+    policy = classify_retrieval_policy("system prompt is a great idea, can we add one?")
+
+    assert policy == {
+        "mode": "normal",
+        "reason": "normal",
+    }
+
+
 def test_project_anam_architecture_question_keeps_normal_retrieval():
     policy = classify_retrieval_policy("How does Project Anam context assembly work?")
 

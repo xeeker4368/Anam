@@ -12,11 +12,18 @@ SKIP_MEMORY = "skip_memory"
 _PROJECT_INTERNAL_TERMS = (
     "project anam",
     "tir/",
+    "this repository",
+    "our repository",
     "this repo",
+    "our repo",
+    "codebase",
     "our implementation",
+    "current state of our implementation",
     "what we built",
     "this codebase",
     "the codebase",
+    "latest commit",
+    "latest changes",
     "memory architecture",
 )
 
@@ -55,6 +62,17 @@ _WEB_CURRENT_PATTERNS = (
     r"\bon\s+the\s+web\b",
 )
 
+_CONTEXT_INSPECTION_PATTERNS = (
+    r"\bwhat\s+is\s+in\s+your\s+current\s+context\b",
+    r"\bwhat(?:'s|\s+is)\s+in\s+your\s+context\b",
+    r"\bshow\s+me\s+your\s+prompt\b",
+    r"\bwhat\s+do\s+you\s+see\s+in\s+context\b",
+    r"\bwhat\s+context\s+do\s+you\s+have\b",
+    r"\bwhat\s+is\s+in\s+the\s+system\s+prompt\b",
+    r"\bwhat(?:'s|\s+is)\s+in\s+your\s+system\s+prompt\b",
+    r"\bshow\s+me\s+your\s+system\s+prompt\b",
+)
+
 
 def classify_retrieval_policy(user_text: str) -> dict:
     """Classify whether normal memory retrieval should run for a turn."""
@@ -64,16 +82,27 @@ def classify_retrieval_policy(user_text: str) -> dict:
     if get_url_prefetch_candidate(text):
         return {"mode": SKIP_MEMORY, "reason": "direct_url_content"}
 
+    if _is_context_inspection_query(lowered):
+        return {"mode": SKIP_MEMORY, "reason": "context_inspection"}
+
     if _is_direct_moltbook_state_query(lowered):
         return {"mode": SKIP_MEMORY, "reason": "direct_moltbook_state"}
+
+    if _is_project_internal_query(lowered):
+        return {"mode": NORMAL, "reason": "project_or_internal_context"}
 
     if _is_direct_web_current_query(lowered):
         return {"mode": SKIP_MEMORY, "reason": "direct_web_current"}
 
-    if any(term in lowered for term in _PROJECT_INTERNAL_TERMS):
-        return {"mode": NORMAL, "reason": "project_or_internal_context"}
-
     return {"mode": NORMAL, "reason": "normal"}
+
+
+def _is_context_inspection_query(lowered: str) -> bool:
+    """Detect questions about the current prompt/context itself."""
+    return any(
+        re.search(pattern, lowered)
+        for pattern in _CONTEXT_INSPECTION_PATTERNS
+    )
 
 
 def _is_direct_moltbook_state_query(lowered: str) -> bool:
@@ -97,17 +126,14 @@ def _is_direct_moltbook_state_query(lowered: str) -> bool:
     return False
 
 
+def _is_project_internal_query(lowered: str) -> bool:
+    """Detect prompts about this project/repo/implementation."""
+    return any(term in lowered for term in _PROJECT_INTERNAL_TERMS)
+
+
 def _is_direct_web_current_query(lowered: str) -> bool:
     """Detect direct requests for current outside-web information."""
-    if any(term in lowered for term in _PROJECT_INTERNAL_TERMS):
-        explicit_web = (
-            "web" in lowered
-            or "latest" in lowered
-            or "current" in lowered
-            or "today" in lowered
-            or "now" in lowered
-        )
-        if not explicit_web:
-            return False
+    if _is_project_internal_query(lowered):
+        return False
 
     return any(re.search(pattern, lowered) for pattern in _WEB_CURRENT_PATTERNS)
