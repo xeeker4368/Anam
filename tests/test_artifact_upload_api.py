@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from tir.artifacts.governance_blocklist import GOVERNANCE_FILE_REJECTION_MESSAGE
 from tir.artifacts.ingestion import MAX_INGEST_BYTES
 from tir.workspace.service import ensure_workspace
 
@@ -65,6 +66,14 @@ def _fts_rows(working_db):
         conn.close()
 
 
+def _artifact_count(working_db):
+    conn = sqlite3.connect(working_db)
+    try:
+        return conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0]
+    finally:
+        conn.close()
+
+
 def test_successful_text_upload_creates_artifact_and_returns_ok(upload_env):
     with patch("tir.memory.artifact_indexing.upsert_chunk"):
         response = _post_upload(
@@ -92,6 +101,26 @@ def test_successful_text_upload_creates_artifact_and_returns_ok(upload_env):
     assert data["indexing"]["event_chunks_written"] == 1
     assert data["indexing"]["content_chunks_written"] == 1
     assert str(upload_env["workspace_root"]) not in response.text
+
+
+def test_upload_rejects_governance_runtime_file(upload_env):
+    with patch("tir.memory.artifact_indexing.upsert_chunk") as upsert_chunk:
+        response = _post_upload(
+            upload_env["client"],
+            filename="soul.md",
+            content=b"governance content",
+            data={"user_id": upload_env["user"]["id"]},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "error": GOVERNANCE_FILE_REJECTION_MESSAGE,
+    }
+    assert _artifact_count(upload_env["working_db"]) == 0
+    assert _fts_rows(upload_env["working_db"]) == []
+    assert not any(path.is_file() for path in upload_env["workspace_root"].rglob("*"))
+    upsert_chunk.assert_not_called()
 
 
 def test_uploaded_text_is_retrievable_by_marker(upload_env):

@@ -12,6 +12,10 @@ from tir.artifacts.service import (
     ALLOWED_ARTIFACT_TYPES,
     create_artifact,
 )
+from tir.artifacts.governance_blocklist import (
+    GOVERNANCE_FILE_REJECTION_MESSAGE,
+    is_governance_file_name,
+)
 from tir.config import WORKSPACE_DIR
 from tir.artifacts.source_roles import (
     default_origin,
@@ -138,6 +142,9 @@ def ingest_artifact_file(
     workspace_root: Path = WORKSPACE_DIR,
 ) -> dict:
     """Save, register, and index an uploaded or generated artifact file."""
+    if is_governance_file_name(filename):
+        raise ArtifactIngestionError(GOVERNANCE_FILE_REJECTION_MESSAGE)
+
     if not isinstance(content, bytes):
         raise ArtifactIngestionError("content must be bytes")
     if len(content) > MAX_INGEST_BYTES:

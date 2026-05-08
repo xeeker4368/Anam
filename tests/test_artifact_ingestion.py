@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tir.artifacts.governance_blocklist import GOVERNANCE_FILE_REJECTION_MESSAGE
 from tir.artifacts.ingestion import ArtifactIngestionError, ingest_artifact_file
 from tir.engine.context import build_system_prompt
 from tir.workspace.service import ensure_workspace
@@ -44,6 +45,14 @@ def _fts_rows(working_db):
         conn.close()
 
 
+def _artifact_count(working_db):
+    conn = sqlite3.connect(working_db)
+    try:
+        return conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0]
+    finally:
+        conn.close()
+
+
 def test_ingest_saves_file_to_controlled_upload_path(temp_ingestion_env):
     with patch("tir.memory.artifact_indexing.upsert_chunk"):
         result = ingest_artifact_file(
@@ -61,6 +70,44 @@ def test_ingest_saves_file_to_controlled_upload_path(temp_ingestion_env):
     assert f"/{artifact['artifact_id']}/Project Notes.md" in path
     assert (temp_ingestion_env["workspace_root"] / path).read_bytes() == b"alpha project notes"
     assert result["file"]["bytes"] == len(b"alpha project notes")
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "soul.md",
+        "OPERATIONAL_GUIDANCE.md",
+        "BEHAVIORAL_GUIDANCE.md",
+        "PROJECT_STATE.md",
+        "Soul.md",
+        "path/to/soul.md",
+    ],
+)
+def test_ingest_rejects_governance_runtime_filenames(temp_ingestion_env, filename):
+    with patch("tir.memory.artifact_indexing.upsert_chunk") as upsert_chunk:
+        with pytest.raises(ArtifactIngestionError, match=GOVERNANCE_FILE_REJECTION_MESSAGE):
+            ingest_artifact_file(
+                filename=filename,
+                content=b"governance content",
+                workspace_root=temp_ingestion_env["workspace_root"],
+            )
+
+    assert _artifact_count(temp_ingestion_env["working_db"]) == 0
+    assert _fts_rows(temp_ingestion_env["working_db"]) == []
+    assert not any(path.is_file() for path in temp_ingestion_env["workspace_root"].rglob("*"))
+    upsert_chunk.assert_not_called()
+
+
+def test_ingest_allows_near_miss_governance_filename(temp_ingestion_env):
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        result = ingest_artifact_file(
+            filename="soul_notes.md",
+            content=b"ordinary notes",
+            workspace_root=temp_ingestion_env["workspace_root"],
+        )
+
+    assert result["artifact"]["metadata"]["safe_filename"] == "soul_notes.md"
+    assert _artifact_count(temp_ingestion_env["working_db"]) == 1
 
 
 @pytest.mark.parametrize("filename", ["../secret.txt", "..\\secret.txt"])
@@ -86,10 +133,10 @@ def test_ingest_rejects_empty_or_unsafe_filename(temp_ingestion_env, filename):
 def test_ingest_computes_hash_and_creates_artifact_metadata(temp_ingestion_env):
     with patch("tir.memory.artifact_indexing.upsert_chunk"):
         result = ingest_artifact_file(
-            filename="roadmap.md",
+            filename="planning-notes.md",
             content=b"Project Anam roadmap",
             user_id="user-2",
-            title="Roadmap",
+            title="Planning Notes",
             description="Uploaded roadmap",
             source_conversation_id="conv-2",
             source_message_id="msg-2",
@@ -102,13 +149,13 @@ def test_ingest_computes_hash_and_creates_artifact_metadata(temp_ingestion_env):
     metadata = artifact["metadata"]
     assert artifact["artifact_type"] == "uploaded_file"
     assert artifact["status"] == "active"
-    assert artifact["title"] == "Roadmap"
+    assert artifact["title"] == "Planning Notes"
     assert artifact["source"] == "upload"
     assert artifact["source_conversation_id"] == "conv-2"
     assert artifact["source_message_id"] == "msg-2"
     assert artifact["source_tool_name"] == "upload_helper"
-    assert metadata["filename"] == "roadmap.md"
-    assert metadata["safe_filename"] == "roadmap.md"
+    assert metadata["filename"] == "planning-notes.md"
+    assert metadata["safe_filename"] == "planning-notes.md"
     assert metadata["size_bytes"] == len(b"Project Anam roadmap")
     assert metadata["sha256"] == result["file"]["sha256"]
     assert metadata["created_by"] == "user"
