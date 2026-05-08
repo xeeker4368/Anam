@@ -289,6 +289,15 @@ def _print_backup_summary(summary: dict):
         else:
             print(f"{key}: missing")
 
+    governance_files = manifest.get("governance_files", {})
+    if governance_files:
+        print("Governance files:")
+        for name, entry in governance_files.items():
+            if entry["exists"]:
+                print(f"  {name}: copied ({entry.get('bytes', 0)} bytes)")
+            else:
+                print(f"  {name}: missing")
+
 
 def _print_restore_summary(summary: dict):
     """Print a readable restore summary."""

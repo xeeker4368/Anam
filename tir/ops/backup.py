@@ -22,6 +22,16 @@ EXCLUDED_NAMES = {
     "logs",
     "secrets",
 }
+GOVERNANCE_FILE_NAMES = (
+    "BEHAVIORAL_GUIDANCE.md",
+    "OPERATIONAL_GUIDANCE.md",
+    "soul.md",
+    "PROJECT_STATE.md",
+    "DECISIONS.md",
+    "ROADMAP.md",
+    "ACTIVE_TASK.md",
+    "CODING_ASSISTANT_RULES.md",
+)
 
 
 class BackupError(RuntimeError):
@@ -115,6 +125,39 @@ def _copy_optional_dir(source: Path, destination: Path, relative_destination: st
     return info
 
 
+def _copy_optional_file(source: Path, destination: Path, relative_destination: str) -> dict:
+    info = {
+        "source": str(source),
+        "backup": relative_destination,
+        "exists": source.exists(),
+    }
+    if not source.exists():
+        return info
+
+    if not source.is_file():
+        raise BackupError(f"Expected file, found non-file: {source}")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    info.update({
+        "bytes": destination.stat().st_size,
+        "sha256": _sha256_file(destination),
+    })
+    return info
+
+
+def _backup_governance_files(backup_path: Path) -> dict:
+    governance_dir = backup_path / "governance"
+    entries = {}
+    for name in GOVERNANCE_FILE_NAMES:
+        entries[name] = _copy_optional_file(
+            Path(config.PROJECT_ROOT) / name,
+            governance_dir / name,
+            f"governance/{name}",
+        )
+    return entries
+
+
 def _build_manifest(backup_path: Path, created_at: str) -> dict:
     runtime_dir = backup_path / "runtime"
     manifest = {
@@ -145,6 +188,7 @@ def _build_manifest(backup_path: Path, created_at: str) -> dict:
         backup_path / "workspace",
         "workspace",
     )
+    manifest["governance_files"] = _backup_governance_files(backup_path)
     return manifest
 
 
@@ -199,7 +243,7 @@ def _load_manifest(backup_path: Path) -> dict:
 
 def _planned_restore_targets(manifest: dict) -> list[dict[str, Any]]:
     paths = manifest.get("paths", {})
-    return [
+    targets = [
         {
             "key": "working_db",
             "kind": "file",
@@ -229,6 +273,17 @@ def _planned_restore_targets(manifest: dict) -> list[dict[str, Any]]:
             "exists": paths.get("workspace_dir", {}).get("exists", False),
         },
     ]
+
+    for name, entry in manifest.get("governance_files", {}).items():
+        targets.append({
+            "key": f"governance:{name}",
+            "kind": "file",
+            "source": entry.get("backup"),
+            "destination": Path(config.PROJECT_ROOT) / name,
+            "exists": entry.get("exists", False),
+        })
+
+    return targets
 
 
 def _restore_file(source: Path, destination: Path) -> None:
