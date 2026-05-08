@@ -117,6 +117,17 @@ def test_missing_operational_guidance_is_omitted():
     assert "You are currently in conversation with Lyle." in prompt
 
 
+def test_behavioral_guidance_file_is_not_loaded_into_prompt():
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+    )
+
+    assert "This file contains reviewed guidance proposed by the AI" not in prompt
+    assert "BEHAVIORAL_GUIDANCE" not in prompt
+
+
 def test_budget_retrieved_chunks_caps_total_context_chars():
     chunks = [
         {"chunk_id": "1", "text": "a" * 400, "metadata": {"source_type": "conversation"}},

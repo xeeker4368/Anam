@@ -18,6 +18,12 @@ Commands:
                     Checkpoint active conversations into retrieval
     backup           Back up runtime state
     restore          Restore runtime state from a backup
+    behavioral-guidance-proposal-list
+                    List behavioral guidance proposals
+    behavioral-guidance-proposal-add
+                    Record an AI-proposed behavioral guidance change
+    behavioral-guidance-proposal-update
+                    Update proposal review status
 """
 
 import argparse
@@ -45,6 +51,12 @@ from tir.review.service import (
     create_review_item,
     list_review_items,
     update_review_item_status,
+)
+from tir.behavioral_guidance.service import (
+    BehavioralGuidanceValidationError,
+    create_behavioral_guidance_proposal,
+    list_behavioral_guidance_proposals,
+    update_behavioral_guidance_proposal_status,
 )
 
 
@@ -316,6 +328,18 @@ def _print_review_item(item: dict):
     )
 
 
+def _print_behavioral_guidance_proposal(proposal: dict):
+    """Print one compact behavioral guidance proposal row."""
+    print(
+        f"{proposal['proposal_id']}  "
+        f"status={proposal['status']}  "
+        f"type={proposal['proposal_type']}  "
+        f"channel={proposal['source_channel']}  "
+        f"created={proposal['created_at']}  "
+        f"text={proposal['proposal_text']}"
+    )
+
+
 def _parse_metadata_json(raw: str | None) -> dict | None:
     """Parse optional CLI metadata JSON."""
     if raw is None:
@@ -434,6 +458,77 @@ def cmd_review_update(args):
     _print_review_item(item)
 
 
+def cmd_behavioral_guidance_proposal_list(args):
+    """List behavioral guidance proposals."""
+    try:
+        proposals = list_behavioral_guidance_proposals(
+            status=args.status,
+            proposal_type=args.proposal_type,
+            limit=args.limit,
+        )
+    except BehavioralGuidanceValidationError as exc:
+        print(f"Behavioral guidance proposal list failed: {exc}")
+        sys.exit(1)
+
+    if not proposals:
+        print("No behavioral guidance proposals.")
+        return
+
+    for proposal in proposals:
+        _print_behavioral_guidance_proposal(proposal)
+
+
+def cmd_behavioral_guidance_proposal_add(args):
+    """Record an AI-proposed behavioral guidance change."""
+    try:
+        metadata = _parse_metadata_json(args.metadata_json)
+        proposal = create_behavioral_guidance_proposal(
+            proposal_type=args.proposal_type,
+            proposal_text=args.proposal_text,
+            target_existing_guidance_id=args.target_existing_guidance_id,
+            target_text=args.target_text,
+            rationale=args.rationale,
+            source_experience_summary=args.source_experience_summary,
+            source_user_id=args.source_user_id,
+            source_conversation_id=args.source_conversation_id,
+            source_message_id=args.source_message_id,
+            source_channel=args.source_channel,
+            risk_if_added=args.risk_if_added,
+            risk_if_not_added=args.risk_if_not_added,
+            metadata=metadata,
+        )
+    except (BehavioralGuidanceValidationError, ValueError) as exc:
+        print(f"Behavioral guidance proposal add failed: {exc}")
+        sys.exit(1)
+
+    print("Behavioral guidance proposal recorded")
+    _print_behavioral_guidance_proposal(proposal)
+
+
+def cmd_behavioral_guidance_proposal_update(args):
+    """Update behavioral guidance proposal review status."""
+    try:
+        proposal = update_behavioral_guidance_proposal_status(
+            args.proposal_id,
+            args.status,
+            reviewed_by_user_id=args.reviewed_by_user_id,
+            reviewed_by_role=args.reviewed_by_role,
+            review_decision_reason=args.review_decision_reason,
+            applied_by_user_id=args.applied_by_user_id,
+            apply_note=args.apply_note,
+        )
+    except BehavioralGuidanceValidationError as exc:
+        print(f"Behavioral guidance proposal update failed: {exc}")
+        sys.exit(1)
+
+    if proposal is None:
+        print(f"Behavioral guidance proposal update failed: item not found: {args.proposal_id}")
+        sys.exit(1)
+
+    print("Behavioral guidance proposal updated")
+    _print_behavioral_guidance_proposal(proposal)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -524,6 +619,51 @@ def main():
     p.add_argument("item_id", help="Review item ID")
     p.add_argument("--status", required=True, help="New status")
 
+    # behavioral-guidance-proposal-list
+    p = sub.add_parser(
+        "behavioral-guidance-proposal-list",
+        help="List behavioral guidance proposals",
+    )
+    p.add_argument("--status", default=None, help="Filter by status")
+    p.add_argument("--proposal-type", default=None, help="Filter by proposal type")
+    p.add_argument("--limit", type=int, default=50, help="Max proposals to show")
+
+    # behavioral-guidance-proposal-add
+    p = sub.add_parser(
+        "behavioral-guidance-proposal-add",
+        help="Record an AI-proposed behavioral guidance change",
+    )
+    p.add_argument("--proposal-type", required=True, help="addition, removal, or revision")
+    p.add_argument("--proposal-text", required=True, help="Atomic proposed change text")
+    p.add_argument("--target-existing-guidance-id", default=None, help="Optional target ID")
+    p.add_argument("--target-text", default=None, help="Optional target guidance text")
+    p.add_argument("--rationale", required=True, help="Proposal rationale")
+    p.add_argument("--source-experience-summary", default=None, help="Source experience summary")
+    p.add_argument("--source-user-id", default=None, help="Source user ID")
+    p.add_argument("--source-conversation-id", default=None, help="Source conversation ID")
+    p.add_argument("--source-message-id", default=None, help="Source message ID")
+    p.add_argument(
+        "--source-channel",
+        default="unknown",
+        help="Source channel: chat, imessage, or unknown",
+    )
+    p.add_argument("--risk-if-added", default=None, help="Risk if the change is added")
+    p.add_argument("--risk-if-not-added", default=None, help="Risk if the change is not added")
+    p.add_argument("--metadata-json", default=None, help="Optional metadata JSON object")
+
+    # behavioral-guidance-proposal-update
+    p = sub.add_parser(
+        "behavioral-guidance-proposal-update",
+        help="Update behavioral guidance proposal review status",
+    )
+    p.add_argument("proposal_id", help="Behavioral guidance proposal ID")
+    p.add_argument("--status", required=True, help="New status")
+    p.add_argument("--reviewed-by-user-id", default=None, help="Reviewing admin user ID")
+    p.add_argument("--reviewed-by-role", default="admin", help="Reviewing role")
+    p.add_argument("--review-decision-reason", default=None, help="Review decision reason")
+    p.add_argument("--applied-by-user-id", default=None, help="Applying admin user ID")
+    p.add_argument("--apply-note", default=None, help="Application note")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -550,6 +690,9 @@ def main():
         "review-list": cmd_review_list,
         "review-add": cmd_review_add,
         "review-update": cmd_review_update,
+        "behavioral-guidance-proposal-list": cmd_behavioral_guidance_proposal_list,
+        "behavioral-guidance-proposal-add": cmd_behavioral_guidance_proposal_add,
+        "behavioral-guidance-proposal-update": cmd_behavioral_guidance_proposal_update,
     }
 
     commands[args.command](args)

@@ -392,6 +392,44 @@ def _init_working():
             ON review_items(source_conversation_id);
         CREATE INDEX IF NOT EXISTS idx_review_items_created_at
             ON review_items(created_at);
+
+        CREATE TABLE IF NOT EXISTS behavioral_guidance_proposals (
+            proposal_id TEXT PRIMARY KEY,
+            proposal_type TEXT NOT NULL,
+            proposal_text TEXT NOT NULL,
+            target_existing_guidance_id TEXT,
+            target_text TEXT,
+            rationale TEXT NOT NULL,
+            source_experience_summary TEXT,
+            source_user_id TEXT,
+            source_conversation_id TEXT,
+            source_message_id TEXT,
+            source_channel TEXT NOT NULL DEFAULT 'unknown',
+            risk_if_added TEXT,
+            risk_if_not_added TEXT,
+            status TEXT NOT NULL DEFAULT 'proposed',
+            reviewed_by_user_id TEXT,
+            reviewed_by_role TEXT,
+            review_decision_reason TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            reviewed_at TEXT,
+            applied_by_user_id TEXT,
+            applied_at TEXT,
+            apply_note TEXT,
+            metadata_json TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_behavioral_guidance_proposals_status
+            ON behavioral_guidance_proposals(status);
+        CREATE INDEX IF NOT EXISTS idx_behavioral_guidance_proposals_type
+            ON behavioral_guidance_proposals(proposal_type);
+        CREATE INDEX IF NOT EXISTS idx_behavioral_guidance_proposals_source_user
+            ON behavioral_guidance_proposals(source_user_id);
+        CREATE INDEX IF NOT EXISTS idx_behavioral_guidance_proposals_conversation
+            ON behavioral_guidance_proposals(source_conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_behavioral_guidance_proposals_created_at
+            ON behavioral_guidance_proposals(created_at);
     """)
 
     # FTS5 virtual table — separate because executescript can't mix

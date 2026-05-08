@@ -78,3 +78,77 @@ def test_set_password_updates_existing_web_channel_without_duplicate(temp_admin,
     assert rows[0]["id"] == existing["id"]
     assert rows[0]["auth_material"] == "hashed:new-secret"
     assert rows[0]["verified"] == 1
+
+
+def test_behavioral_guidance_admin_commands(temp_admin, capsys):
+    db_mod, admin_mod = temp_admin
+    user = db_mod.create_user("Lyle", role="admin")
+
+    admin_mod.cmd_behavioral_guidance_proposal_add(
+        SimpleNamespace(
+            proposal_type="addition",
+            proposal_text="Use one atomic guidance change per proposal.",
+            target_existing_guidance_id=None,
+            target_text=None,
+            rationale="Atomic proposals make review decisions clearer.",
+            source_experience_summary="A review identified mixed proposal scope.",
+            source_user_id=user["id"],
+            source_conversation_id="conv-1",
+            source_message_id="msg-1",
+            source_channel="chat",
+            risk_if_added="May be too strict.",
+            risk_if_not_added="Mixed proposals become harder to review.",
+            metadata_json='{"scope": "behavioral_guidance"}',
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Behavioral guidance proposal recorded" in output
+    assert "status=proposed" in output
+    proposal_id = output.strip().splitlines()[1].split()[0]
+
+    admin_mod.cmd_behavioral_guidance_proposal_list(
+        SimpleNamespace(status="proposed", proposal_type=None, limit=50)
+    )
+    output = capsys.readouterr().out
+    assert proposal_id in output
+    assert "type=addition" in output
+
+    admin_mod.cmd_behavioral_guidance_proposal_update(
+        SimpleNamespace(
+            proposal_id=proposal_id,
+            status="approved",
+            reviewed_by_user_id=user["id"],
+            reviewed_by_role="admin",
+            review_decision_reason="Clear and atomic.",
+            applied_by_user_id=None,
+            apply_note=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Behavioral guidance proposal updated" in output
+    assert "status=approved" in output
+
+
+def test_behavioral_guidance_admin_reject_requires_reason(temp_admin):
+    db_mod, admin_mod = temp_admin
+    user = db_mod.create_user("Lyle", role="admin")
+    proposal = admin_mod.create_behavioral_guidance_proposal(
+        proposal_type="addition",
+        proposal_text="Atomic guidance.",
+        rationale="Reason.",
+    )
+
+    with pytest.raises(SystemExit):
+        admin_mod.cmd_behavioral_guidance_proposal_update(
+            SimpleNamespace(
+                proposal_id=proposal["proposal_id"],
+                status="rejected",
+                reviewed_by_user_id=user["id"],
+                reviewed_by_role="admin",
+                review_decision_reason=None,
+                applied_by_user_id=None,
+                apply_note=None,
+            )
+        )
