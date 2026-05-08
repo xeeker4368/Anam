@@ -11,6 +11,11 @@ const DEFAULT_REVIEW_FILTERS = {
   priority: '',
 }
 
+const DEFAULT_BEHAVIORAL_GUIDANCE_FILTERS = {
+  status: '',
+  proposalType: '',
+}
+
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(window.innerWidth < breakpoint)
   useEffect(() => {
@@ -70,6 +75,13 @@ function App() {
   const [reviewError, setReviewError] = useState(null)
   const [reviewSubmitting, setReviewSubmitting] = useState(false)
   const [reviewUpdatingId, setReviewUpdatingId] = useState(null)
+  const [behavioralGuidanceProposals, setBehavioralGuidanceProposals] = useState([])
+  const [behavioralGuidanceFilters, setBehavioralGuidanceFilters] = useState(
+    DEFAULT_BEHAVIORAL_GUIDANCE_FILTERS
+  )
+  const [behavioralGuidanceLoading, setBehavioralGuidanceLoading] = useState(false)
+  const [behavioralGuidanceError, setBehavioralGuidanceError] = useState(null)
+  const [behavioralGuidanceUpdatingId, setBehavioralGuidanceUpdatingId] = useState(null)
   const healthWarnedRef = useRef(false)
   const isMobile = useIsMobile()
   useViewportHeight()
@@ -236,6 +248,7 @@ function App() {
     setSystemLoading(true)
     setSystemError(null)
     const reviewPromise = fetchReviewItems()
+    const behavioralGuidancePromise = fetchBehavioralGuidanceProposals()
     try {
       const [healthResp, memoryResp, capabilitiesResp] = await Promise.all([
         fetch('/api/system/health'),
@@ -281,6 +294,7 @@ function App() {
       setSystemError(e.message || 'Failed to fetch system status')
     } finally {
       await reviewPromise
+      await behavioralGuidancePromise
       setSystemLoading(false)
     }
   }
@@ -389,6 +403,89 @@ function App() {
       throw e
     } finally {
       setReviewUpdatingId(null)
+    }
+  }
+
+  async function fetchBehavioralGuidanceProposals(filters = behavioralGuidanceFilters) {
+    setBehavioralGuidanceLoading(true)
+    setBehavioralGuidanceError(null)
+    try {
+      const params = new URLSearchParams()
+      if (filters.status) params.set('status', filters.status)
+      if (filters.proposalType) params.set('proposal_type', filters.proposalType)
+      params.set('limit', '50')
+
+      const query = params.toString()
+      const resp = await fetch(
+        `/api/behavioral-guidance/proposals${query ? `?${query}` : ''}`
+      )
+      if (!resp.ok) {
+        throw new Error(
+          await readErrorMessage(resp, 'Failed to fetch behavioral guidance proposals')
+        )
+      }
+
+      const data = await resp.json()
+      if (!data || typeof data !== 'object' || !Array.isArray(data.proposals)) {
+        throw new Error('Behavioral guidance response was not a valid proposal list')
+      }
+
+      setBehavioralGuidanceProposals(data.proposals)
+      return data.proposals
+    } catch (e) {
+      console.warn('Failed to fetch behavioral guidance proposals:', e)
+      setBehavioralGuidanceError(e.message || 'Failed to fetch behavioral guidance proposals')
+      return []
+    } finally {
+      setBehavioralGuidanceLoading(false)
+    }
+  }
+
+  function updateBehavioralGuidanceFilters(nextFilters) {
+    setBehavioralGuidanceFilters(nextFilters)
+    fetchBehavioralGuidanceProposals(nextFilters)
+  }
+
+  async function updateBehavioralGuidanceProposalStatus(proposalId, form) {
+    setBehavioralGuidanceUpdatingId(proposalId)
+    setBehavioralGuidanceError(null)
+    try {
+      const payload = {
+        status: form.status,
+        reviewed_by_user_id: form.reviewedByUserId || activeUserId || null,
+        reviewed_by_role: form.reviewedByRole || 'admin',
+        review_decision_reason: form.reviewDecisionReason || null,
+      }
+
+      const resp = await fetch(
+        `/api/behavioral-guidance/proposals/${encodeURIComponent(proposalId)}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        }
+      )
+      if (!resp.ok) {
+        throw new Error(
+          await readErrorMessage(resp, 'Failed to update behavioral guidance proposal')
+        )
+      }
+
+      const data = await resp.json()
+      if (!data || typeof data !== 'object' || data.ok !== true || !data.proposal) {
+        throw new Error(data?.error || 'Behavioral guidance update returned an invalid response')
+      }
+
+      await fetchBehavioralGuidanceProposals(behavioralGuidanceFilters)
+      return data.proposal
+    } catch (e) {
+      const message = e.message || 'Failed to update behavioral guidance proposal'
+      setBehavioralGuidanceError(message)
+      throw e
+    } finally {
+      setBehavioralGuidanceUpdatingId(null)
     }
   }
 
@@ -647,6 +744,16 @@ function App() {
                 onReviewFiltersChange={updateReviewFilters}
                 onReviewCreate={createReviewItem}
                 onReviewStatusUpdate={updateReviewItemStatus}
+                behavioralGuidanceProposals={behavioralGuidanceProposals}
+                behavioralGuidanceFilters={behavioralGuidanceFilters}
+                behavioralGuidanceLoading={behavioralGuidanceLoading}
+                behavioralGuidanceError={behavioralGuidanceError}
+                behavioralGuidanceUpdatingId={behavioralGuidanceUpdatingId}
+                onBehavioralGuidanceRefresh={() =>
+                  fetchBehavioralGuidanceProposals(behavioralGuidanceFilters)
+                }
+                onBehavioralGuidanceFiltersChange={updateBehavioralGuidanceFilters}
+                onBehavioralGuidanceStatusUpdate={updateBehavioralGuidanceProposalStatus}
               />
             </div>
           )}
@@ -744,6 +851,16 @@ function App() {
               onReviewFiltersChange={updateReviewFilters}
               onReviewCreate={createReviewItem}
               onReviewStatusUpdate={updateReviewItemStatus}
+              behavioralGuidanceProposals={behavioralGuidanceProposals}
+              behavioralGuidanceFilters={behavioralGuidanceFilters}
+              behavioralGuidanceLoading={behavioralGuidanceLoading}
+              behavioralGuidanceError={behavioralGuidanceError}
+              behavioralGuidanceUpdatingId={behavioralGuidanceUpdatingId}
+              onBehavioralGuidanceRefresh={() =>
+                fetchBehavioralGuidanceProposals(behavioralGuidanceFilters)
+              }
+              onBehavioralGuidanceFiltersChange={updateBehavioralGuidanceFilters}
+              onBehavioralGuidanceStatusUpdate={updateBehavioralGuidanceProposalStatus}
             />
           )}
         </aside>

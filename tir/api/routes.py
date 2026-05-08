@@ -94,6 +94,11 @@ from tir.review.service import (
     list_review_items,
     update_review_item_status,
 )
+from tir.behavioral_guidance.service import (
+    BehavioralGuidanceValidationError,
+    list_behavioral_guidance_proposals,
+    update_behavioral_guidance_proposal_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +173,13 @@ class ReviewCreateRequest(BaseModel):
 
 class ReviewUpdateRequest(BaseModel):
     status: str
+
+
+class BehavioralGuidanceProposalUpdateRequest(BaseModel):
+    status: str
+    reviewed_by_user_id: str | None = None
+    reviewed_by_role: str = "admin"
+    review_decision_reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -968,6 +980,73 @@ def api_update_review_item(item_id: str, req: ReviewUpdateRequest):
     return {
         "ok": True,
         "item": item,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Behavioral guidance proposals
+# ---------------------------------------------------------------------------
+
+_BEHAVIORAL_GUIDANCE_REVIEW_STATUSES = {"proposed", "approved", "rejected", "archived"}
+
+
+@app.get("/api/behavioral-guidance/proposals")
+def api_list_behavioral_guidance_proposals(
+    status: str | None = None,
+    proposal_type: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """List AI-proposed behavioral guidance proposals for admin review."""
+    try:
+        return {
+            "ok": True,
+            "proposals": list_behavioral_guidance_proposals(
+                status=status,
+                proposal_type=proposal_type,
+                limit=limit,
+                offset=offset,
+            ),
+        }
+    except BehavioralGuidanceValidationError as exc:
+        return _error_response(400, str(exc))
+    except Exception:
+        logger.exception("Behavioral guidance proposal list failed")
+        return _error_response(500, "Behavioral guidance proposal list failed")
+
+
+@app.patch("/api/behavioral-guidance/proposals/{proposal_id}")
+def api_update_behavioral_guidance_proposal(
+    proposal_id: str,
+    req: BehavioralGuidanceProposalUpdateRequest,
+):
+    """Update behavioral guidance proposal review status only."""
+    if req.status not in _BEHAVIORAL_GUIDANCE_REVIEW_STATUSES:
+        return _error_response(
+            400,
+            "Behavioral guidance proposal status is not exposed by this review API",
+        )
+
+    try:
+        proposal = update_behavioral_guidance_proposal_status(
+            proposal_id,
+            req.status,
+            reviewed_by_user_id=req.reviewed_by_user_id,
+            reviewed_by_role=req.reviewed_by_role,
+            review_decision_reason=req.review_decision_reason,
+        )
+    except BehavioralGuidanceValidationError as exc:
+        return _error_response(400, str(exc))
+    except Exception:
+        logger.exception("Behavioral guidance proposal update failed")
+        return _error_response(500, "Behavioral guidance proposal update failed")
+
+    if proposal is None:
+        return _error_response(404, "Behavioral guidance proposal not found")
+
+    return {
+        "ok": True,
+        "proposal": proposal,
     }
 
 

@@ -14,6 +14,8 @@ const REVIEW_CATEGORIES = [
   'other',
 ]
 const REVIEW_PRIORITIES = ['low', 'normal', 'high']
+const GUIDANCE_PROPOSAL_STATUSES = ['proposed', 'approved', 'rejected', 'archived']
+const GUIDANCE_PROPOSAL_TYPES = ['addition', 'removal', 'revision']
 
 function formatDate(value) {
   if (!value) return 'n/a'
@@ -431,6 +433,190 @@ function ReviewQueueSection({
   )
 }
 
+function GuidanceProposalRow({ label, value }) {
+  if (!value) return null
+
+  return (
+    <div className="system-guidance-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  )
+}
+
+function GuidanceProposalCard({ proposal, updatingId, onStatusUpdate }) {
+  const [reviewReason, setReviewReason] = useState('')
+  const [localError, setLocalError] = useState(null)
+  const isUpdating = updatingId === proposal.proposal_id
+
+  async function submitStatus(status) {
+    const normalizedReason = reviewReason.trim()
+    if (status === 'rejected' && !normalizedReason) {
+      setLocalError('A rejection reason is required.')
+      return
+    }
+
+    setLocalError(null)
+    await onStatusUpdate(proposal.proposal_id, {
+      status,
+      reviewedByRole: 'admin',
+      reviewDecisionReason: normalizedReason,
+    })
+    setReviewReason('')
+  }
+
+  return (
+    <article className="system-guidance-card">
+      <div className="system-guidance-header">
+        <h4>{proposal.proposal_text}</h4>
+        <SystemBadge value={proposal.status} label={humanize(proposal.status)} />
+      </div>
+      <div className="system-guidance-badges">
+        <SystemBadge value={proposal.proposal_type} label={humanize(proposal.proposal_type)} />
+        <SystemBadge value={proposal.source_channel} label={humanize(proposal.source_channel)} />
+        <SystemBadge value="neutral" label={formatDate(proposal.created_at)} />
+      </div>
+      <div className="system-guidance-body">
+        <GuidanceProposalRow label="Rationale" value={proposal.rationale} />
+        <GuidanceProposalRow
+          label="Experience"
+          value={proposal.source_experience_summary}
+        />
+        <GuidanceProposalRow label="Source user" value={proposal.source_user_id} />
+        <GuidanceProposalRow
+          label="Conversation"
+          value={proposal.source_conversation_id}
+        />
+        <GuidanceProposalRow label="Message" value={proposal.source_message_id} />
+        <GuidanceProposalRow label="Risk if added" value={proposal.risk_if_added} />
+        <GuidanceProposalRow
+          label="Risk if not added"
+          value={proposal.risk_if_not_added}
+        />
+        <GuidanceProposalRow
+          label="Review reason"
+          value={proposal.review_decision_reason}
+        />
+        <GuidanceProposalRow label="Reviewed" value={formatDate(proposal.reviewed_at)} />
+      </div>
+      <label className="system-guidance-reason">
+        <span>Review reason</span>
+        <textarea
+          value={reviewReason}
+          onChange={e => setReviewReason(e.target.value)}
+          placeholder="Required for rejection; optional for approval/archive."
+          rows="2"
+        />
+      </label>
+      {localError && <p className="system-error">{localError}</p>}
+      <div className="system-guidance-actions" aria-label={`Review ${proposal.proposal_text}`}>
+        <button
+          type="button"
+          className="btn btn-small"
+          disabled={isUpdating || proposal.status === 'approved'}
+          onClick={() => submitStatus('approved')}
+        >
+          Approve
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          disabled={isUpdating || proposal.status === 'rejected'}
+          onClick={() => submitStatus('rejected')}
+        >
+          Reject
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          disabled={isUpdating || proposal.status === 'archived'}
+          onClick={() => submitStatus('archived')}
+        >
+          Archive
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          disabled={isUpdating || proposal.status === 'proposed'}
+          onClick={() => submitStatus('proposed')}
+        >
+          Reopen
+        </button>
+      </div>
+    </article>
+  )
+}
+
+function BehavioralGuidanceSection({
+  proposals,
+  filters,
+  loading,
+  error,
+  updatingId,
+  onRefresh,
+  onFiltersChange,
+  onStatusUpdate,
+}) {
+  const guidanceProposals = Array.isArray(proposals) ? proposals : []
+  const activeFilters = filters || {}
+  const proposedCount = guidanceProposals.filter(
+    proposal => proposal.status === 'proposed'
+  ).length
+
+  function updateFilter(key, value) {
+    onFiltersChange({
+      ...activeFilters,
+      [key]: value,
+    })
+  }
+
+  return (
+    <SystemSection
+      key={proposedCount > 0 ? 'guidance-proposed' : 'guidance-reviewed'}
+      title="Behavioral Guidance Proposals"
+      summary={`${proposedCount} proposed`}
+      defaultExpanded={proposedCount > 0}
+    >
+      <div className="system-guidance-panel">
+        <div className="system-guidance-filters">
+          <ReviewFilterSelect
+            label="Status"
+            value={activeFilters.status}
+            options={GUIDANCE_PROPOSAL_STATUSES}
+            onChange={value => updateFilter('status', value)}
+          />
+          <ReviewFilterSelect
+            label="Type"
+            value={activeFilters.proposalType}
+            options={GUIDANCE_PROPOSAL_TYPES}
+            onChange={value => updateFilter('proposalType', value)}
+          />
+          <button type="button" className="btn btn-small" onClick={onRefresh} disabled={loading}>
+            {loading ? 'Loading...' : 'Refresh'}
+          </button>
+        </div>
+
+        {error && <p className="system-error">{error}</p>}
+
+        <div className="system-guidance-list">
+          {loading && <p className="debug-note">Loading behavioral guidance proposals...</p>}
+          {!loading && guidanceProposals.length === 0 && (
+            <p className="system-empty">No behavioral guidance proposals match these filters.</p>
+          )}
+          {guidanceProposals.map(proposal => (
+            <GuidanceProposalCard
+              key={proposal.proposal_id}
+              proposal={proposal}
+              updatingId={updatingId}
+              onStatusUpdate={onStatusUpdate}
+            />
+          ))}
+        </div>
+      </div>
+    </SystemSection>
+  )
+}
+
 function SystemPanel({
   health,
   memory,
@@ -448,6 +634,14 @@ function SystemPanel({
   onReviewFiltersChange,
   onReviewCreate,
   onReviewStatusUpdate,
+  behavioralGuidanceProposals,
+  behavioralGuidanceFilters,
+  behavioralGuidanceLoading,
+  behavioralGuidanceError,
+  behavioralGuidanceUpdatingId,
+  onBehavioralGuidanceRefresh,
+  onBehavioralGuidanceFiltersChange,
+  onBehavioralGuidanceStatusUpdate,
 }) {
   const audit = memory?.audit || {}
   const capabilityData = capabilities?.capabilities || {}
@@ -541,6 +735,17 @@ function SystemPanel({
         onFiltersChange={onReviewFiltersChange}
         onCreate={onReviewCreate}
         onStatusUpdate={onReviewStatusUpdate}
+      />
+
+      <BehavioralGuidanceSection
+        proposals={behavioralGuidanceProposals}
+        filters={behavioralGuidanceFilters}
+        loading={behavioralGuidanceLoading}
+        error={behavioralGuidanceError}
+        updatingId={behavioralGuidanceUpdatingId}
+        onRefresh={onBehavioralGuidanceRefresh}
+        onFiltersChange={onBehavioralGuidanceFiltersChange}
+        onStatusUpdate={onBehavioralGuidanceStatusUpdate}
       />
 
       {capabilities && (
