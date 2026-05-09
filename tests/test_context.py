@@ -1,7 +1,25 @@
 from unittest.mock import patch
 
+import pytest
+
 from tir.engine.context_budget import budget_retrieved_chunks
 from tir.engine.context import build_system_prompt, build_system_prompt_with_debug
+
+
+@pytest.fixture()
+def context_project(tmp_path, monkeypatch):
+    soul = tmp_path / "soul.md"
+    operational = tmp_path / "OPERATIONAL_GUIDANCE.md"
+    behavioral = tmp_path / "BEHAVIORAL_GUIDANCE.md"
+    soul.write_text("You are an AI.\n", encoding="utf-8")
+    operational.write_text("Runtime operator guidance.\n", encoding="utf-8")
+    monkeypatch.setattr("tir.engine.context.PROJECT_ROOT", tmp_path)
+    return {
+        "root": tmp_path,
+        "soul": soul,
+        "operational": operational,
+        "behavioral": behavioral,
+    }
 
 
 def test_operational_guidance_is_labeled_and_ordered():
@@ -117,7 +135,12 @@ def test_missing_operational_guidance_is_omitted():
     assert "You are currently in conversation with Lyle." in prompt
 
 
-def test_behavioral_guidance_file_is_not_loaded_into_prompt():
+def test_behavioral_guidance_file_is_not_loaded_when_no_active_section(context_project):
+    context_project["behavioral"].write_text(
+        "# BEHAVIORAL_GUIDANCE.md\n\nThis file contains reviewed guidance proposed by the AI.\n",
+        encoding="utf-8",
+    )
+
     prompt = build_system_prompt(
         user_name="Lyle",
         retrieved_chunks=[],
@@ -126,6 +149,133 @@ def test_behavioral_guidance_file_is_not_loaded_into_prompt():
 
     assert "This file contains reviewed guidance proposed by the AI" not in prompt
     assert "BEHAVIORAL_GUIDANCE" not in prompt
+
+
+def test_active_behavioral_guidance_section_is_loaded(context_project):
+    context_project["behavioral"].write_text(
+        """# BEHAVIORAL_GUIDANCE.md
+
+This file contains reviewed guidance proposed by the AI and approved by an admin.
+
+## Active Guidance
+
+### Proposal abc
+
+- Proposal ID: abc
+- Type: addition
+- Applied: 2026-05-08T12:00:00+00:00
+- Source: conversation conv-1, message msg-1
+- Guidance: Keep behavioral guidance narrow and evidence-linked.
+- Rationale: This rationale should not load.
+""",
+        encoding="utf-8",
+    )
+
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions="You have access to the following tools:\n- memory_search",
+    )
+
+    assert "[Reviewed Behavioral Guidance]" in prompt
+    assert "Keep behavioral guidance narrow and evidence-linked." in prompt
+    assert "This file contains reviewed guidance proposed by the AI" not in prompt
+    assert "Proposal ID" not in prompt
+    assert "Applied:" not in prompt
+    assert "Source: conversation" not in prompt
+    assert "This rationale should not load" not in prompt
+    assert prompt.index("[Operational Guidance]") < prompt.index("[Reviewed Behavioral Guidance]")
+    assert prompt.index("[Reviewed Behavioral Guidance]") < prompt.index("You have access to the following tools:")
+
+
+def test_missing_behavioral_guidance_file_is_omitted(context_project):
+    context_project["behavioral"].unlink(missing_ok=True)
+
+    prompt, breakdown = build_system_prompt_with_debug(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+    )
+
+    assert "[Reviewed Behavioral Guidance]" not in prompt
+    assert breakdown["behavioral_guidance_chars"] == 0
+    assert breakdown["behavioral_guidance_items_found"] == 0
+
+
+def test_behavioral_guidance_budget_limits_included_items(context_project):
+    items = "\n".join(
+        [
+            "- Guidance: First compact guidance.",
+            "- Guidance: " + ("Second long guidance " * 80),
+            "- Guidance: Third compact guidance.",
+        ]
+    )
+    context_project["behavioral"].write_text(
+        f"# BEHAVIORAL_GUIDANCE.md\n\n## Active Guidance\n\n{items}\n",
+        encoding="utf-8",
+    )
+
+    with patch("tir.engine.context.BEHAVIORAL_GUIDANCE_CHAR_BUDGET", 360):
+        prompt, breakdown = build_system_prompt_with_debug(
+            user_name="Lyle",
+            retrieved_chunks=[],
+            tool_descriptions=None,
+        )
+
+    assert "First compact guidance." in prompt
+    assert "Second long guidance" not in prompt
+    assert "Third compact guidance." in prompt
+    assert breakdown["behavioral_guidance_items_found"] == 3
+    assert breakdown["behavioral_guidance_items_included"] == 2
+    assert breakdown["behavioral_guidance_items_skipped"] == 1
+    assert breakdown["behavioral_guidance_budget_chars"] == 360
+    assert breakdown["behavioral_guidance_chars"] > 0
+
+
+def test_behavioral_guidance_debug_counts_items(context_project):
+    context_project["behavioral"].write_text(
+        """# BEHAVIORAL_GUIDANCE.md
+
+## Active Guidance
+
+- Guidance: First reviewed behavior.
+- Guidance: Second reviewed behavior.
+""",
+        encoding="utf-8",
+    )
+
+    prompt, breakdown = build_system_prompt_with_debug(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+    )
+
+    assert breakdown["behavioral_guidance_chars"] == len(
+        prompt[
+            prompt.index("[Reviewed Behavioral Guidance]"):
+            prompt.index("You are currently in conversation with Lyle.") - 2
+        ]
+    )
+    assert breakdown["behavioral_guidance_items_found"] == 2
+    assert breakdown["behavioral_guidance_items_included"] == 2
+    assert breakdown["behavioral_guidance_items_skipped"] == 0
+
+
+def test_behavioral_guidance_label_does_not_define_identity_or_personality(context_project):
+    context_project["behavioral"].write_text(
+        "# BEHAVIORAL_GUIDANCE.md\n\n## Active Guidance\n\n- Guidance: Use careful wording.\n",
+        encoding="utf-8",
+    )
+
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+    )
+
+    assert "do not define a fixed personality" in prompt
+    assert "do not assign an identity" in prompt
+    assert "do not replace soul.md or operational guidance" in prompt
 
 
 def test_budget_retrieved_chunks_caps_total_context_chars():

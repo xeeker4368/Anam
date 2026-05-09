@@ -26,6 +26,11 @@ from tir.memory.retrieval import retrieve
 import logging
 logger = logging.getLogger(__name__)
 
+BEHAVIORAL_GUIDANCE_CHAR_BUDGET = 3000
+BEHAVIORAL_GUIDANCE_LABEL = """[Reviewed Behavioral Guidance]
+
+These are active behavioral guidance entries proposed by the AI and approved/applied by an admin. They guide future behavior, but they do not define a fixed personality, do not assign an identity, and do not replace soul.md or operational guidance."""
+
 
 def _load_soul() -> str:
     """Load the seed identity from soul.md."""
@@ -45,6 +50,86 @@ def _load_operational_guidance() -> str | None:
     if not content:
         return None
     return f"[Operational Guidance]\n\n{content}"
+
+
+def _extract_active_guidance_items(content: str) -> list[str]:
+    """Extract only '- Guidance: ...' lines from the Active Guidance section."""
+    marker = "## Active Guidance"
+    marker_index = content.find(marker)
+    if marker_index < 0:
+        return []
+
+    active = content[marker_index + len(marker):]
+    next_section = active.find("\n## ")
+    if next_section >= 0:
+        active = active[:next_section]
+
+    items = []
+    for line in active.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- Guidance:"):
+            guidance = stripped.removeprefix("- Guidance:").strip()
+            if guidance:
+                items.append(guidance)
+    return items
+
+
+def _format_behavioral_guidance(
+    items: list[str],
+    *,
+    max_chars: int | None = None,
+) -> tuple[str | None, dict]:
+    """Format active guidance items with a hard character budget."""
+    if max_chars is None:
+        max_chars = BEHAVIORAL_GUIDANCE_CHAR_BUDGET
+    metadata = {
+        "behavioral_guidance_items_found": len(items),
+        "behavioral_guidance_items_included": 0,
+        "behavioral_guidance_items_skipped": 0,
+        "behavioral_guidance_budget_chars": max_chars,
+        "behavioral_guidance_chars": 0,
+    }
+    if not items:
+        return None, metadata
+
+    included = []
+    used = len(BEHAVIORAL_GUIDANCE_LABEL)
+    for item in items:
+        line = f"- {item}"
+        additional = len("\n\n" if not included else "\n") + len(line)
+        if used + additional > max_chars:
+            metadata["behavioral_guidance_items_skipped"] += 1
+            continue
+        included.append(line)
+        used += additional
+
+    if not included:
+        metadata["behavioral_guidance_items_skipped"] = len(items)
+        return None, metadata
+
+    section = BEHAVIORAL_GUIDANCE_LABEL + "\n\n" + "\n".join(included)
+    metadata["behavioral_guidance_items_included"] = len(included)
+    metadata["behavioral_guidance_items_skipped"] = len(items) - len(included)
+    metadata["behavioral_guidance_chars"] = len(section)
+    return section, metadata
+
+
+def _load_behavioral_guidance() -> tuple[str | None, dict]:
+    """Load active reviewed behavioral guidance for runtime context."""
+    guidance_path = PROJECT_ROOT / "BEHAVIORAL_GUIDANCE.md"
+    empty_metadata = {
+        "behavioral_guidance_items_found": 0,
+        "behavioral_guidance_items_included": 0,
+        "behavioral_guidance_items_skipped": 0,
+        "behavioral_guidance_budget_chars": BEHAVIORAL_GUIDANCE_CHAR_BUDGET,
+        "behavioral_guidance_chars": 0,
+    }
+    if not guidance_path.exists():
+        return None, empty_metadata
+
+    content = guidance_path.read_text(encoding="utf-8")
+    items = _extract_active_guidance_items(content)
+    return _format_behavioral_guidance(items)
 
 
 def _current_situation(user_name: str) -> str:
@@ -136,6 +221,11 @@ def build_system_prompt_with_debug(
     section_counts = {
         "soul_chars": 0,
         "operational_guidance_chars": 0,
+        "behavioral_guidance_chars": 0,
+        "behavioral_guidance_items_found": 0,
+        "behavioral_guidance_items_included": 0,
+        "behavioral_guidance_items_skipped": 0,
+        "behavioral_guidance_budget_chars": BEHAVIORAL_GUIDANCE_CHAR_BUDGET,
         "tool_descriptions_chars": 0,
         "retrieved_context_chars": 0,
         "situation_chars": 0,
@@ -152,12 +242,18 @@ def build_system_prompt_with_debug(
         sections.append(operational_guidance)
         section_counts["operational_guidance_chars"] = len(operational_guidance)
 
-    # Section 3: Available tools
+    # Section 3: Reviewed behavioral guidance
+    behavioral_guidance, behavioral_guidance_debug = _load_behavioral_guidance()
+    section_counts.update(behavioral_guidance_debug)
+    if behavioral_guidance:
+        sections.append(behavioral_guidance)
+
+    # Section 4: Available tools
     if tool_descriptions:
         sections.append(tool_descriptions)
         section_counts["tool_descriptions_chars"] = len(tool_descriptions)
 
-    # Section 4: Retrieved memories
+    # Section 5: Retrieved memories
     if retrieved_chunks is None and user_message and not _is_greeting(user_message):
         # Automatic retrieval
         try:
@@ -174,7 +270,7 @@ def build_system_prompt_with_debug(
         sections.append(retrieved_context)
         section_counts["retrieved_context_chars"] = len(retrieved_context)
 
-    # Section 5: Current situation
+    # Section 6: Current situation
     if autonomous:
         situation = _autonomous_situation()
     else:
