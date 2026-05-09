@@ -141,6 +141,8 @@ def test_stream_chat_no_tool_path_preserves_basic_events(
         "input_chunks": 0,
         "included_chunks": 0,
         "skipped_chunks": 0,
+        "skipped_empty_chunks": 0,
+        "skipped_budget_chunks": 0,
         "truncated_chunks": 0,
         "max_chars": 14000,
         "used_chars": 0,
@@ -160,6 +162,10 @@ def test_stream_chat_no_tool_path_preserves_basic_events(
     }
     assert events[0]["prompt_breakdown"]["total_chars"] >= events[0]["system_prompt_length"]
     assert events[0]["prompt_breakdown"]["other_chars"] >= 0
+    assert "context_debug" in events[0]
+    assert events[0]["context_debug"]["prompt_total_chars"] == events[0]["prompt_breakdown"]["total_chars"]
+    assert events[0]["context_debug"]["prompt_section_chars"]["conversation_history"] == len("Hello")
+    assert events[0]["context_debug"]["context_budget"]["skipped_empty_chunks"] == 0
     assert "total_backend_ms" in events[-2]["timings"]
     assert events[-1]["conversation_id"] == "conv-1"
     assistant_call = mock_save_message.call_args_list[-1]
@@ -549,12 +555,90 @@ def test_stream_chat_normal_retrieval_still_runs(
     assert events[0]["prompt_breakdown"]["conversation_history_chars"] == len(
         "What did we decide about Moltbook integration?"
     )
+    assert events[0]["context_debug"]["retrieval"]["sources_by_type"] == {
+        "conversation": 1,
+    }
+    assert events[0]["context_debug"]["retrieval"]["included_chunks"][0]["chunk_id"] == "chunk-1"
     mock_retrieve.assert_called_once_with(
         query="What did we decide about Moltbook integration?",
         active_conversation_id="conv-1",
         max_results=AUTO_RETRIEVAL_RESULTS,
         artifact_intent=False,
     )
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_context_debug_includes_journal_chunk_details(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    app.state.registry = FakeRegistry(has_tools=False)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = [
+        {
+            "chunk_id": "journal_2026_05_08_chunk_0",
+            "text": "Reflection journal text.",
+            "metadata": {
+                "source_type": "journal",
+                "artifact_id": "artifact-1",
+                "journal_date": "2026-05-08",
+                "title": "Reflection Journal — 2026-05-08",
+                "chunk_index": 0,
+                "chunk_kind": "journal_content",
+            },
+            "vector_rank": 1,
+            "adjusted_score": 0.5,
+        }
+    ]
+    mock_save_message.side_effect = [
+        _fake_message("user", "What did your journal say yesterday?", "msg-user"),
+        _fake_message("assistant", "It mentioned source framing.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [
+        _fake_message("user", "What did your journal say yesterday?", "msg-user")
+    ]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "It mentioned source framing."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="It mentioned source framing.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat/stream",
+        json={"text": "What did your journal say yesterday?"},
+    )
+    events = _stream_lines(response)
+
+    chunk = events[0]["context_debug"]["retrieval"]["included_chunks"][0]
+    assert chunk["source_type"] == "journal"
+    assert chunk["metadata"]["artifact_id"] == "artifact-1"
+    assert chunk["metadata"]["journal_date"] == "2026-05-08"
+    assert chunk["metadata"]["chunk_index"] == 0
+    assert chunk["journal"]["journal_date"] == "2026-05-08"
+    assert chunk["journal"]["chunks_included_for_journal"] == 1
+    assert chunk["journal"]["full_journal_included"] is None
 
 
 @patch("tir.api.routes.build_recent_artifacts_context")

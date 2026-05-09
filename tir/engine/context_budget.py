@@ -32,12 +32,15 @@ def budget_retrieved_chunks(
     budgeted = []
     used_chars = 0
     skipped_chunks = 0
+    skipped_empty_chunks = 0
+    skipped_budget_chunks = 0
     truncated_chunks = 0
 
     for index, chunk in enumerate(input_chunks):
         original_text = chunk.get("text")
         if not isinstance(original_text, str) or not original_text.strip():
             skipped_chunks += 1
+            skipped_empty_chunks += 1
             continue
 
         candidate_text = _truncate_text(original_text, max_chunk_chars)
@@ -50,6 +53,7 @@ def budget_retrieved_chunks(
                 was_truncated = candidate_text != original_text
             else:
                 skipped_chunks += 1
+                skipped_budget_chunks += 1
                 continue
 
         next_chunk = dict(chunk)
@@ -60,13 +64,17 @@ def budget_retrieved_chunks(
             truncated_chunks += 1
 
         if used_chars >= max_chars:
-            skipped_chunks += len(input_chunks) - index - 1
+            remaining_chunks = len(input_chunks) - index - 1
+            skipped_chunks += remaining_chunks
+            skipped_budget_chunks += remaining_chunks
             break
 
     metadata = {
         "input_chunks": len(input_chunks),
         "included_chunks": len(budgeted),
         "skipped_chunks": skipped_chunks,
+        "skipped_empty_chunks": skipped_empty_chunks,
+        "skipped_budget_chunks": skipped_budget_chunks,
         "truncated_chunks": truncated_chunks,
         "max_chars": max_chars,
         "used_chars": used_chars,

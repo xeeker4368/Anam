@@ -8,6 +8,8 @@ def test_budget_retrieved_chunks_skips_missing_text():
     assert metadata["input_chunks"] == 1
     assert metadata["included_chunks"] == 0
     assert metadata["skipped_chunks"] == 1
+    assert metadata["skipped_empty_chunks"] == 1
+    assert metadata["skipped_budget_chunks"] == 0
     assert metadata["used_chars"] == 0
 
 
@@ -18,6 +20,8 @@ def test_budget_retrieved_chunks_skips_none_text():
 
     assert budgeted == []
     assert metadata["skipped_chunks"] == 1
+    assert metadata["skipped_empty_chunks"] == 1
+    assert metadata["skipped_budget_chunks"] == 0
 
 
 def test_budget_retrieved_chunks_skips_empty_text():
@@ -27,6 +31,8 @@ def test_budget_retrieved_chunks_skips_empty_text():
 
     assert budgeted == []
     assert metadata["skipped_chunks"] == 1
+    assert metadata["skipped_empty_chunks"] == 1
+    assert metadata["skipped_budget_chunks"] == 0
 
 
 def test_budget_retrieved_chunks_skips_whitespace_only_text():
@@ -36,6 +42,8 @@ def test_budget_retrieved_chunks_skips_whitespace_only_text():
 
     assert budgeted == []
     assert metadata["skipped_chunks"] == 1
+    assert metadata["skipped_empty_chunks"] == 1
+    assert metadata["skipped_budget_chunks"] == 0
 
 
 def test_budget_retrieved_chunks_skips_non_string_text():
@@ -45,6 +53,8 @@ def test_budget_retrieved_chunks_skips_non_string_text():
 
     assert budgeted == []
     assert metadata["skipped_chunks"] == 1
+    assert metadata["skipped_empty_chunks"] == 1
+    assert metadata["skipped_budget_chunks"] == 0
 
 
 def test_budget_retrieved_chunks_truncates_oversized_chunk_with_marker():
@@ -81,6 +91,8 @@ def test_budget_retrieved_chunks_skips_chunk_that_cannot_fit():
     assert metadata["input_chunks"] == 2
     assert metadata["included_chunks"] == 1
     assert metadata["skipped_chunks"] == 1
+    assert metadata["skipped_empty_chunks"] == 0
+    assert metadata["skipped_budget_chunks"] == 1
     assert metadata["used_chars"] == 450
 
 
@@ -102,5 +114,7 @@ def test_budget_retrieved_chunks_metadata_counts_remain_coherent():
     assert metadata["input_chunks"] == 4
     assert metadata["included_chunks"] == 2
     assert metadata["skipped_chunks"] == 2
+    assert metadata["skipped_empty_chunks"] == 2
+    assert metadata["skipped_budget_chunks"] == 0
     assert metadata["truncated_chunks"] == 1
     assert metadata["used_chars"] == sum(len(chunk["text"]) for chunk in budgeted)

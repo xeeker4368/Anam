@@ -63,6 +63,7 @@ from tir.engine.context_budget import (
     RETRIEVED_CONTEXT_CHAR_BUDGET,
     budget_retrieved_chunks,
 )
+from tir.engine.context_debug import build_context_debug
 from tir.engine.artifact_context import (
     RECENT_ARTIFACT_LIMIT,
     build_recent_artifacts_context,
@@ -395,6 +396,8 @@ def stream_chat(req: ChatRequest):
             "input_chunks": 0,
             "included_chunks": 0,
             "skipped_chunks": 0,
+            "skipped_empty_chunks": 0,
+            "skipped_budget_chunks": 0,
             "truncated_chunks": 0,
             "max_chars": RETRIEVED_CONTEXT_CHAR_BUDGET,
             "used_chars": 0,
@@ -506,6 +509,14 @@ def stream_chat(req: ChatRequest):
             + selection_context_chars
         )
         prompt_breakdown["other_chars"] = max(0, prompt_breakdown.get("other_chars", 0))
+        context_debug = build_context_debug(
+            prompt_breakdown=prompt_breakdown,
+            retrieval_skipped=retrieval_skipped,
+            retrieval_policy=retrieval_policy,
+            query=req.text,
+            retrieved_chunks=retrieved_chunks,
+            retrieval_budget=retrieval_budget,
+        )
 
         # --- Emit debug event ---
         timings["debug_emit_elapsed_ms"] = elapsed_ms(request_start)
@@ -539,6 +550,7 @@ def stream_chat(req: ChatRequest):
             "system_prompt_length": len(system_prompt),
             "prompt_budget_warning": prompt_budget_warning,
             "prompt_breakdown": prompt_breakdown,
+            "context_debug": context_debug,
             "recent_artifact_context": recent_artifact_context_meta,
             "history_message_count": len(model_messages),
             "timings": timings,

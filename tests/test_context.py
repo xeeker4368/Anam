@@ -4,6 +4,7 @@ import pytest
 
 from tir.engine.context_budget import budget_retrieved_chunks
 from tir.engine.context import build_system_prompt, build_system_prompt_with_debug
+from tir.engine.context_debug import build_context_debug
 
 
 @pytest.fixture()
@@ -117,6 +118,79 @@ def test_system_prompt_breakdown_counts_sections():
     assert breakdown["retrieved_context_chars"] > 0
     assert breakdown["situation_chars"] > 0
     assert breakdown["other_chars"] >= 0
+
+
+def test_context_debug_maps_prompt_sections_and_retrieval_sources():
+    prompt_breakdown = {
+        "total_chars": 1000,
+        "soul_chars": 10,
+        "operational_guidance_chars": 20,
+        "behavioral_guidance_chars": 30,
+        "tool_descriptions_chars": 40,
+        "retrieved_context_chars": 50,
+        "conversation_history_chars": 60,
+        "artifact_context_chars": 70,
+        "selection_context_chars": 80,
+        "situation_chars": 90,
+        "other_chars": 5,
+    }
+    retrieved_chunks = [
+        {
+            "chunk_id": "journal_2026_05_08_chunk_0",
+            "text": "Reflection journal text",
+            "metadata": {
+                "source_type": "journal",
+                "artifact_id": "artifact-1",
+                "journal_date": "2026-05-08",
+                "title": "Reflection Journal — 2026-05-08",
+                "chunk_index": 0,
+                "chunk_kind": "journal_content",
+            },
+            "vector_rank": 1,
+            "adjusted_score": 0.75,
+        },
+        {
+            "chunk_id": "conversation-1",
+            "text": "Conversation text",
+            "source_type": "conversation",
+        },
+    ]
+
+    debug = build_context_debug(
+        prompt_breakdown=prompt_breakdown,
+        retrieval_skipped=False,
+        retrieval_policy={"mode": "normal"},
+        query="what happened yesterday?",
+        retrieved_chunks=retrieved_chunks,
+        retrieval_budget={
+            "input_chunks": 3,
+            "included_chunks": 2,
+            "skipped_chunks": 1,
+            "skipped_empty_chunks": 0,
+            "skipped_budget_chunks": 1,
+            "truncated_chunks": 0,
+            "max_chars": 14000,
+            "used_chars": 100,
+        },
+    )
+
+    assert debug["prompt_total_chars"] == 1000
+    assert debug["prompt_section_chars"]["soul"] == 10
+    assert debug["prompt_section_chars"]["retrieved_memories"] == 50
+    assert debug["prompt_section_chars"]["current_situation"] == 90
+    assert debug["retrieval"]["sources_by_type"] == {
+        "conversation": 1,
+        "journal": 1,
+    }
+    journal = debug["retrieval"]["included_chunks"][0]
+    assert journal["source_type"] == "journal"
+    assert journal["metadata"]["journal_date"] == "2026-05-08"
+    assert journal["metadata"]["artifact_id"] == "artifact-1"
+    assert journal["metadata"]["chunk_index"] == 0
+    assert journal["journal"]["journal_date"] == "2026-05-08"
+    assert journal["journal"]["full_journal_included"] is None
+    assert debug["context_budget"]["remaining_chars"] == 13900
+    assert debug["context_budget"]["skipped_budget_chunks"] == 1
 
 
 def test_retrieved_context_breakdown_changes_with_retrieved_chunks():
@@ -320,6 +394,8 @@ def test_budget_retrieved_chunks_caps_total_context_chars():
         "input_chunks": 3,
         "included_chunks": 2,
         "skipped_chunks": 1,
+        "skipped_empty_chunks": 0,
+        "skipped_budget_chunks": 1,
         "truncated_chunks": 0,
         "max_chars": 900,
         "used_chars": 800,
