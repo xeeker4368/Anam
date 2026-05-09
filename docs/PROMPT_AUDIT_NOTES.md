@@ -26,6 +26,10 @@ This file records human review decisions for entries found in `docs/PROMPT_INVEN
   - Decision: keep for now
   - Reason: Provides structure without heavy identity/personality constraints.
 
+- `tir/api/routes.py` — fallback/error response text
+  - Decision: keep
+  - Reason: Clear operational failure text; not identity-shaping. Prefer plain error/fallback language over stylized entity voice for failure cases.
+
 ## Reviewed — Changed
 
 - `tir/behavioral_guidance/review.py` — system prompt
@@ -43,8 +47,3 @@ This file records human review decisions for entries found in `docs/PROMPT_INVEN
 - `tir/tools/registry.py` — “memory may inform but not replace”
   - Decision: loosened/clarified
   - Reason: Preserves live-source boundary while using clearer source-framing language.
-
-## Needs Discussion
-
-- `tir/api/routes.py` — fallback/error response text
-  - Question: Decide whether these should remain plain system fallback copy or use a more entity-consistent failure style.
