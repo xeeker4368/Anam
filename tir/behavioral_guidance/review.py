@@ -68,21 +68,55 @@ def _parse_utc_timestamp(value: str, field: str) -> str:
     except ValueError as exc:
         raise BehavioralGuidanceReviewError(f"{field} must be an ISO timestamp") from exc
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        raise BehavioralGuidanceReviewError(f"{field} must include timezone or Z")
     return parsed.astimezone(timezone.utc).isoformat()
 
 
-def _utc_day_window(date_text: str | None = None) -> tuple[str, str]:
+def get_local_timezone():
+    """Return the system local timezone object."""
+    return datetime.now().astimezone().tzinfo
+
+
+def _timezone_name(tzinfo) -> str | None:
+    return getattr(tzinfo, "key", None) or datetime.now(tzinfo).tzname()
+
+
+def _format_offset(dt: datetime) -> str | None:
+    offset = dt.utcoffset()
+    if offset is None:
+        return None
+    total_minutes = int(offset.total_seconds() // 60)
+    sign = "+" if total_minutes >= 0 else "-"
+    total_minutes = abs(total_minutes)
+    hours, minutes = divmod(total_minutes, 60)
+    return f"{sign}{hours:02d}:{minutes:02d}"
+
+
+def local_day_window_to_utc(
+    date_text: str | None = None,
+    *,
+    tzinfo=None,
+) -> dict:
+    """Interpret a local/system date and return its UTC query window."""
+    tzinfo = tzinfo or get_local_timezone()
     if date_text:
         try:
             day = date.fromisoformat(date_text)
         except ValueError as exc:
             raise BehavioralGuidanceReviewError("date must use YYYY-MM-DD") from exc
     else:
-        day = datetime.now(timezone.utc).date()
-    start = datetime.combine(day, time.min, tzinfo=timezone.utc)
-    end = start + timedelta(days=1)
-    return start.isoformat(), end.isoformat()
+        day = datetime.now(tzinfo).date()
+    local_start = datetime.combine(day, time.min, tzinfo=tzinfo)
+    local_end = local_start + timedelta(days=1)
+    utc_start = local_start.astimezone(timezone.utc)
+    utc_end = local_end.astimezone(timezone.utc)
+    return {
+        "local_date": day.isoformat(),
+        "timezone": _timezone_name(tzinfo),
+        "local_offset": _format_offset(local_start),
+        "utc_start": utc_start.isoformat(),
+        "utc_end": utc_end.isoformat(),
+    }
 
 
 def load_conversation_for_guidance_review(conversation_id: str) -> dict:
@@ -128,33 +162,59 @@ def list_conversations_for_guidance_review(
     since: str | None = None,
     conversation_ids: list[str] | None = None,
     max_conversations: int = DEFAULT_DAILY_MAX_CONVERSATIONS,
-) -> list[dict]:
+    tzinfo=None,
+) -> tuple[list[dict], dict]:
     """Select chat conversations for a bounded manual daily review."""
     max_conversations = _normalize_positive_int(max_conversations, "max_conversations")
     if conversation_ids:
-        return _conversation_rows_by_ids(conversation_ids)[:max_conversations]
+        metadata = {
+            "selection_mode": "conversation_id",
+            "local_date": None,
+            "timezone": None,
+            "local_offset": None,
+            "utc_start": None,
+            "utc_end": None,
+            "since": None,
+        }
+        return _conversation_rows_by_ids(conversation_ids)[:max_conversations], metadata
     if date_text and since:
         raise BehavioralGuidanceReviewError("Use either date or since, not both")
 
     params = []
     if since:
-        where = "WHERE started_at >= ?"
-        params.append(_parse_utc_timestamp(since, "since"))
+        utc_start = _parse_utc_timestamp(since, "since")
+        where = "WHERE m.timestamp >= ?"
+        params.append(utc_start)
+        metadata = {
+            "selection_mode": "since",
+            "local_date": None,
+            "timezone": None,
+            "local_offset": None,
+            "utc_start": utc_start,
+            "utc_end": None,
+            "since": since,
+        }
     else:
-        start, end = _utc_day_window(date_text)
-        where = "WHERE started_at >= ? AND started_at < ?"
-        params.extend([start, end])
+        metadata = local_day_window_to_utc(date_text, tzinfo=tzinfo)
+        metadata["selection_mode"] = "date"
+        metadata["since"] = None
+        where = "WHERE m.timestamp >= ? AND m.timestamp < ?"
+        params.extend([metadata["utc_start"], metadata["utc_end"]])
 
     with get_connection() as conn:
         rows = conn.execute(
-            f"""SELECT *
-                FROM main.conversations
+            f"""SELECT c.*,
+                       MIN(m.timestamp) AS first_activity_at,
+                       COUNT(m.id) AS window_message_count
+                FROM main.messages m
+                JOIN main.conversations c ON c.id = m.conversation_id
                 {where}
-                ORDER BY started_at ASC
+                GROUP BY c.id
+                ORDER BY first_activity_at ASC
                 LIMIT ?""",
             (*params, max_conversations),
         ).fetchall()
-    return [dict(row) for row in rows]
+    return [dict(row) for row in rows], metadata
 
 
 def has_existing_conversation_review_proposals(conversation_id: str) -> bool:
@@ -442,7 +502,7 @@ def generate_behavioral_guidance_daily_review(
         max_proposals_per_conversation
     )
 
-    selected = list_conversations_for_guidance_review(
+    selected, selection = list_conversations_for_guidance_review(
         date_text=date_text,
         since=since,
         conversation_ids=conversation_ids,
@@ -575,5 +635,6 @@ def generate_behavioral_guidance_daily_review(
         "max_proposals_per_conversation": max_proposals_per_conversation,
         "max_total_proposals": max_total_proposals,
         "stopped_reason": stopped_reason,
+        "selection": selection,
         "results": results,
     }

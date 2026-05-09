@@ -252,6 +252,14 @@ def test_behavioral_guidance_review_day_command_prints_summary(temp_admin, capsy
         "failed_conversations": 0,
         "proposal_count": 1,
         "created_proposal_count": 0,
+        "selection": {
+            "selection_mode": "date",
+            "local_date": "2026-05-08",
+            "timezone": "EDT",
+            "local_offset": "-04:00",
+            "utc_start": "2026-05-08T04:00:00+00:00",
+            "utc_end": "2026-05-09T04:00:00+00:00",
+        },
         "results": [
             {
                 "conversation_id": conversation_id,
@@ -290,5 +298,8 @@ def test_behavioral_guidance_review_day_command_prints_summary(temp_admin, capsy
     assert "Behavioral guidance daily review complete" in output
     assert "mode=dry-run" in output
     assert "selected_conversations=1" in output
+    assert "local_date=2026-05-08" in output
+    assert "utc_start=2026-05-08T04:00:00+00:00" in output
+    assert "utc_end=2026-05-09T04:00:00+00:00" in output
     assert conversation_id in output
     assert "Use one atomic guidance change" in output

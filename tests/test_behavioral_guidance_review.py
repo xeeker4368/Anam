@@ -1,5 +1,5 @@
 import importlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -238,6 +238,22 @@ def _set_conversation_started(db_mod, conversation_id, started_at):
         conn.commit()
 
 
+def _set_message_timestamps(db_mod, conversation_id, timestamps):
+    with db_mod.get_connection() as conn:
+        rows = conn.execute(
+            """SELECT id FROM main.messages
+               WHERE conversation_id = ?
+               ORDER BY timestamp ASC""",
+            (conversation_id,),
+        ).fetchall()
+        for row, timestamp in zip(rows, timestamps):
+            conn.execute(
+                "UPDATE main.messages SET timestamp = ? WHERE id = ?",
+                (timestamp, row["id"]),
+            )
+        conn.commit()
+
+
 def _make_conversation(db_mod, user_id, *, started_at, message_count=3):
     conversation_id = db_mod.start_conversation(user_id)
     _set_conversation_started(db_mod, conversation_id, started_at)
@@ -251,6 +267,17 @@ def _make_conversation(db_mod, user_id, *, started_at, message_count=3):
         )
         if first is None:
             first = message
+    _set_message_timestamps(
+        db_mod,
+        conversation_id,
+        [
+            (
+                datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                + timedelta(minutes=index)
+            ).isoformat()
+            for index in range(message_count)
+        ],
+    )
     return conversation_id, first
 
 
@@ -258,25 +285,59 @@ def test_date_window_selects_expected_conversations(review_env):
     db_mod = review_env["db"]
     review = review_env["review"]
     user_id = review_env["user"]["id"]
+    tzinfo = timezone(timedelta(hours=-4), "EDT")
     outside_id, _ = _make_conversation(
         db_mod,
         user_id,
-        started_at="2026-05-07T23:59:00+00:00",
+        started_at="2026-05-08T03:59:00+00:00",
+    )
+    _set_message_timestamps(
+        db_mod,
+        outside_id,
+        [
+            "2026-05-08T03:57:00+00:00",
+            "2026-05-08T03:58:00+00:00",
+            "2026-05-08T03:59:00+00:00",
+        ],
     )
     inside_id, _ = _make_conversation(
         db_mod,
         user_id,
-        started_at="2026-05-08T00:01:00+00:00",
+        started_at="2026-05-08T04:01:00+00:00",
     )
 
-    selected = review.list_conversations_for_guidance_review(
+    selected, metadata = review.list_conversations_for_guidance_review(
         date_text="2026-05-08",
         max_conversations=10,
+        tzinfo=tzinfo,
     )
 
     ids = [conversation["id"] for conversation in selected]
     assert inside_id in ids
     assert outside_id not in ids
+    assert metadata["local_date"] == "2026-05-08"
+    assert metadata["local_offset"] == "-04:00"
+    assert metadata["utc_start"] == "2026-05-08T04:00:00+00:00"
+    assert metadata["utc_end"] == "2026-05-09T04:00:00+00:00"
+
+
+def test_default_date_uses_local_system_date_helper(review_env, monkeypatch):
+    review = review_env["review"]
+    tzinfo = timezone(timedelta(hours=-4), "EDT")
+    monkeypatch.setattr(review, "get_local_timezone", lambda: tzinfo)
+
+    class FixedDatetime(review.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 5, 8, 21, 38, tzinfo=tz or tzinfo)
+
+    monkeypatch.setattr(review, "datetime", FixedDatetime)
+
+    window = review.local_day_window_to_utc()
+
+    assert window["local_date"] == "2026-05-08"
+    assert window["utc_start"] == "2026-05-08T04:00:00+00:00"
+    assert window["utc_end"] == "2026-05-09T04:00:00+00:00"
 
 
 def test_since_selects_expected_conversations(review_env):
@@ -294,7 +355,7 @@ def test_since_selects_expected_conversations(review_env):
         started_at="2026-05-08T02:00:00+00:00",
     )
 
-    selected = review.list_conversations_for_guidance_review(
+    selected, metadata = review.list_conversations_for_guidance_review(
         since="2026-05-08T01:30:00Z",
         max_conversations=10,
     )
@@ -302,18 +363,134 @@ def test_since_selects_expected_conversations(review_env):
     ids = [conversation["id"] for conversation in selected]
     assert newer_id in ids
     assert older_id not in ids
+    assert metadata["selection_mode"] == "since"
+    assert metadata["utc_start"] == "2026-05-08T01:30:00+00:00"
+
+
+def test_since_with_naive_timestamp_fails_clearly(review_env):
+    review = review_env["review"]
+
+    with pytest.raises(review.BehavioralGuidanceReviewError, match="timezone or Z"):
+        review.list_conversations_for_guidance_review(
+            since="2026-05-08T01:30:00",
+            max_conversations=10,
+        )
+
+
+def test_selection_includes_previous_day_start_with_message_inside_window(review_env):
+    db_mod = review_env["db"]
+    review = review_env["review"]
+    tzinfo = timezone(timedelta(hours=-4), "EDT")
+    conversation_id, _ = _make_conversation(
+        db_mod,
+        review_env["user"]["id"],
+        started_at="2026-05-07T22:00:00+00:00",
+    )
+    _set_message_timestamps(
+        db_mod,
+        conversation_id,
+        [
+            "2026-05-07T22:00:00+00:00",
+            "2026-05-08T04:30:00+00:00",
+            "2026-05-08T05:00:00+00:00",
+        ],
+    )
+
+    selected, _ = review.list_conversations_for_guidance_review(
+        date_text="2026-05-08",
+        max_conversations=10,
+        tzinfo=tzinfo,
+    )
+
+    assert conversation_id in [conversation["id"] for conversation in selected]
+
+
+def test_selection_excludes_conversation_without_message_in_window(review_env):
+    db_mod = review_env["db"]
+    review = review_env["review"]
+    tzinfo = timezone(timedelta(hours=-4), "EDT")
+    conversation_id, _ = _make_conversation(
+        db_mod,
+        review_env["user"]["id"],
+        started_at="2026-05-08T05:00:00+00:00",
+    )
+    _set_message_timestamps(
+        db_mod,
+        conversation_id,
+        [
+            "2026-05-09T05:00:00+00:00",
+            "2026-05-09T05:01:00+00:00",
+            "2026-05-09T05:02:00+00:00",
+        ],
+    )
+
+    selected, _ = review.list_conversations_for_guidance_review(
+        date_text="2026-05-08",
+        max_conversations=10,
+        tzinfo=tzinfo,
+    )
+
+    assert conversation_id not in [conversation["id"] for conversation in selected]
+
+
+def test_multiple_messages_in_window_produce_one_conversation(review_env):
+    db_mod = review_env["db"]
+    review = review_env["review"]
+    tzinfo = timezone(timedelta(hours=-4), "EDT")
+    conversation_id, _ = _make_conversation(
+        db_mod,
+        review_env["user"]["id"],
+        started_at="2026-05-08T05:00:00+00:00",
+        message_count=4,
+    )
+
+    selected, _ = review.list_conversations_for_guidance_review(
+        date_text="2026-05-08",
+        max_conversations=10,
+        tzinfo=tzinfo,
+    )
+
+    matches = [conversation for conversation in selected if conversation["id"] == conversation_id]
+    assert len(matches) == 1
+    assert matches[0]["window_message_count"] == 4
+
+
+def test_selection_sorts_by_first_message_in_window(review_env):
+    db_mod = review_env["db"]
+    review = review_env["review"]
+    tzinfo = timezone(timedelta(hours=-4), "EDT")
+    later_id, _ = _make_conversation(
+        db_mod,
+        review_env["user"]["id"],
+        started_at="2026-05-08T08:00:00+00:00",
+    )
+    earlier_id, _ = _make_conversation(
+        db_mod,
+        review_env["user"]["id"],
+        started_at="2026-05-08T05:00:00+00:00",
+    )
+
+    selected, _ = review.list_conversations_for_guidance_review(
+        date_text="2026-05-08",
+        max_conversations=10,
+        tzinfo=tzinfo,
+    )
+
+    ids = [conversation["id"] for conversation in selected]
+    assert ids.index(earlier_id) < ids.index(later_id)
 
 
 def test_repeated_conversation_id_selection_is_deduplicated(review_env):
     review = review_env["review"]
     conversation_id = review_env["conversation_id"]
 
-    selected = review.list_conversations_for_guidance_review(
+    selected, metadata = review.list_conversations_for_guidance_review(
         conversation_ids=[conversation_id, conversation_id],
         max_conversations=10,
     )
 
     assert [conversation["id"] for conversation in selected] == [conversation_id]
+    assert metadata["selection_mode"] == "conversation_id"
 
 
 def test_daily_dry_run_writes_nothing(review_env, monkeypatch):

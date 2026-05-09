@@ -623,6 +623,16 @@ def cmd_behavioral_guidance_review_day(args):
     print(f"failed_conversations={review['failed_conversations']}")
     print(f"proposal_count={review['proposal_count']}")
     print(f"created_proposal_count={review['created_proposal_count']}")
+    selection = review.get("selection") or {}
+    if selection.get("selection_mode") == "date":
+        print(f"local_date={selection.get('local_date')}")
+        print(f"timezone={selection.get('timezone')}")
+        print(f"local_offset={selection.get('local_offset')}")
+        print(f"utc_start={selection.get('utc_start')}")
+        print(f"utc_end={selection.get('utc_end')}")
+    elif selection.get("selection_mode") == "since":
+        print(f"since={selection.get('since')}")
+        print(f"utc_start={selection.get('utc_start')}")
     if review.get("stopped_reason"):
         print(f"stopped_reason={review['stopped_reason']}")
 
@@ -803,8 +813,8 @@ def main():
         "behavioral-guidance-review-day",
         help="Review a bounded recent/day window for AI-proposed guidance candidates",
     )
-    p.add_argument("--date", default=None, help="UTC date to review, YYYY-MM-DD")
-    p.add_argument("--since", default=None, help="UTC ISO timestamp lower bound")
+    p.add_argument("--date", default=None, help="Local/system date to review, YYYY-MM-DD")
+    p.add_argument("--since", default=None, help="Timezone-aware ISO timestamp lower bound")
     p.add_argument(
         "--conversation-id",
         action="append",
