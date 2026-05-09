@@ -1,4 +1,5 @@
 import importlib
+from datetime import datetime, timezone
 
 import pytest
 
@@ -31,6 +32,12 @@ def review_env(tmp_path, monkeypatch):
         user["id"],
         "assistant",
         "Understood. I should frame them as uploaded sources.",
+    )
+    db_mod.save_message(
+        conversation_id,
+        user["id"],
+        "user",
+        "That distinction matters for future behavior.",
     )
 
     return {
@@ -218,5 +225,319 @@ def test_behavioral_guidance_file_is_not_read_or_mutated(review_env, monkeypatch
     )
 
     review.generate_behavioral_guidance_review(review_env["conversation_id"])
+
+    assert guidance_file.read_text(encoding="utf-8") == "seed governance file\n"
+
+
+def _set_conversation_started(db_mod, conversation_id, started_at):
+    with db_mod.get_connection() as conn:
+        conn.execute(
+            "UPDATE main.conversations SET started_at = ? WHERE id = ?",
+            (started_at, conversation_id),
+        )
+        conn.commit()
+
+
+def _make_conversation(db_mod, user_id, *, started_at, message_count=3):
+    conversation_id = db_mod.start_conversation(user_id)
+    _set_conversation_started(db_mod, conversation_id, started_at)
+    first = None
+    for index in range(message_count):
+        message = db_mod.save_message(
+            conversation_id,
+            user_id,
+            "user" if index % 2 == 0 else "assistant",
+            f"message {index}",
+        )
+        if first is None:
+            first = message
+    return conversation_id, first
+
+
+def test_date_window_selects_expected_conversations(review_env):
+    db_mod = review_env["db"]
+    review = review_env["review"]
+    user_id = review_env["user"]["id"]
+    outside_id, _ = _make_conversation(
+        db_mod,
+        user_id,
+        started_at="2026-05-07T23:59:00+00:00",
+    )
+    inside_id, _ = _make_conversation(
+        db_mod,
+        user_id,
+        started_at="2026-05-08T00:01:00+00:00",
+    )
+
+    selected = review.list_conversations_for_guidance_review(
+        date_text="2026-05-08",
+        max_conversations=10,
+    )
+
+    ids = [conversation["id"] for conversation in selected]
+    assert inside_id in ids
+    assert outside_id not in ids
+
+
+def test_since_selects_expected_conversations(review_env):
+    db_mod = review_env["db"]
+    review = review_env["review"]
+    user_id = review_env["user"]["id"]
+    older_id, _ = _make_conversation(
+        db_mod,
+        user_id,
+        started_at="2026-05-08T01:00:00+00:00",
+    )
+    newer_id, _ = _make_conversation(
+        db_mod,
+        user_id,
+        started_at="2026-05-08T02:00:00+00:00",
+    )
+
+    selected = review.list_conversations_for_guidance_review(
+        since="2026-05-08T01:30:00Z",
+        max_conversations=10,
+    )
+
+    ids = [conversation["id"] for conversation in selected]
+    assert newer_id in ids
+    assert older_id not in ids
+
+
+def test_repeated_conversation_id_selection_is_deduplicated(review_env):
+    review = review_env["review"]
+    conversation_id = review_env["conversation_id"]
+
+    selected = review.list_conversations_for_guidance_review(
+        conversation_ids=[conversation_id, conversation_id],
+        max_conversations=10,
+    )
+
+    assert [conversation["id"] for conversation in selected] == [conversation_id]
+
+
+def test_daily_dry_run_writes_nothing(review_env, monkeypatch):
+    review = review_env["review"]
+    guidance = review_env["guidance"]
+    conversation_id = review_env["conversation_id"]
+    message_id = review_env["first_message"]["id"]
+    monkeypatch.setattr(
+        review,
+        "chat_completion_json",
+        lambda *args, **kwargs: review.json.dumps(_model_payload(message_id)),
+    )
+
+    result = review.generate_behavioral_guidance_daily_review(
+        conversation_ids=[conversation_id],
+        write=False,
+    )
+
+    assert result["proposal_count"] == 1
+    assert result["created_proposal_count"] == 0
+    assert guidance.list_behavioral_guidance_proposals() == []
+
+
+def test_daily_write_mode_creates_proposed_records(review_env, monkeypatch):
+    review = review_env["review"]
+    guidance = review_env["guidance"]
+    conversation_id = review_env["conversation_id"]
+    message_id = review_env["first_message"]["id"]
+    monkeypatch.setattr(
+        review,
+        "chat_completion_json",
+        lambda *args, **kwargs: review.json.dumps(_model_payload(message_id)),
+    )
+
+    result = review.generate_behavioral_guidance_daily_review(
+        conversation_ids=[conversation_id],
+        write=True,
+    )
+
+    assert result["proposal_count"] == 1
+    assert result["created_proposal_count"] == 1
+    proposals = guidance.list_behavioral_guidance_proposals()
+    assert len(proposals) == 1
+    assert proposals[0]["status"] == "proposed"
+
+
+def test_daily_review_skips_conversations_below_message_threshold(review_env, monkeypatch):
+    db_mod = review_env["db"]
+    review = review_env["review"]
+    short_id, _ = _make_conversation(
+        db_mod,
+        review_env["user"]["id"],
+        started_at=datetime.now(timezone.utc).isoformat(),
+        message_count=2,
+    )
+    monkeypatch.setattr(
+        review,
+        "chat_completion_json",
+        lambda *args, **kwargs: pytest.fail("model should not be called"),
+    )
+
+    result = review.generate_behavioral_guidance_daily_review(
+        conversation_ids=[short_id],
+        write=False,
+    )
+
+    assert result["skipped_conversations"] == 1
+    assert result["results"][0]["skip_reason"] == "too_few_messages"
+
+
+def test_daily_review_enforces_max_conversations(review_env, monkeypatch):
+    db_mod = review_env["db"]
+    review = review_env["review"]
+    user_id = review_env["user"]["id"]
+    first_id, first_message = _make_conversation(
+        db_mod,
+        user_id,
+        started_at="2026-05-08T01:00:00+00:00",
+    )
+    second_id, _ = _make_conversation(
+        db_mod,
+        user_id,
+        started_at="2026-05-08T02:00:00+00:00",
+    )
+    monkeypatch.setattr(
+        review,
+        "chat_completion_json",
+        lambda *args, **kwargs: review.json.dumps(_model_payload(first_message["id"])),
+    )
+
+    result = review.generate_behavioral_guidance_daily_review(
+        conversation_ids=[first_id, second_id],
+        max_conversations=1,
+        write=False,
+    )
+
+    assert result["selected_conversations"] == 1
+    assert result["results"][0]["conversation_id"] == first_id
+
+
+def test_daily_review_enforces_max_total_proposals(review_env, monkeypatch):
+    db_mod = review_env["db"]
+    review = review_env["review"]
+    user_id = review_env["user"]["id"]
+    first_id, first_message = _make_conversation(
+        db_mod,
+        user_id,
+        started_at="2026-05-08T01:00:00+00:00",
+    )
+    second_id, second_message = _make_conversation(
+        db_mod,
+        user_id,
+        started_at="2026-05-08T02:00:00+00:00",
+    )
+
+    def fake_model(messages, **kwargs):
+        text = str(messages)
+        message_id = first_message["id"] if first_id in text else second_message["id"]
+        return review.json.dumps(_model_payload(message_id))
+
+    monkeypatch.setattr(review, "chat_completion_json", fake_model)
+
+    result = review.generate_behavioral_guidance_daily_review(
+        conversation_ids=[first_id, second_id],
+        max_total_proposals=1,
+        write=False,
+    )
+
+    assert result["proposal_count"] == 1
+    assert result["stopped_reason"] == "max_total_proposals_reached"
+    assert len(result["results"]) == 1
+
+
+def test_daily_review_skips_duplicates_by_default(review_env, monkeypatch):
+    review = review_env["review"]
+    guidance = review_env["guidance"]
+    conversation_id = review_env["conversation_id"]
+    guidance.create_behavioral_guidance_proposal(
+        proposal_type="addition",
+        proposal_text="Existing generated proposal.",
+        rationale="Existing review.",
+        source_conversation_id=conversation_id,
+        source_channel="chat",
+        metadata={"generation_method": "conversation_review_v1"},
+    )
+    monkeypatch.setattr(
+        review,
+        "chat_completion_json",
+        lambda *args, **kwargs: pytest.fail("model should not be called"),
+    )
+
+    result = review.generate_behavioral_guidance_daily_review(
+        conversation_ids=[conversation_id],
+        write=False,
+    )
+
+    assert result["skipped_conversations"] == 1
+    assert result["results"][0]["skip_reason"] == "duplicate_review_exists"
+
+
+def test_daily_review_allow_duplicates_permits_rerun(review_env, monkeypatch):
+    review = review_env["review"]
+    guidance = review_env["guidance"]
+    conversation_id = review_env["conversation_id"]
+    message_id = review_env["first_message"]["id"]
+    guidance.create_behavioral_guidance_proposal(
+        proposal_type="addition",
+        proposal_text="Existing generated proposal.",
+        rationale="Existing review.",
+        source_conversation_id=conversation_id,
+        source_channel="chat",
+        metadata={"generation_method": "conversation_review_v1"},
+    )
+    monkeypatch.setattr(
+        review,
+        "chat_completion_json",
+        lambda *args, **kwargs: review.json.dumps(_model_payload(message_id)),
+    )
+
+    result = review.generate_behavioral_guidance_daily_review(
+        conversation_ids=[conversation_id],
+        allow_duplicates=True,
+        write=False,
+    )
+
+    assert result["reviewed_conversations"] == 1
+    assert result["proposal_count"] == 1
+
+
+def test_daily_review_model_failure_is_reported_without_writes(review_env, monkeypatch):
+    review = review_env["review"]
+    guidance = review_env["guidance"]
+    monkeypatch.setattr(
+        review,
+        "chat_completion_json",
+        lambda *args, **kwargs: "{not json",
+    )
+
+    result = review.generate_behavioral_guidance_daily_review(
+        conversation_ids=[review_env["conversation_id"]],
+        write=True,
+    )
+
+    assert result["failed_conversations"] == 1
+    assert "malformed JSON" in result["results"][0]["error"]
+    assert guidance.list_behavioral_guidance_proposals() == []
+
+
+def test_daily_review_does_not_read_or_mutate_behavioral_guidance_file(
+    review_env,
+    monkeypatch,
+):
+    review = review_env["review"]
+    guidance_file = review_env["tmp_path"] / "BEHAVIORAL_GUIDANCE.md"
+    guidance_file.write_text("seed governance file\n", encoding="utf-8")
+    monkeypatch.setattr(
+        review,
+        "chat_completion_json",
+        lambda *args, **kwargs: review.json.dumps({"proposals": []}),
+    )
+
+    review.generate_behavioral_guidance_daily_review(
+        conversation_ids=[review_env["conversation_id"]],
+        write=False,
+    )
 
     assert guidance_file.read_text(encoding="utf-8") == "seed governance file\n"

@@ -26,6 +26,8 @@ Commands:
                     Update proposal review status
     behavioral-guidance-review-conversation
                     Generate AI-proposed guidance candidates from one chat conversation
+    behavioral-guidance-review-day
+                    Review a bounded recent/day window for AI-proposed guidance candidates
 """
 
 import argparse
@@ -62,6 +64,7 @@ from tir.behavioral_guidance.service import (
 )
 from tir.behavioral_guidance.review import (
     BehavioralGuidanceReviewError,
+    generate_behavioral_guidance_daily_review,
     generate_behavioral_guidance_review,
     write_behavioral_guidance_review_proposals,
 )
@@ -591,6 +594,58 @@ def cmd_behavioral_guidance_review_conversation(args):
         _print_behavioral_guidance_proposal(proposal)
 
 
+def cmd_behavioral_guidance_review_day(args):
+    """Review a bounded day/window of conversations for guidance proposals."""
+    try:
+        review = generate_behavioral_guidance_daily_review(
+            date_text=args.date,
+            since=args.since,
+            conversation_ids=args.conversation_id,
+            write=args.write,
+            max_conversations=args.max_conversations,
+            max_proposals_per_conversation=args.max_proposals_per_conversation,
+            max_total_proposals=args.max_total_proposals,
+            model=args.model,
+            allow_duplicates=args.allow_duplicates,
+        )
+    except BehavioralGuidanceReviewError as exc:
+        print(f"Behavioral guidance daily review failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Behavioral guidance daily review failed: {exc}")
+        sys.exit(1)
+
+    print("Behavioral guidance daily review complete")
+    print(f"mode={review['mode']}")
+    print(f"selected_conversations={review['selected_conversations']}")
+    print(f"reviewed_conversations={review['reviewed_conversations']}")
+    print(f"skipped_conversations={review['skipped_conversations']}")
+    print(f"failed_conversations={review['failed_conversations']}")
+    print(f"proposal_count={review['proposal_count']}")
+    print(f"created_proposal_count={review['created_proposal_count']}")
+    if review.get("stopped_reason"):
+        print(f"stopped_reason={review['stopped_reason']}")
+
+    for result in review["results"]:
+        print(
+            "conversation "
+            f"id={result['conversation_id']} "
+            f"status={result['status']} "
+            f"messages={result['message_count']} "
+            f"proposals={result['proposal_count']}"
+        )
+        if result.get("skip_reason"):
+            print(f"  skip_reason={result['skip_reason']}")
+        if result.get("error"):
+            print(f"  error={result['error']}")
+        if result.get("no_proposal_reason"):
+            print(f"  no_proposal_reason={result['no_proposal_reason']}")
+        if result.get("created_proposal_ids"):
+            print("  created_proposal_ids=" + ", ".join(result["created_proposal_ids"]))
+        if not args.write and result.get("proposals"):
+            print(json.dumps({"proposals": result["proposals"]}, indent=2, sort_keys=True))
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -743,6 +798,37 @@ def main():
     )
     p.add_argument("--model", default=None, help="Optional Ollama model override")
 
+    # behavioral-guidance-review-day
+    p = sub.add_parser(
+        "behavioral-guidance-review-day",
+        help="Review a bounded recent/day window for AI-proposed guidance candidates",
+    )
+    p.add_argument("--date", default=None, help="UTC date to review, YYYY-MM-DD")
+    p.add_argument("--since", default=None, help="UTC ISO timestamp lower bound")
+    p.add_argument(
+        "--conversation-id",
+        action="append",
+        default=None,
+        help="Conversation ID to review; repeatable",
+    )
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="Generate proposals without writing")
+    mode.add_argument("--write", action="store_true", help="Write generated proposals")
+    p.add_argument("--max-conversations", type=int, default=10, help="Max conversations to review")
+    p.add_argument(
+        "--max-proposals-per-conversation",
+        type=int,
+        default=1,
+        help="Max proposals per conversation, capped at 3",
+    )
+    p.add_argument("--max-total-proposals", type=int, default=5, help="Max total proposals")
+    p.add_argument("--model", default=None, help="Optional Ollama model override")
+    p.add_argument(
+        "--allow-duplicates",
+        action="store_true",
+        help="Review conversations even if conversation_review_v1 proposals already exist",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -773,6 +859,7 @@ def main():
         "behavioral-guidance-proposal-add": cmd_behavioral_guidance_proposal_add,
         "behavioral-guidance-proposal-update": cmd_behavioral_guidance_proposal_update,
         "behavioral-guidance-review-conversation": cmd_behavioral_guidance_review_conversation,
+        "behavioral-guidance-review-day": cmd_behavioral_guidance_review_day,
     }
 
     commands[args.command](args)

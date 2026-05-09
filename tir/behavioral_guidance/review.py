@@ -7,18 +7,28 @@ BEHAVIORAL_GUIDANCE.md, does not approve proposals, and does not use tools.
 
 import json
 import re
+from datetime import date, datetime, time, timezone, timedelta
 
 from tir.behavioral_guidance.service import (
     ALLOWED_PROPOSAL_TYPES,
+    list_behavioral_guidance_proposals,
     create_behavioral_guidance_proposal,
 )
 from tir.config import CHAT_MODEL, OLLAMA_HOST
 from tir.engine.ollama import chat_completion_json
-from tir.memory.db import get_conversation, get_conversation_messages, get_user
+from tir.memory.db import (
+    get_connection,
+    get_conversation,
+    get_conversation_messages,
+    get_user,
+)
 
 
 MAX_REVIEW_PROPOSALS = 3
 DEFAULT_REVIEW_PROPOSALS = 1
+DEFAULT_DAILY_MAX_CONVERSATIONS = 10
+DEFAULT_DAILY_MAX_TOTAL_PROPOSALS = 5
+MIN_REVIEW_MESSAGE_COUNT = 3
 
 
 class BehavioralGuidanceReviewError(ValueError):
@@ -39,6 +49,42 @@ def _normalize_max_proposals(max_proposals: int) -> int:
     return value
 
 
+def _normalize_positive_int(value, field: str) -> int:
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise BehavioralGuidanceReviewError(f"{field} must be an integer") from exc
+    if normalized < 1:
+        raise BehavioralGuidanceReviewError(f"{field} must be at least 1")
+    return normalized
+
+
+def _parse_utc_timestamp(value: str, field: str) -> str:
+    if not value or not value.strip():
+        raise BehavioralGuidanceReviewError(f"{field} is required")
+    text = value.strip()
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise BehavioralGuidanceReviewError(f"{field} must be an ISO timestamp") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
+def _utc_day_window(date_text: str | None = None) -> tuple[str, str]:
+    if date_text:
+        try:
+            day = date.fromisoformat(date_text)
+        except ValueError as exc:
+            raise BehavioralGuidanceReviewError("date must use YYYY-MM-DD") from exc
+    else:
+        day = datetime.now(timezone.utc).date()
+    start = datetime.combine(day, time.min, tzinfo=timezone.utc)
+    end = start + timedelta(days=1)
+    return start.isoformat(), end.isoformat()
+
+
 def load_conversation_for_guidance_review(conversation_id: str) -> dict:
     """Load one working chat conversation and its ordered messages."""
     conversation = get_conversation(conversation_id)
@@ -52,6 +98,75 @@ def load_conversation_for_guidance_review(conversation_id: str) -> dict:
         "messages": messages,
         "user": user,
     }
+
+
+def _conversation_rows_by_ids(conversation_ids: list[str]) -> list[dict]:
+    rows = []
+    seen = set()
+    for conversation_id in conversation_ids:
+        if not conversation_id or conversation_id in seen:
+            continue
+        seen.add(conversation_id)
+        conversation = get_conversation(conversation_id)
+        if conversation is None:
+            rows.append(
+                {
+                    "id": conversation_id,
+                    "missing": True,
+                    "skip_reason": "conversation_not_found",
+                    "message_count": 0,
+                }
+            )
+        else:
+            rows.append(conversation)
+    return rows
+
+
+def list_conversations_for_guidance_review(
+    *,
+    date_text: str | None = None,
+    since: str | None = None,
+    conversation_ids: list[str] | None = None,
+    max_conversations: int = DEFAULT_DAILY_MAX_CONVERSATIONS,
+) -> list[dict]:
+    """Select chat conversations for a bounded manual daily review."""
+    max_conversations = _normalize_positive_int(max_conversations, "max_conversations")
+    if conversation_ids:
+        return _conversation_rows_by_ids(conversation_ids)[:max_conversations]
+    if date_text and since:
+        raise BehavioralGuidanceReviewError("Use either date or since, not both")
+
+    params = []
+    if since:
+        where = "WHERE started_at >= ?"
+        params.append(_parse_utc_timestamp(since, "since"))
+    else:
+        start, end = _utc_day_window(date_text)
+        where = "WHERE started_at >= ? AND started_at < ?"
+        params.extend([start, end])
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""SELECT *
+                FROM main.conversations
+                {where}
+                ORDER BY started_at ASC
+                LIMIT ?""",
+            (*params, max_conversations),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def has_existing_conversation_review_proposals(conversation_id: str) -> bool:
+    """Return true if conversation_review_v1 proposals already exist."""
+    proposals = list_behavioral_guidance_proposals(limit=500)
+    for proposal in proposals:
+        if proposal.get("source_conversation_id") != conversation_id:
+            continue
+        metadata = proposal.get("metadata") or {}
+        if metadata.get("generation_method") == "conversation_review_v1":
+            return True
+    return False
 
 
 def _format_transcript(messages: list[dict]) -> str:
@@ -303,3 +418,162 @@ def write_behavioral_guidance_review_proposals(review_result: dict) -> list[dict
     for proposal in review_result.get("proposals", []):
         created.append(create_behavioral_guidance_proposal(**proposal))
     return created
+
+
+def generate_behavioral_guidance_daily_review(
+    *,
+    date_text: str | None = None,
+    since: str | None = None,
+    conversation_ids: list[str] | None = None,
+    write: bool = False,
+    max_conversations: int = DEFAULT_DAILY_MAX_CONVERSATIONS,
+    max_proposals_per_conversation: int = DEFAULT_REVIEW_PROPOSALS,
+    max_total_proposals: int = DEFAULT_DAILY_MAX_TOTAL_PROPOSALS,
+    model: str | None = None,
+    allow_duplicates: bool = False,
+) -> dict:
+    """Run a bounded manual review across recent/selected conversations."""
+    max_conversations = _normalize_positive_int(max_conversations, "max_conversations")
+    max_total_proposals = _normalize_positive_int(
+        max_total_proposals,
+        "max_total_proposals",
+    )
+    max_proposals_per_conversation = _normalize_max_proposals(
+        max_proposals_per_conversation
+    )
+
+    selected = list_conversations_for_guidance_review(
+        date_text=date_text,
+        since=since,
+        conversation_ids=conversation_ids,
+        max_conversations=max_conversations,
+    )
+    results = []
+    total_proposals = 0
+    created_count = 0
+    stopped_reason = None
+
+    for conversation in selected:
+        conversation_id = conversation.get("id")
+        if total_proposals >= max_total_proposals:
+            stopped_reason = "max_total_proposals_reached"
+            break
+
+        if conversation.get("missing"):
+            results.append(
+                {
+                    "conversation_id": conversation_id,
+                    "status": "skipped",
+                    "message_count": 0,
+                    "proposal_count": 0,
+                    "skip_reason": conversation.get("skip_reason"),
+                    "created_proposal_ids": [],
+                }
+            )
+            continue
+
+        message_count = int(conversation.get("message_count") or 0)
+        if message_count < MIN_REVIEW_MESSAGE_COUNT:
+            results.append(
+                {
+                    "conversation_id": conversation_id,
+                    "status": "skipped",
+                    "message_count": message_count,
+                    "proposal_count": 0,
+                    "skip_reason": "too_few_messages",
+                    "created_proposal_ids": [],
+                }
+            )
+            continue
+
+        if not allow_duplicates and has_existing_conversation_review_proposals(
+            conversation_id
+        ):
+            results.append(
+                {
+                    "conversation_id": conversation_id,
+                    "status": "skipped",
+                    "message_count": message_count,
+                    "proposal_count": 0,
+                    "skip_reason": "duplicate_review_exists",
+                    "created_proposal_ids": [],
+                }
+            )
+            continue
+
+        remaining = max_total_proposals - total_proposals
+        per_conversation_limit = min(max_proposals_per_conversation, remaining)
+        try:
+            review = generate_behavioral_guidance_review(
+                conversation_id,
+                max_proposals=per_conversation_limit,
+                model=model,
+            )
+        except Exception as exc:
+            results.append(
+                {
+                    "conversation_id": conversation_id,
+                    "status": "failed",
+                    "message_count": message_count,
+                    "proposal_count": 0,
+                    "error": str(exc),
+                    "created_proposal_ids": [],
+                }
+            )
+            continue
+
+        proposals = review.get("proposals", [])
+        total_proposals += len(proposals)
+        created = []
+        if write and proposals:
+            try:
+                created = write_behavioral_guidance_review_proposals(review)
+            except Exception as exc:
+                results.append(
+                    {
+                        "conversation_id": conversation_id,
+                        "status": "failed",
+                        "message_count": review.get("message_count", message_count),
+                        "proposal_count": len(proposals),
+                        "error": str(exc),
+                        "created_proposal_ids": [],
+                    }
+                )
+                continue
+            created_count += len(created)
+
+        results.append(
+            {
+                "conversation_id": conversation_id,
+                "status": "reviewed",
+                "message_count": review.get("message_count", message_count),
+                "proposal_count": len(proposals),
+                "no_proposal_reason": review.get("no_proposal_reason"),
+                "proposals": proposals,
+                "created_proposal_ids": [
+                    proposal["proposal_id"] for proposal in created
+                ],
+            }
+        )
+
+    return {
+        "ok": True,
+        "mode": "write" if write else "dry-run",
+        "selected_conversations": len(selected),
+        "reviewed_conversations": len(
+            [result for result in results if result["status"] == "reviewed"]
+        ),
+        "skipped_conversations": len(
+            [result for result in results if result["status"] == "skipped"]
+        ),
+        "failed_conversations": len(
+            [result for result in results if result["status"] == "failed"]
+        ),
+        "proposal_count": total_proposals,
+        "created_proposal_count": created_count,
+        "max_conversations": max_conversations,
+        "max_proposals_per_conversation": max_proposals_per_conversation,
+        "max_total_proposals": max_total_proposals,
+        "stopped_reason": stopped_reason,
+        "results": results,
+    }

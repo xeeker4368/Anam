@@ -238,3 +238,57 @@ def test_behavioral_guidance_review_command_write_prints_created_ids(temp_admin,
     proposals = admin_mod.list_behavioral_guidance_proposals()
     assert len(proposals) == 1
     assert proposals[0]["reviewed_by_user_id"] is None
+
+
+def test_behavioral_guidance_review_day_command_prints_summary(temp_admin, capsys):
+    db_mod, admin_mod = temp_admin
+    user = db_mod.create_user("Lyle", role="admin")
+    conversation_id = db_mod.start_conversation(user["id"])
+    review = {
+        "mode": "dry-run",
+        "selected_conversations": 1,
+        "reviewed_conversations": 1,
+        "skipped_conversations": 0,
+        "failed_conversations": 0,
+        "proposal_count": 1,
+        "created_proposal_count": 0,
+        "results": [
+            {
+                "conversation_id": conversation_id,
+                "status": "reviewed",
+                "message_count": 3,
+                "proposal_count": 1,
+                "proposals": [
+                    {
+                        "proposal_type": "addition",
+                        "proposal_text": "Use one atomic guidance change per proposal.",
+                        "rationale": "Atomic proposals are easier to review.",
+                    }
+                ],
+                "created_proposal_ids": [],
+            }
+        ],
+    }
+
+    with patch.object(admin_mod, "generate_behavioral_guidance_daily_review", return_value=review):
+        admin_mod.cmd_behavioral_guidance_review_day(
+            SimpleNamespace(
+                date=None,
+                since=None,
+                conversation_id=[conversation_id],
+                dry_run=True,
+                write=False,
+                max_conversations=10,
+                max_proposals_per_conversation=1,
+                max_total_proposals=5,
+                model=None,
+                allow_duplicates=False,
+            )
+        )
+
+    output = capsys.readouterr().out
+    assert "Behavioral guidance daily review complete" in output
+    assert "mode=dry-run" in output
+    assert "selected_conversations=1" in output
+    assert conversation_id in output
+    assert "Use one atomic guidance change" in output
