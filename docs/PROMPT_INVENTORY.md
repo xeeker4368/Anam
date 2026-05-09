@@ -43,28 +43,32 @@ Excerpt:
 
 - Name: `return_value`
 - Category: Runtime context / identity
-- Risk flags: `you are`
+- Risk flags: none
 - Audit note: `needs discussion`
 
 Excerpt:
 
 ```text
-You are currently in conversation with {...}.
-The time is {...}.
+[Current Situation]
+
+Conversation with: {...}
+Time: {...}
 ```
 
 ### 4. `tir/engine/context.py:165` — `_autonomous_situation`
 
 - Name: `return_value`
 - Category: Runtime context / identity
-- Risk flags: `you are`
+- Risk flags: none
 - Audit note: `needs discussion`
 
 Excerpt:
 
 ```text
-You are in an autonomous work session.
-The time is {...}.
+[Current Situation]
+
+Mode: autonomous work session
+Time: {...}
 ```
 
 ### 5. `tir/engine/context.py:323` — `_format_retrieved_memories`

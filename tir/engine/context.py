@@ -153,7 +153,7 @@ def _current_situation(user_name: str) -> str:
     now = datetime.now(tz)
     formatted = now.strftime("%A, %B %d, %Y at %I:%M %p").replace(" 0", " ")
 
-    return f"You are currently in conversation with {user_name}.\nThe time is {formatted}."
+    return f"[Current Situation]\n\nConversation with: {user_name}\nTime: {formatted}"
 
 
 def _autonomous_situation() -> str:
@@ -162,7 +162,7 @@ def _autonomous_situation() -> str:
     now = datetime.now(tz)
     formatted = now.strftime("%A, %B %d, %Y at %I:%M %p").replace(" 0", " ")
 
-    return f"You are in an autonomous work session.\nThe time is {formatted}."
+    return f"[Current Situation]\n\nMode: autonomous work session\nTime: {formatted}"
 
 
 # Simple patterns that don't need retrieval

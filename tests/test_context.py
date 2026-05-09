@@ -44,12 +44,13 @@ def test_operational_guidance_is_labeled_and_ordered():
     assert "You have access to the following tools:" in prompt
     assert "These are your own experiences and memories." in prompt
     assert "A remembered conversation chunk." in prompt
-    assert "You are currently in conversation with Lyle." in prompt
+    assert "[Current Situation]" in prompt
+    assert "Conversation with: Lyle" in prompt
 
     assert prompt.index("You are an AI.") < prompt.index("[Operational Guidance]")
     assert prompt.index("[Operational Guidance]") < prompt.index("You have access to the following tools:")
     assert prompt.index("You have access to the following tools:") < prompt.index("These are your own experiences and memories.")
-    assert prompt.index("These are your own experiences and memories.") < prompt.index("You are currently in conversation with Lyle.")
+    assert prompt.index("These are your own experiences and memories.") < prompt.index("[Current Situation]")
 
 
 def test_system_prompt_with_debug_preserves_existing_prompt_output():
@@ -132,7 +133,8 @@ def test_missing_operational_guidance_is_omitted():
 
     assert "[Operational Guidance]" not in prompt
     assert "You are an AI." in prompt
-    assert "You are currently in conversation with Lyle." in prompt
+    assert "[Current Situation]" in prompt
+    assert "Conversation with: Lyle" in prompt
 
 
 def test_behavioral_guidance_file_is_not_loaded_when_no_active_section(context_project):
@@ -253,7 +255,7 @@ def test_behavioral_guidance_debug_counts_items(context_project):
     assert breakdown["behavioral_guidance_chars"] == len(
         prompt[
             prompt.index("[Reviewed Behavioral Guidance]"):
-            prompt.index("You are currently in conversation with Lyle.") - 2
+            prompt.index("[Current Situation]") - 2
         ]
     )
     assert breakdown["behavioral_guidance_items_found"] == 2
