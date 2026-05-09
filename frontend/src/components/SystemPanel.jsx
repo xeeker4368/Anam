@@ -445,14 +445,38 @@ function GuidanceProposalRow({ label, value }) {
   )
 }
 
+function guidanceActionsForStatus(status) {
+  if (status === 'proposed') return ['approved', 'rejected', 'archived']
+  if (status === 'approved' || status === 'rejected' || status === 'archived') {
+    return ['proposed']
+  }
+  return []
+}
+
+function guidanceActionNeedsReason(action) {
+  return action === 'rejected'
+}
+
+function guidanceActionLabel(action) {
+  const labels = {
+    approved: 'Approve',
+    rejected: 'Reject',
+    archived: 'Archive',
+    proposed: 'Reopen',
+  }
+  return labels[action] || humanize(action)
+}
+
 function GuidanceProposalCard({ proposal, updatingId, onStatusUpdate }) {
+  const [activeAction, setActiveAction] = useState(null)
   const [reviewReason, setReviewReason] = useState('')
   const [localError, setLocalError] = useState(null)
   const isUpdating = updatingId === proposal.proposal_id
+  const actions = guidanceActionsForStatus(proposal.status)
 
   async function submitStatus(status) {
     const normalizedReason = reviewReason.trim()
-    if (status === 'rejected' && !normalizedReason) {
+    if (guidanceActionNeedsReason(status) && !normalizedReason) {
       setLocalError('A rejection reason is required.')
       return
     }
@@ -460,10 +484,21 @@ function GuidanceProposalCard({ proposal, updatingId, onStatusUpdate }) {
     setLocalError(null)
     await onStatusUpdate(proposal.proposal_id, {
       status,
-      reviewedByRole: 'admin',
-      reviewDecisionReason: normalizedReason,
+      reviewedByRole: status === 'proposed' ? null : 'admin',
+      reviewDecisionReason: normalizedReason || null,
     })
     setReviewReason('')
+    setActiveAction(null)
+  }
+
+  function handleAction(action) {
+    if (guidanceActionNeedsReason(action)) {
+      setActiveAction(action)
+      setReviewReason('')
+      setLocalError(null)
+      return
+    }
+    submitStatus(action)
   }
 
   return (
@@ -500,49 +535,54 @@ function GuidanceProposalCard({ proposal, updatingId, onStatusUpdate }) {
         />
         <GuidanceProposalRow label="Reviewed" value={formatDate(proposal.reviewed_at)} />
       </div>
-      <label className="system-guidance-reason">
-        <span>Review reason</span>
-        <textarea
-          value={reviewReason}
-          onChange={e => setReviewReason(e.target.value)}
-          placeholder="Required for rejection; optional for approval/archive."
-          rows="2"
-        />
-      </label>
+      {activeAction && (
+        <div className="system-guidance-reason">
+          <label>
+            <span>Rejection reason</span>
+            <textarea
+              value={reviewReason}
+              onChange={e => setReviewReason(e.target.value)}
+              placeholder="Required before rejecting this proposal."
+              rows="2"
+            />
+          </label>
+          <div className="system-guidance-reason-actions">
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={isUpdating}
+              onClick={() => submitStatus(activeAction)}
+            >
+              Confirm {guidanceActionLabel(activeAction)}
+            </button>
+            <button
+              type="button"
+              className="btn btn-small btn-secondary"
+              disabled={isUpdating}
+              onClick={() => {
+                setActiveAction(null)
+                setReviewReason('')
+                setLocalError(null)
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {localError && <p className="system-error">{localError}</p>}
       <div className="system-guidance-actions" aria-label={`Review ${proposal.proposal_text}`}>
-        <button
-          type="button"
-          className="btn btn-small"
-          disabled={isUpdating || proposal.status === 'approved'}
-          onClick={() => submitStatus('approved')}
-        >
-          Approve
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          disabled={isUpdating || proposal.status === 'rejected'}
-          onClick={() => submitStatus('rejected')}
-        >
-          Reject
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          disabled={isUpdating || proposal.status === 'archived'}
-          onClick={() => submitStatus('archived')}
-        >
-          Archive
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          disabled={isUpdating || proposal.status === 'proposed'}
-          onClick={() => submitStatus('proposed')}
-        >
-          Reopen
-        </button>
+        {actions.map(action => (
+          <button
+            key={action}
+            type="button"
+            className="btn btn-small"
+            disabled={isUpdating}
+            onClick={() => handleAction(action)}
+          >
+            {guidanceActionLabel(action)}
+          </button>
+        ))}
       </div>
     </article>
   )

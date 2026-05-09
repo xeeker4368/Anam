@@ -1489,6 +1489,12 @@ body {
   min-width: 0;
 }
 
+.system-guidance-reason label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
 .system-guidance-reason textarea {
   width: 100%;
   min-width: 0;
@@ -1501,6 +1507,12 @@ body {
   font-size: 12px;
   line-height: 1.4;
   resize: vertical;
+}
+
+.system-guidance-reason-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .system-capability-list {
