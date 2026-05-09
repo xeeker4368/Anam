@@ -332,6 +332,20 @@ def test_generated_draft_defaults_to_draft_source_role(temp_ingestion_env):
     assert result["artifact"]["metadata"]["source_role"] == "draft"
 
 
+def test_reflection_journal_origin_and_role_are_valid():
+    from tir.artifacts.source_roles import (
+        display_origin,
+        display_source_role,
+        validate_origin,
+        validate_source_role,
+    )
+
+    assert validate_origin("reflection_journal") == "reflection_journal"
+    assert validate_source_role("journal") == "journal"
+    assert display_origin("reflection_journal") == "Reflection journal"
+    assert display_source_role("journal") == "Journal"
+
+
 def test_artifact_document_context_formatting_identifies_source_material():
     prompt = build_system_prompt(
         user_name="Lyle",

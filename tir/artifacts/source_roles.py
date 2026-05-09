@@ -7,6 +7,7 @@ ALLOWED_ORIGINS = {
     "runtime",
     "conversation",
     "tool",
+    "reflection_journal",
     "system",
     "unknown",
 }
@@ -19,6 +20,7 @@ ALLOWED_SOURCE_ROLES = {
     "current_project_state",
     "correction",
     "draft",
+    "journal",
     "log",
     "unknown",
 }
@@ -31,6 +33,7 @@ _SOURCE_ROLE_LABELS = {
     "current_project_state": "Current project state",
     "correction": "Correction",
     "draft": "Draft",
+    "journal": "Journal",
     "log": "Log",
     "unknown": "Unknown source role",
 }
@@ -42,6 +45,7 @@ _ORIGIN_LABELS = {
     "runtime": "Runtime",
     "conversation": "Conversation",
     "tool": "Tool",
+    "reflection_journal": "Reflection journal",
     "system": "System",
     "unknown": "Unknown origin",
 }
@@ -124,6 +128,7 @@ def source_trust_for_source_role(source_role: str | None) -> str:
         "correction",
         "draft",
         "log",
+        "journal",
     }:
         return "firsthand"
     return "thirdhand"

@@ -32,8 +32,10 @@ def reflection_env(tmp_path, monkeypatch):
     monkeypatch.setattr("tir.config.ARCHIVE_DB", tmp_path / "archive.db")
     monkeypatch.setattr("tir.config.WORKING_DB", tmp_path / "working.db")
     monkeypatch.setattr("tir.config.WORKSPACE_DIR", tmp_path / "workspace")
+    monkeypatch.setattr("tir.config.CHROMA_DIR", str(tmp_path / "chromadb"))
 
     import tir.memory.db as db_mod
+    import tir.memory.chroma as chroma_mod
     import tir.behavioral_guidance.service as guidance_mod
     import tir.artifacts.service as artifacts_mod
     import tir.open_loops.service as open_loops_mod
@@ -46,6 +48,7 @@ def reflection_env(tmp_path, monkeypatch):
     importlib.reload(open_loops_mod)
     importlib.reload(review_mod)
     importlib.reload(journal_mod)
+    chroma_mod.reset_client()
     db_mod.init_databases()
     user = db_mod.create_user("Lyle", role="admin")
     return {
@@ -92,6 +95,14 @@ def _set_table_timestamps(db_mod, table, id_column, item_id, **timestamps):
             values,
         )
         conn.commit()
+
+
+def _fts_rows(db_mod):
+    with db_mod.get_connection() as conn:
+        rows = conn.execute(
+            "SELECT chunk_id, text, source_type FROM main.chunks_fts ORDER BY chunk_id"
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def _make_conversation(db_mod, user_id, *, started_at, message_times):
@@ -479,6 +490,149 @@ def test_write_mode_creates_workspace_journal(reflection_env, monkeypatch):
     assert reflection_env["artifacts"].list_artifacts(
         workspace_root=reflection_env["workspace"],
     ) == []
+
+
+def test_write_registers_journal_artifact_and_indexes_memory(reflection_env, monkeypatch):
+    db_mod = reflection_env["db"]
+    journal = reflection_env["journal"]
+    artifacts = reflection_env["artifacts"]
+    user_id = reflection_env["user"]["id"]
+    _make_conversation(
+        db_mod,
+        user_id,
+        started_at="2026-05-08T12:00:00+00:00",
+        message_times=["2026-05-08T12:00:00+00:00", "2026-05-08T12:01:00+00:00"],
+    )
+    monkeypatch.setattr(journal, "chat_completion_text", lambda *args, **kwargs: JOURNAL_BODY)
+    monkeypatch.setattr(
+        "tir.memory.journal_indexing.upsert_chunk",
+        lambda **kwargs: None,
+    )
+
+    result = journal.run_reflection_journal_day(
+        date_text="2026-05-08",
+        write=True,
+        register_artifact=True,
+        workspace_root=reflection_env["workspace"],
+    )
+
+    artifact_result = result["artifact_result"]
+    artifact = artifact_result["artifact"]
+    assert artifact["artifact_type"] == "journal"
+    assert artifact["title"] == "Reflection Journal — 2026-05-08"
+    assert artifact["path"] == "journals/2026-05-08.md"
+    assert artifact["status"] == "active"
+    assert artifact["source"] == "reflection"
+    assert artifact["metadata"]["journal_date"] == "2026-05-08"
+    assert artifact["metadata"]["origin"] == "reflection_journal"
+    assert artifact["metadata"]["source_role"] == "journal"
+    assert artifact["metadata"]["source_type"] == "journal"
+    assert artifact["metadata"]["registered_by"] == "admin_cli"
+    assert artifact_result["indexing"]["status"] == "indexed"
+    assert artifact_result["indexing"]["chunks_written"] >= 1
+
+    rows = _fts_rows(db_mod)
+    assert rows
+    assert all(row["source_type"] == "journal" for row in rows)
+    assert "Reflection journal: 2026-05-08" in rows[0]["text"]
+    assert artifacts.list_artifacts(
+        path="journals/2026-05-08.md",
+        workspace_root=reflection_env["workspace"],
+    )[0]["artifact_id"] == artifact["artifact_id"]
+
+
+def test_register_existing_journal_file(reflection_env, monkeypatch):
+    db_mod = reflection_env["db"]
+    journal = reflection_env["journal"]
+    target = reflection_env["workspace"] / "journals" / "2026-05-08.md"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        """# Reflection Journal — 2026-05-08
+
+- Local date: 2026-05-08
+- Timezone: EDT
+- Local offset: -04:00
+- UTC window: 2026-05-08T04:00:00+00:00 to 2026-05-09T04:00:00+00:00
+- Conversations reviewed: 1
+- Messages reviewed: 2
+- Generated at: 2026-05-09T01:00:00+00:00
+
+## Notable Interactions
+Existing journal text.
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "tir.memory.journal_indexing.upsert_chunk",
+        lambda **kwargs: None,
+    )
+
+    result = journal.register_reflection_journal_artifact(
+        "2026-05-08",
+        workspace_root=reflection_env["workspace"],
+    )
+
+    assert result["artifact"]["metadata"]["timezone"] == "EDT"
+    assert result["artifact"]["metadata"]["local_offset"] == "-04:00"
+    assert result["artifact"]["metadata"]["utc_start"] == "2026-05-08T04:00:00+00:00"
+    assert result["artifact"]["metadata"]["utc_end"] == "2026-05-09T04:00:00+00:00"
+    assert result["artifact"]["metadata"]["generated_at"] == "2026-05-09T01:00:00+00:00"
+    assert _fts_rows(db_mod)[0]["source_type"] == "journal"
+
+
+def test_register_existing_journal_rejects_missing_or_duplicate(reflection_env, monkeypatch):
+    journal = reflection_env["journal"]
+    target = reflection_env["workspace"] / "journals" / "2026-05-08.md"
+
+    with pytest.raises(journal.ReflectionJournalError, match="not found"):
+        journal.register_reflection_journal_artifact(
+            "2026-05-08",
+            workspace_root=reflection_env["workspace"],
+        )
+
+    target.parent.mkdir(parents=True)
+    target.write_text("# Reflection Journal — 2026-05-08\n\nbody\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "tir.memory.journal_indexing.upsert_chunk",
+        lambda **kwargs: None,
+    )
+    journal.register_reflection_journal_artifact(
+        "2026-05-08",
+        workspace_root=reflection_env["workspace"],
+    )
+
+    with pytest.raises(journal.ReflectionJournalError, match="already registered"):
+        journal.register_reflection_journal_artifact(
+            "2026-05-08",
+            workspace_root=reflection_env["workspace"],
+        )
+
+
+def test_register_existing_journal_rejects_existing_chunks(reflection_env, monkeypatch):
+    db_mod = reflection_env["db"]
+    journal = reflection_env["journal"]
+    target = reflection_env["workspace"] / "journals" / "2026-05-08.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("# Reflection Journal — 2026-05-08\n\nbody\n", encoding="utf-8")
+    db_mod.upsert_chunk_fts(
+        chunk_id="journal_2026_05_08_chunk_0",
+        text="existing journal chunk",
+        conversation_id=None,
+        user_id=None,
+        source_type="journal",
+        source_trust="firsthand",
+        created_at="2026-05-08T12:00:00+00:00",
+    )
+    monkeypatch.setattr(
+        "tir.memory.journal_indexing.upsert_chunk",
+        lambda **kwargs: None,
+    )
+
+    with pytest.raises(journal.ReflectionJournalError, match="chunks already exist"):
+        journal.register_reflection_journal_artifact(
+            "2026-05-08",
+            workspace_root=reflection_env["workspace"],
+        )
 
 
 def test_existing_journal_file_is_not_overwritten(reflection_env, monkeypatch):

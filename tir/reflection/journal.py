@@ -11,6 +11,7 @@ import json
 import os
 
 from tir.artifacts.source_roles import display_origin, display_source_role
+from tir.artifacts.service import create_artifact, list_artifacts
 from tir.behavioral_guidance.review import (
     BehavioralGuidanceReviewError,
     local_day_window_to_utc,
@@ -19,6 +20,7 @@ from tir.behavioral_guidance.service import list_behavioral_guidance_proposals
 from tir.config import CHAT_MODEL, OLLAMA_HOST
 from tir.engine.context import load_reflection_entity_context
 from tir.engine.ollama import chat_completion_text
+from tir.memory.journal_indexing import index_reflection_journal, journal_chunks_exist
 from tir.memory.db import get_connection
 from tir.workspace.service import ensure_workspace, resolve_workspace_path
 
@@ -32,6 +34,7 @@ REFLECTION_ARTIFACT_LIMIT = 20
 REFLECTION_REVIEW_LIMIT = 20
 REFLECTION_OPEN_LOOP_LIMIT = 20
 REFLECTION_ACTIVITY_EXCERPT_CHARS = 240
+REFLECTION_JOURNAL_VERSION = "reflection_journal_v1"
 
 
 class ReflectionJournalError(ValueError):
@@ -71,6 +74,14 @@ def _local_date_from_selection(selection: dict) -> str:
 
 def journal_relative_path(local_date: str) -> str:
     return f"journals/{local_date}.md"
+
+
+def _validate_local_date_text(local_date: str) -> str:
+    try:
+        parsed = datetime.strptime(local_date, "%Y-%m-%d")
+    except ValueError as exc:
+        raise ReflectionJournalError("journal date must be YYYY-MM-DD") from exc
+    return parsed.date().isoformat()
 
 
 def _parse_utc_timestamp(value: str, field: str) -> str:
@@ -735,6 +746,100 @@ def build_daily_activity_packet(
     return _render_activity_packet(sections, counts, skipped)
 
 
+def _journal_header_value(content: str, label: str) -> str | None:
+    prefix = f"- {label}:"
+    for line in content.splitlines()[:24]:
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            value = stripped[len(prefix):].strip()
+            return value or None
+    return None
+
+
+def _journal_metadata_from_content(
+    *,
+    local_date: str,
+    content: str,
+    selection: dict | None = None,
+) -> dict:
+    selection = selection or {}
+    utc_window = _journal_header_value(content, "UTC window")
+    utc_start = selection.get("utc_start")
+    utc_end = selection.get("utc_end")
+    if utc_window and " to " in utc_window:
+        parsed_start, parsed_end = utc_window.split(" to ", 1)
+        utc_start = utc_start or (parsed_start if parsed_start != "n/a" else None)
+        utc_end = utc_end or (parsed_end if parsed_end != "open" else None)
+
+    return {
+        "source_role": "journal",
+        "origin": "reflection_journal",
+        "source_type": "journal",
+        "journal_date": local_date,
+        "local_date": selection.get("local_date") or _journal_header_value(content, "Local date") or local_date,
+        "timezone": selection.get("timezone") or _journal_header_value(content, "Timezone"),
+        "local_offset": selection.get("local_offset") or _journal_header_value(content, "Local offset"),
+        "utc_start": utc_start,
+        "utc_end": utc_end,
+        "generated_at": _journal_header_value(content, "Generated at"),
+        "registered_by": "admin_cli",
+        "reflection_version": REFLECTION_JOURNAL_VERSION,
+    }
+
+
+def register_reflection_journal_artifact(
+    local_date: str,
+    *,
+    workspace_root: Path | None = None,
+    selection: dict | None = None,
+) -> dict:
+    """Register and index an existing workspace reflection journal."""
+    local_date = _validate_local_date_text(local_date)
+    root = _workspace_root(workspace_root)
+    relative_path = journal_relative_path(local_date)
+    target = resolve_workspace_path(relative_path, root)
+    if not target.exists():
+        raise ReflectionJournalError(f"Reflection journal file not found: {relative_path}")
+
+    existing = list_artifacts(path=relative_path, workspace_root=root)
+    if existing:
+        raise ReflectionJournalError(f"Reflection journal already registered: {relative_path}")
+    if journal_chunks_exist(local_date):
+        raise ReflectionJournalError(f"Reflection journal chunks already exist for {local_date}")
+
+    content = target.read_text(encoding="utf-8")
+    metadata = _journal_metadata_from_content(
+        local_date=local_date,
+        content=content,
+        selection=selection,
+    )
+    title = f"Reflection Journal — {local_date}"
+    artifact = create_artifact(
+        artifact_type="journal",
+        title=title,
+        path=relative_path,
+        status="active",
+        source="reflection",
+        metadata=metadata,
+        workspace_root=root,
+    )
+    indexing = index_reflection_journal(
+        artifact_id=artifact["artifact_id"],
+        journal_date=local_date,
+        title=title,
+        path=relative_path,
+        text=content,
+        metadata=metadata,
+    )
+    if indexing["status"] == "failed":
+        raise ReflectionJournalError(f"Reflection journal indexing failed: {indexing['reason']}")
+    return {
+        "artifact": artifact,
+        "indexing": indexing,
+        "path": relative_path,
+    }
+
+
 def build_reflection_journal_messages(
     *,
     selection: dict,
@@ -953,11 +1058,14 @@ def run_reflection_journal_day(
     date_text: str | None = None,
     since: str | None = None,
     write: bool = False,
+    register_artifact: bool = False,
     max_conversations: int = DEFAULT_REFLECTION_MAX_CONVERSATIONS,
     model: str | None = None,
     workspace_root: Path | None = None,
 ) -> dict:
     """Generate, and optionally write, a manual daily reflection journal."""
+    if register_artifact and not write:
+        raise ReflectionJournalError("--register-artifact requires --write")
     result = generate_reflection_journal_day(
         date_text=date_text,
         since=since,
@@ -970,4 +1078,10 @@ def run_reflection_journal_day(
             result,
             workspace_root=workspace_root,
         )
+        if register_artifact:
+            result["artifact_result"] = register_reflection_journal_artifact(
+                result["local_date"],
+                workspace_root=workspace_root,
+                selection=result.get("selection"),
+            )
     return result

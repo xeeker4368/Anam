@@ -27,3 +27,6 @@ logs/
 # Environment
 .env
 .env.*
+wiped_runtime/
+workspace/uploads/
+workspace/generated/

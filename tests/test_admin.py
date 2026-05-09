@@ -161,6 +161,7 @@ def test_reflection_journal_day_admin_dry_run(temp_admin, capsys, monkeypatch):
             date="2026-05-08",
             since=None,
             write=False,
+            register_artifact=False,
             max_conversations=10,
             model=None,
         )
@@ -203,6 +204,7 @@ def test_reflection_journal_day_admin_write_summary(temp_admin, capsys, monkeypa
             date=None,
             since="2026-05-08T12:00:00Z",
             write=True,
+            register_artifact=False,
             max_conversations=10,
             model=None,
         )
@@ -213,6 +215,77 @@ def test_reflection_journal_day_admin_write_summary(temp_admin, capsys, monkeypa
     assert "since=2026-05-08T12:00:00Z" in output
     assert "written_path=journals/2026-05-08.md" in output
     assert "written_bytes=123" in output
+
+
+def test_reflection_journal_day_admin_register_summary(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**kwargs):
+        assert kwargs["write"] is True
+        assert kwargs["register_artifact"] is True
+        return {
+            "mode": "write",
+            "status": "generated",
+            "target_path": "journals/2026-05-08.md",
+            "conversation_count": 1,
+            "message_count": 2,
+            "selection": {},
+            "write_result": {
+                "path": "journals/2026-05-08.md",
+                "bytes": 123,
+            },
+            "artifact_result": {
+                "artifact": {
+                    "artifact_id": "artifact-1",
+                    "path": "journals/2026-05-08.md",
+                },
+                "indexing": {
+                    "status": "indexed",
+                    "chunks_written": 2,
+                },
+            },
+            "journal": None,
+        }
+
+    monkeypatch.setattr(admin_mod, "run_reflection_journal_day", fake_run)
+
+    admin_mod.cmd_reflection_journal_day(
+        SimpleNamespace(
+            date="2026-05-08",
+            since=None,
+            write=True,
+            register_artifact=True,
+            max_conversations=10,
+            model=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "artifact_id=artifact-1" in output
+    assert "indexing_status=indexed" in output
+    assert "indexing_chunks=2" in output
+
+
+def test_reflection_journal_register_command_prints_summary(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    monkeypatch.setattr(
+        admin_mod,
+        "register_reflection_journal_artifact",
+        lambda date: {
+            "path": f"journals/{date}.md",
+            "artifact": {"artifact_id": "artifact-1"},
+            "indexing": {"status": "indexed", "chunks_written": 2},
+        },
+    )
+
+    admin_mod.cmd_reflection_journal_register(SimpleNamespace(date="2026-05-08"))
+
+    output = capsys.readouterr().out
+    assert "Reflection journal registered" in output
+    assert "journal_date=2026-05-08" in output
+    assert "artifact_id=artifact-1" in output
+    assert "indexing_chunks=2" in output
 
 
 def test_behavioral_guidance_admin_reject_requires_reason(temp_admin):

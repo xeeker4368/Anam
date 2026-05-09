@@ -75,6 +75,26 @@ def test_system_prompt_with_debug_preserves_existing_prompt_output():
     assert breakdown["best_effort"] is True
 
 
+def test_journal_memory_context_uses_journal_date_metadata():
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[
+            {
+                "source_type": "journal",
+                "created_at": "2026-05-09T01:00:00+00:00",
+                "text": "Journal reflection text.",
+                "metadata": {
+                    "journal_date": "2026-05-08",
+                    "source_type": "journal",
+                },
+            }
+        ],
+    )
+
+    assert "[Your journal entry from 2026-05-08]" in prompt
+    assert "Journal reflection text." in prompt
+
+
 def test_system_prompt_breakdown_counts_sections():
     retrieved_chunks = [
         {

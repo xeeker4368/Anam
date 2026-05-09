@@ -32,6 +32,8 @@ Commands:
                     Apply an approved addition proposal to BEHAVIORAL_GUIDANCE.md
     reflection-journal-day
                     Generate a manual daily reflection journal
+    reflection-journal-register
+                    Register and index an existing reflection journal
 """
 
 import argparse
@@ -79,6 +81,7 @@ from tir.behavioral_guidance.apply import (
 )
 from tir.reflection.journal import (
     ReflectionJournalError,
+    register_reflection_journal_artifact,
     run_reflection_journal_day,
 )
 
@@ -701,6 +704,7 @@ def cmd_reflection_journal_day(args):
             date_text=args.date,
             since=args.since,
             write=args.write,
+            register_artifact=args.register_artifact,
             max_conversations=args.max_conversations,
             model=args.model,
         )
@@ -733,9 +737,38 @@ def cmd_reflection_journal_day(args):
     if result.get("write_result"):
         print(f"written_path={result['write_result']['path']}")
         print(f"written_bytes={result['write_result']['bytes']}")
+    if result.get("artifact_result"):
+        artifact_result = result["artifact_result"]
+        artifact = artifact_result["artifact"]
+        indexing = artifact_result["indexing"]
+        print(f"artifact_id={artifact['artifact_id']}")
+        print(f"artifact_path={artifact['path']}")
+        print(f"indexing_status={indexing['status']}")
+        print(f"indexing_chunks={indexing.get('chunks_written', 0)}")
     if result.get("journal"):
         print("journal:")
         print(result["journal"], end="")
+
+
+def cmd_reflection_journal_register(args):
+    """Register and index an existing reflection journal file."""
+    try:
+        result = register_reflection_journal_artifact(args.date)
+    except ReflectionJournalError as exc:
+        print(f"Reflection journal registration failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Reflection journal registration failed: {exc}")
+        sys.exit(1)
+
+    artifact = result["artifact"]
+    indexing = result["indexing"]
+    print("Reflection journal registered")
+    print(f"journal_date={args.date}")
+    print(f"path={result['path']}")
+    print(f"artifact_id={artifact['artifact_id']}")
+    print(f"indexing_status={indexing['status']}")
+    print(f"indexing_chunks={indexing.get('chunks_written', 0)}")
 
 
 def main():
@@ -885,6 +918,18 @@ def main():
     mode.add_argument("--write", action="store_true", help="Write journal to workspace/journals")
     p.add_argument("--model", default=None, help="Optional Ollama model override")
     p.add_argument("--max-conversations", type=int, default=10, help="Max conversations to review")
+    p.add_argument(
+        "--register-artifact",
+        action="store_true",
+        help="After --write, register and index the journal as journal memory",
+    )
+
+    # reflection-journal-register
+    p = sub.add_parser(
+        "reflection-journal-register",
+        help="Register and index an existing reflection journal",
+    )
+    p.add_argument("date", help="Journal local date, YYYY-MM-DD")
 
     # behavioral-guidance-review-conversation
     p = sub.add_parser(
@@ -979,6 +1024,7 @@ def main():
         "behavioral-guidance-review-day": cmd_behavioral_guidance_review_day,
         "behavioral-guidance-proposal-apply": cmd_behavioral_guidance_proposal_apply,
         "reflection-journal-day": cmd_reflection_journal_day,
+        "reflection-journal-register": cmd_reflection_journal_register,
     }
 
     commands[args.command](args)
