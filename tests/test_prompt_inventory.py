@@ -14,7 +14,7 @@ def test_prompt_inventory_script_collects_known_backend_prompts():
     assert "AI-proposed behavioral guidance candidates" in report
     assert "Review this selected chat conversation only." in report
     assert "tir/engine/context.py" in report
-    assert "These are active behavioral guidance entries" in report
+    assert "Active behavioral guidance proposed by the AI" in report
 
 
 def test_prompt_inventory_script_handles_absolute_root_path():
@@ -69,7 +69,23 @@ def test_prompt_inventory_report_flags_known_risky_wording():
     assert "`Project Anam`" in report
     assert "`do not`" in report
     assert "`personality`" in report
-    assert "Risk flags: `persona`, `personality`, `do not`" in report
+
+
+def test_runtime_behavioral_guidance_label_has_reduced_risk_flags():
+    entries = collect_inventory(Path("tir"))
+    matching = [
+        entry for entry in entries
+        if entry.path == "tir/engine/context.py"
+        and entry.name == "BEHAVIORAL_GUIDANCE_LABEL"
+    ]
+
+    assert len(matching) == 1
+    label_entry = matching[0]
+    assert label_entry.flags == []
+    assert "Active behavioral guidance proposed by the AI" in label_entry.excerpt
+    assert "below soul.md and operational guidance in precedence" in label_entry.excerpt
+    assert "fixed personality" not in label_entry.excerpt
+    assert "do not" not in label_entry.excerpt.lower()
 
 
 def test_behavioral_guidance_review_system_prompt_has_reduced_risk_flags():

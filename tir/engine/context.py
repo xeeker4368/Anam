@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 BEHAVIORAL_GUIDANCE_CHAR_BUDGET = 3000
 BEHAVIORAL_GUIDANCE_LABEL = """[Reviewed Behavioral Guidance]
 
-These are active behavioral guidance entries proposed by the AI and approved/applied by an admin. They guide future behavior, but they do not define a fixed personality, do not assign an identity, and do not replace soul.md or operational guidance."""
+Active behavioral guidance proposed by the AI and approved/applied by an admin. Use these entries to inform future behavior. They sit below soul.md and operational guidance in precedence."""
 
 
 def _load_soul() -> str:

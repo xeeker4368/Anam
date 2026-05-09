@@ -261,7 +261,7 @@ def test_behavioral_guidance_debug_counts_items(context_project):
     assert breakdown["behavioral_guidance_items_skipped"] == 0
 
 
-def test_behavioral_guidance_label_does_not_define_identity_or_personality(context_project):
+def test_behavioral_guidance_label_preserves_source_and_precedence(context_project):
     context_project["behavioral"].write_text(
         "# BEHAVIORAL_GUIDANCE.md\n\n## Active Guidance\n\n- Guidance: Use careful wording.\n",
         encoding="utf-8",
@@ -273,9 +273,11 @@ def test_behavioral_guidance_label_does_not_define_identity_or_personality(conte
         tool_descriptions=None,
     )
 
-    assert "do not define a fixed personality" in prompt
-    assert "do not assign an identity" in prompt
-    assert "do not replace soul.md or operational guidance" in prompt
+    assert "Active behavioral guidance proposed by the AI" in prompt
+    assert "approved/applied by an admin" in prompt
+    assert "below soul.md and operational guidance in precedence" in prompt
+    assert "do not define a fixed personality" not in prompt
+    assert "do not assign an identity" not in prompt
 
 
 def test_budget_retrieved_chunks_caps_total_context_chars():

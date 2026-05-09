@@ -13,7 +13,7 @@ Risk flags searched: `assistant`, `chatbot`, `agent`, `persona`, `personality`, 
 
 - Name: `BEHAVIORAL_GUIDANCE_LABEL`
 - Category: Runtime context / identity
-- Risk flags: `persona`, `personality`, `do not`
+- Risk flags: none
 - Audit note: `needs discussion`
 
 Excerpt:
@@ -21,7 +21,7 @@ Excerpt:
 ```text
 [Reviewed Behavioral Guidance]
 
-These are active behavioral guidance entries proposed by the AI and approved/applied by an admin. They guide future behavior, but they do not define a fixed personality, do not assign an identity, and do not replace soul.md or operational guidance.
+Active behavioral guidance proposed by the AI and approved/applied by an admin. Use these entries to inform future behavior. They sit below soul.md and operational guidance in precedence.
 ```
 
 ### 2. `tir/engine/context.py:52` — `_load_operational_guidance`
