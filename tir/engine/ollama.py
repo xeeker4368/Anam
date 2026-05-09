@@ -62,3 +62,33 @@ def chat_completion_stream_with_tools(
         if line:
             chunk = json.loads(line)
             yield chunk
+
+
+def chat_completion_json(
+    messages: list[dict],
+    model: str = CHAT_MODEL,
+    ollama_host: str = OLLAMA_HOST,
+) -> str:
+    """
+    Run a non-streaming JSON-oriented chat completion.
+
+    This is for bounded offline/admin tasks that need one structured response
+    and no tools. It returns the assistant message content as a string; callers
+    remain responsible for JSON parsing and validation.
+    """
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "think": False,
+        "format": "json",
+    }
+
+    resp = requests.post(
+        f"{ollama_host}/api/chat",
+        json=payload,
+        timeout=300,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("message", {}).get("content", "")

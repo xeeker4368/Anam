@@ -152,3 +152,89 @@ def test_behavioral_guidance_admin_reject_requires_reason(temp_admin):
                 apply_note=None,
             )
         )
+
+
+def test_behavioral_guidance_review_command_dry_run_prints_output(temp_admin, capsys):
+    db_mod, admin_mod = temp_admin
+    user = db_mod.create_user("Lyle", role="admin")
+    conversation_id = db_mod.start_conversation(user["id"])
+
+    review = {
+        "conversation_id": conversation_id,
+        "source_user_id": user["id"],
+        "message_count": 2,
+        "model": "test-model",
+        "proposals": [
+            {
+                "proposal_type": "addition",
+                "proposal_text": "Use one atomic guidance change per proposal.",
+                "rationale": "Atomic proposals are easier to review.",
+                "source_channel": "chat",
+                "source_conversation_id": conversation_id,
+                "source_user_id": user["id"],
+                "metadata": {"generation_method": "conversation_review_v1"},
+            }
+        ],
+    }
+
+    with patch.object(admin_mod, "generate_behavioral_guidance_review", return_value=review):
+        admin_mod.cmd_behavioral_guidance_review_conversation(
+            SimpleNamespace(
+                conversation_id=conversation_id,
+                dry_run=True,
+                write=False,
+                max_proposals=1,
+                model=None,
+            )
+        )
+
+    output = capsys.readouterr().out
+    assert "Behavioral guidance conversation review complete" in output
+    assert "mode=dry-run" in output
+    assert "Use one atomic guidance change" in output
+
+    assert admin_mod.list_behavioral_guidance_proposals() == []
+
+
+def test_behavioral_guidance_review_command_write_prints_created_ids(temp_admin, capsys):
+    db_mod, admin_mod = temp_admin
+    user = db_mod.create_user("Lyle", role="admin")
+    conversation_id = db_mod.start_conversation(user["id"])
+
+    review = {
+        "conversation_id": conversation_id,
+        "source_user_id": user["id"],
+        "message_count": 2,
+        "model": "test-model",
+        "proposals": [
+            {
+                "proposal_type": "addition",
+                "proposal_text": "Use one atomic guidance change per proposal.",
+                "rationale": "Atomic proposals are easier to review.",
+                "source_channel": "chat",
+                "source_conversation_id": conversation_id,
+                "source_user_id": user["id"],
+                "metadata": {"generation_method": "conversation_review_v1"},
+            }
+        ],
+    }
+
+    with patch.object(admin_mod, "generate_behavioral_guidance_review", return_value=review):
+        admin_mod.cmd_behavioral_guidance_review_conversation(
+            SimpleNamespace(
+                conversation_id=conversation_id,
+                dry_run=False,
+                write=True,
+                max_proposals=1,
+                model=None,
+            )
+        )
+
+    output = capsys.readouterr().out
+    assert "mode=write" in output
+    assert "Created behavioral guidance proposal IDs" in output
+    assert "status=proposed" in output
+
+    proposals = admin_mod.list_behavioral_guidance_proposals()
+    assert len(proposals) == 1
+    assert proposals[0]["reviewed_by_user_id"] is None

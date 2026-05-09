@@ -24,6 +24,8 @@ Commands:
                     Record an AI-proposed behavioral guidance change
     behavioral-guidance-proposal-update
                     Update proposal review status
+    behavioral-guidance-review-conversation
+                    Generate AI-proposed guidance candidates from one chat conversation
 """
 
 import argparse
@@ -57,6 +59,11 @@ from tir.behavioral_guidance.service import (
     create_behavioral_guidance_proposal,
     list_behavioral_guidance_proposals,
     update_behavioral_guidance_proposal_status,
+)
+from tir.behavioral_guidance.review import (
+    BehavioralGuidanceReviewError,
+    generate_behavioral_guidance_review,
+    write_behavioral_guidance_review_proposals,
 )
 
 
@@ -538,6 +545,52 @@ def cmd_behavioral_guidance_proposal_update(args):
     _print_behavioral_guidance_proposal(proposal)
 
 
+def cmd_behavioral_guidance_review_conversation(args):
+    """Generate behavioral guidance proposals from one selected conversation."""
+    try:
+        review = generate_behavioral_guidance_review(
+            args.conversation_id,
+            max_proposals=args.max_proposals,
+            model=args.model,
+        )
+    except BehavioralGuidanceReviewError as exc:
+        print(f"Behavioral guidance conversation review failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Behavioral guidance conversation review failed: {exc}")
+        sys.exit(1)
+
+    proposals = review["proposals"]
+    mode = "write" if args.write else "dry-run"
+    print("Behavioral guidance conversation review complete")
+    print(f"mode={mode}")
+    print(f"conversation_id={review['conversation_id']}")
+    print(f"source_user_id={review.get('source_user_id')}")
+    print(f"message_count={review['message_count']}")
+    print(f"model={review['model']}")
+    print(f"proposal_count={len(proposals)}")
+
+    if not proposals:
+        reason = review.get("no_proposal_reason") or "No proposal warranted."
+        print(f"no_proposal_reason={reason}")
+        return
+
+    if not args.write:
+        print(json.dumps({"proposals": proposals}, indent=2, sort_keys=True))
+        return
+
+    try:
+        created = write_behavioral_guidance_review_proposals(review)
+    except BehavioralGuidanceValidationError as exc:
+        print(f"Behavioral guidance proposal write failed: {exc}")
+        sys.exit(1)
+
+    print("Created behavioral guidance proposal IDs:")
+    for proposal in created:
+        print(f"  {proposal['proposal_id']}")
+        _print_behavioral_guidance_proposal(proposal)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -673,6 +726,23 @@ def main():
     p.add_argument("--applied-by-user-id", default=None, help="Applying admin user ID")
     p.add_argument("--apply-note", default=None, help="Application note")
 
+    # behavioral-guidance-review-conversation
+    p = sub.add_parser(
+        "behavioral-guidance-review-conversation",
+        help="Generate AI-proposed guidance candidates from one chat conversation",
+    )
+    p.add_argument("conversation_id", help="Conversation ID to review")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="Generate proposals without writing")
+    mode.add_argument("--write", action="store_true", help="Write generated proposals")
+    p.add_argument(
+        "--max-proposals",
+        type=int,
+        default=1,
+        help="Max proposals to generate, capped at 3",
+    )
+    p.add_argument("--model", default=None, help="Optional Ollama model override")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -702,6 +772,7 @@ def main():
         "behavioral-guidance-proposal-list": cmd_behavioral_guidance_proposal_list,
         "behavioral-guidance-proposal-add": cmd_behavioral_guidance_proposal_add,
         "behavioral-guidance-proposal-update": cmd_behavioral_guidance_proposal_update,
+        "behavioral-guidance-review-conversation": cmd_behavioral_guidance_review_conversation,
     }
 
     commands[args.command](args)
