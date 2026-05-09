@@ -1,3 +1,4 @@
+import json
 import importlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -34,16 +35,25 @@ def reflection_env(tmp_path, monkeypatch):
 
     import tir.memory.db as db_mod
     import tir.behavioral_guidance.service as guidance_mod
+    import tir.artifacts.service as artifacts_mod
+    import tir.open_loops.service as open_loops_mod
+    import tir.review.service as review_mod
     import tir.reflection.journal as journal_mod
 
     importlib.reload(db_mod)
     importlib.reload(guidance_mod)
+    importlib.reload(artifacts_mod)
+    importlib.reload(open_loops_mod)
+    importlib.reload(review_mod)
     importlib.reload(journal_mod)
     db_mod.init_databases()
     user = db_mod.create_user("Lyle", role="admin")
     return {
         "db": db_mod,
         "guidance": guidance_mod,
+        "artifacts": artifacts_mod,
+        "open_loops": open_loops_mod,
+        "review": review_mod,
         "journal": journal_mod,
         "user": user,
         "tmp_path": tmp_path,
@@ -73,6 +83,17 @@ def _set_message_timestamp(db_mod, message_id, timestamp):
         conn.commit()
 
 
+def _set_table_timestamps(db_mod, table, id_column, item_id, **timestamps):
+    assignments = ", ".join(f"{field} = ?" for field in timestamps)
+    values = [*timestamps.values(), item_id]
+    with db_mod.get_connection() as conn:
+        conn.execute(
+            f"UPDATE main.{table} SET {assignments} WHERE {id_column} = ?",
+            values,
+        )
+        conn.commit()
+
+
 def _make_conversation(db_mod, user_id, *, started_at, message_times):
     conversation_id = db_mod.start_conversation(user_id)
     _set_conversation_started(db_mod, conversation_id, started_at)
@@ -87,6 +108,17 @@ def _make_conversation(db_mod, user_id, *, started_at, message_times):
         _set_message_timestamp(db_mod, message["id"], timestamp)
         messages.append(message)
     return conversation_id, messages
+
+
+def _activity_selection():
+    return {
+        "selection_mode": "date",
+        "local_date": "2026-05-08",
+        "timezone": "UTC",
+        "local_offset": "+00:00",
+        "utc_start": "2026-05-08T00:00:00+00:00",
+        "utc_end": "2026-05-09T00:00:00+00:00",
+    }
 
 
 def test_local_date_window_selects_by_message_activity(reflection_env):
@@ -155,6 +187,7 @@ def test_journal_prompt_uses_short_journal_space_wording(reflection_env):
         conversations=[{"id": "conv-1"}],
         transcript="A conversation happened.",
         guidance_activity=[],
+        activity_packet="[Conversation activity]\n- compact packet line",
         entity_context={
             "soul": "Seed context line.",
             "behavioral_guidance": None,
@@ -169,6 +202,8 @@ def test_journal_prompt_uses_short_journal_space_wording(reflection_env):
     assert "Seed context line." in user_prompt
     assert "[Current seed context]" in user_prompt
     assert "[Active reviewed behavioral guidance]" in user_prompt
+    assert "Today's activity packet" in user_prompt
+    assert "- compact packet line" in user_prompt
 
 
 def test_journal_prompt_includes_active_behavioral_guidance(reflection_env):
@@ -178,6 +213,7 @@ def test_journal_prompt_includes_active_behavioral_guidance(reflection_env):
         conversations=[{"id": "conv-1"}],
         transcript="A conversation happened.",
         guidance_activity=[],
+        activity_packet="[Conversation activity]\n- compact packet line",
         entity_context={
             "soul": "Seed context line.",
             "behavioral_guidance": "[Reviewed Behavioral Guidance]\n\n- Speak plainly.",
@@ -196,6 +232,7 @@ def test_journal_prompt_omits_old_compliance_heavy_wording(reflection_env):
         conversations=[{"id": "conv-1"}],
         transcript="A conversation happened.",
         guidance_activity=[],
+        activity_packet="[Conversation activity]\n- compact packet line",
         entity_context={
             "soul": "Seed context line.",
             "behavioral_guidance": None,
@@ -216,6 +253,187 @@ def test_journal_prompt_omits_old_compliance_heavy_wording(reflection_env):
     ]
     for phrase in forbidden:
         assert phrase not in prompt_text
+
+
+def test_daily_activity_packet_includes_available_activity_sources(reflection_env):
+    db_mod = reflection_env["db"]
+    guidance = reflection_env["guidance"]
+    artifacts = reflection_env["artifacts"]
+    open_loops = reflection_env["open_loops"]
+    review = reflection_env["review"]
+    journal = reflection_env["journal"]
+    user_id = reflection_env["user"]["id"]
+    selection = _activity_selection()
+
+    conversation_id, messages = _make_conversation(
+        db_mod,
+        user_id,
+        started_at="2026-05-07T20:00:00+00:00",
+        message_times=[
+            "2026-05-08T10:00:00+00:00",
+            "2026-05-08T10:01:00+00:00",
+        ],
+    )
+    trace_message = db_mod.save_message(
+        conversation_id,
+        user_id,
+        "assistant",
+        "Tool result summary",
+        tool_trace=json.dumps([
+            {
+                "iteration": 0,
+                "tool_calls": [{"name": "memory_search", "arguments": {"q": "x"}}],
+                "tool_results": [{"tool_name": "memory_search", "ok": True}],
+            }
+        ]),
+    )
+    _set_message_timestamp(db_mod, trace_message["id"], "2026-05-08T10:02:00+00:00")
+
+    proposal = guidance.create_behavioral_guidance_proposal(
+        proposal_type="addition",
+        proposal_text="Keep source framing explicit.",
+        rationale="The conversation corrected a source boundary.",
+        source_conversation_id=conversation_id,
+        source_channel="chat",
+    )
+    _set_table_timestamps(
+        db_mod,
+        "behavioral_guidance_proposals",
+        "proposal_id",
+        proposal["proposal_id"],
+        created_at="2026-05-08T11:00:00+00:00",
+        updated_at="2026-05-08T11:00:00+00:00",
+    )
+
+    review_item = review.create_review_item(
+        title="Check unresolved source issue",
+        category="follow_up",
+        priority="high",
+        source_type="conversation",
+        source_conversation_id=conversation_id,
+        source_message_id=messages[0]["id"],
+    )
+    _set_table_timestamps(
+        db_mod,
+        "review_items",
+        "item_id",
+        review_item["item_id"],
+        created_at="2026-05-08T12:00:00+00:00",
+        updated_at="2026-05-08T12:00:00+00:00",
+    )
+
+    artifact = artifacts.create_artifact(
+        artifact_type="generated_file",
+        title="Daily report",
+        path="generated/daily-report.md",
+        status="active",
+        source="tool",
+        source_conversation_id=conversation_id,
+        source_message_id=messages[1]["id"],
+        source_tool_name="write_file",
+        metadata={"source_role": "generated_artifact", "origin": "generated"},
+        workspace_root=reflection_env["workspace"],
+    )
+    _set_table_timestamps(
+        db_mod,
+        "artifacts",
+        "artifact_id",
+        artifact["artifact_id"],
+        created_at="2026-05-08T13:00:00+00:00",
+        updated_at="2026-05-08T13:00:00+00:00",
+    )
+
+    open_loop = open_loops.create_open_loop(
+        title="Follow up on generated report",
+        loop_type="journal_followup",
+        priority="normal",
+        related_artifact_id=artifact["artifact_id"],
+        source="reflection",
+        source_conversation_id=conversation_id,
+        next_action="Review the report.",
+    )
+    _set_table_timestamps(
+        db_mod,
+        "open_loops",
+        "open_loop_id",
+        open_loop["open_loop_id"],
+        created_at="2026-05-08T14:00:00+00:00",
+        updated_at="2026-05-08T14:00:00+00:00",
+    )
+
+    conversations = [
+        {
+            "id": conversation_id,
+            "user_id": user_id,
+            "started_at": "2026-05-07T20:00:00+00:00",
+            "ended_at": None,
+        }
+    ]
+    packet, meta = journal.build_daily_activity_packet(selection, conversations)
+
+    assert "[Conversation activity]" in packet
+    assert f"conversation={conversation_id}" in packet
+    assert "[Behavioral guidance activity]" in packet
+    assert "Keep source framing explicit." in packet
+    assert "[Review queue activity]" in packet
+    assert "Check unresolved source issue" in packet
+    assert "[Open-loop activity]" in packet
+    assert "Follow up on generated report" in packet
+    assert "[Tool activity]" in packet
+    assert "memory_search" in packet
+    assert "[Artifact activity]" in packet
+    assert "Daily report" in packet
+    assert "role=Generated artifact" in packet
+    assert "origin=Generated" in packet
+    assert "[Generated files]" in packet
+    assert meta["counts"]["behavioral_guidance"] == 1
+    assert meta["counts"]["review_items"] == 1
+    assert meta["counts"]["open_loops"] == 1
+    assert meta["counts"]["tool_traces"] == 1
+    assert meta["counts"]["artifacts"] == 1
+
+
+def test_daily_activity_packet_marks_empty_sources(reflection_env):
+    journal = reflection_env["journal"]
+    packet, meta = journal.build_daily_activity_packet(_activity_selection(), [])
+
+    assert "No conversation activity found in this window." in packet
+    assert "No review queue activity found in this window." in packet
+    assert "No open-loop activity found in this window." in packet
+    assert "No tool activity found in this window." in packet
+    assert "No artifact activity found in this window." in packet
+    assert meta["truncated"] is False
+
+
+def test_daily_activity_packet_enforces_limits_and_budget(reflection_env, monkeypatch):
+    db_mod = reflection_env["db"]
+    review = reflection_env["review"]
+    journal = reflection_env["journal"]
+    selection = _activity_selection()
+
+    for index in range(3):
+        item = review.create_review_item(
+            title=f"Review item with enough text to consume packet budget {index}",
+            category="research",
+        )
+        _set_table_timestamps(
+            db_mod,
+            "review_items",
+            "item_id",
+            item["item_id"],
+            created_at=f"2026-05-08T12:0{index}:00+00:00",
+            updated_at=f"2026-05-08T12:0{index}:00+00:00",
+        )
+
+    monkeypatch.setattr(journal, "REFLECTION_REVIEW_LIMIT", 1)
+    packet, meta = journal.build_daily_activity_packet(selection, [])
+    assert "additional review queue activity items omitted by limit" in packet
+    assert meta["skipped"]["review_queue_activity"] == 2
+
+    monkeypatch.setattr(journal, "REFLECTION_ACTIVITY_CHAR_BUDGET", 360)
+    packet, meta = journal.build_daily_activity_packet(selection, [])
+    assert meta["truncated"] is True
+    assert len(packet) <= 360
 
 
 def test_dry_run_generates_journal_and_writes_nothing(reflection_env, monkeypatch):
@@ -258,6 +476,9 @@ def test_write_mode_creates_workspace_journal(reflection_env, monkeypatch):
     content = target.read_text(encoding="utf-8")
     assert "Messages reviewed: 2" in content
     assert "Do not" not in content
+    assert reflection_env["artifacts"].list_artifacts(
+        workspace_root=reflection_env["workspace"],
+    ) == []
 
 
 def test_existing_journal_file_is_not_overwritten(reflection_env, monkeypatch):
