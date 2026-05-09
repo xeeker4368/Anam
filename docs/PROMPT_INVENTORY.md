@@ -222,16 +222,16 @@ Excerpt:
 
 - Name: `system`
 - Category: Behavioral guidance review
-- Risk flags: `persona`, `personality`, `Project Anam`, `do not`, `must`
+- Risk flags: none
 - Audit note: `needs discussion`
 
 Excerpt:
 
 ```text
-You review one selected Project Anam chat conversation for possible AI-proposed behavioral guidance candidates. Return only a strict JSON object. Do not approve, reject, apply, or mutate guidance. Do not write user-authored rules. Do not propose broad personality traits. Do not turn every correction into durable guidance. One proposal must contain one atomic addition, removal, or revision. Zero proposals is acceptable.
+Review one selected chat conversation for possible AI-proposed behavioral guidance candidates. Return only a strict JSON object. This review may propose candidates for admin review, but it does not approve, reject, apply, or mutate guidance. Prefer narrow, atomic guidance candidates. Zero proposals is acceptable.
 ```
 
-### 3. `tir/behavioral_guidance/review.py:269` — `build_behavioral_guidance_review_messages`
+### 3. `tir/behavioral_guidance/review.py:268` — `build_behavioral_guidance_review_messages`
 
 - Name: `user_prompt`
 - Category: Behavioral guidance review

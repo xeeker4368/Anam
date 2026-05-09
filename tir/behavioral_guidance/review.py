@@ -259,12 +259,11 @@ def build_behavioral_guidance_review_messages(
     transcript = _format_transcript(messages)
 
     system = (
-        "You review one selected Project Anam chat conversation for possible "
-        "AI-proposed behavioral guidance candidates. Return only a strict JSON "
-        "object. Do not approve, reject, apply, or mutate guidance. Do not write "
-        "user-authored rules. Do not propose broad personality traits. Do not "
-        "turn every correction into durable guidance. One proposal must contain "
-        "one atomic addition, removal, or revision. Zero proposals is acceptable."
+        "Review one selected chat conversation for possible AI-proposed "
+        "behavioral guidance candidates. Return only a strict JSON object. "
+        "This review may propose candidates for admin review, but it does not "
+        "approve, reject, apply, or mutate guidance. Prefer narrow, atomic "
+        "guidance candidates. Zero proposals is acceptable."
     )
     user_prompt = f"""Review this selected chat conversation only.
 

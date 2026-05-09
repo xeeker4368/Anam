@@ -69,7 +69,24 @@ def test_prompt_inventory_report_flags_known_risky_wording():
     assert "`Project Anam`" in report
     assert "`do not`" in report
     assert "`personality`" in report
-    assert "Risk flags: `persona`, `personality`, `Project Anam`, `do not`, `must`" in report
+    assert "Risk flags: `persona`, `personality`, `do not`" in report
+
+
+def test_behavioral_guidance_review_system_prompt_has_reduced_risk_flags():
+    entries = collect_inventory(Path("tir"))
+    matching = [
+        entry for entry in entries
+        if entry.path == "tir/behavioral_guidance/review.py"
+        and entry.name == "system"
+        and "AI-proposed behavioral guidance candidates" in entry.excerpt
+    ]
+
+    assert len(matching) == 1
+    system_entry = matching[0]
+    assert system_entry.flags == []
+    assert "Project Anam" not in system_entry.excerpt
+    assert "personality" not in system_entry.excerpt
+    assert "must" not in system_entry.excerpt.lower()
 
 
 def test_generated_prompt_inventory_file_is_current():
