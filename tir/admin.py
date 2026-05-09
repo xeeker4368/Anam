@@ -30,6 +30,8 @@ Commands:
                     Review a bounded recent/day window for AI-proposed guidance candidates
     behavioral-guidance-proposal-apply
                     Apply an approved addition proposal to BEHAVIORAL_GUIDANCE.md
+    reflection-journal-day
+                    Generate a manual daily reflection journal
 """
 
 import argparse
@@ -74,6 +76,10 @@ from tir.behavioral_guidance.apply import (
     BehavioralGuidanceApplyError,
     apply_behavioral_guidance_proposal,
     plan_behavioral_guidance_apply,
+)
+from tir.reflection.journal import (
+    ReflectionJournalError,
+    run_reflection_journal_day,
 )
 
 
@@ -688,6 +694,50 @@ def cmd_behavioral_guidance_proposal_apply(args):
     print(plan["append_block"], end="")
 
 
+def cmd_reflection_journal_day(args):
+    """Generate a manual daily reflection journal."""
+    try:
+        result = run_reflection_journal_day(
+            date_text=args.date,
+            since=args.since,
+            write=args.write,
+            max_conversations=args.max_conversations,
+            model=args.model,
+        )
+    except ReflectionJournalError as exc:
+        print(f"Reflection journal failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Reflection journal failed: {exc}")
+        sys.exit(1)
+
+    print("Reflection journal complete")
+    print(f"mode={result['mode']}")
+    print(f"status={result['status']}")
+    print(f"target_path={result['target_path']}")
+    print(f"conversations_reviewed={result['conversation_count']}")
+    print(f"messages_reviewed={result['message_count']}")
+    selection = result.get("selection") or {}
+    if selection.get("selection_mode") == "date":
+        print(f"local_date={selection.get('local_date')}")
+        print(f"timezone={selection.get('timezone')}")
+        print(f"local_offset={selection.get('local_offset')}")
+        print(f"utc_start={selection.get('utc_start')}")
+        print(f"utc_end={selection.get('utc_end')}")
+    elif selection.get("selection_mode") == "since":
+        print(f"since={selection.get('since')}")
+        print(f"utc_start={selection.get('utc_start')}")
+
+    if result.get("reason"):
+        print(f"reason={result['reason']}")
+    if result.get("write_result"):
+        print(f"written_path={result['write_result']['path']}")
+        print(f"written_bytes={result['write_result']['bytes']}")
+    if result.get("journal"):
+        print("journal:")
+        print(result["journal"], end="")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -823,6 +873,19 @@ def main():
     p.add_argument("--applied-by-user-id", default=None, help="Applying admin user ID")
     p.add_argument("--apply-note", default=None, help="Application note")
 
+    # reflection-journal-day
+    p = sub.add_parser(
+        "reflection-journal-day",
+        help="Generate a manual daily reflection journal",
+    )
+    p.add_argument("--date", default=None, help="Local/system date to review, YYYY-MM-DD")
+    p.add_argument("--since", default=None, help="Timezone-aware ISO timestamp lower bound")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="Generate journal without writing")
+    mode.add_argument("--write", action="store_true", help="Write journal to workspace/journals")
+    p.add_argument("--model", default=None, help="Optional Ollama model override")
+    p.add_argument("--max-conversations", type=int, default=10, help="Max conversations to review")
+
     # behavioral-guidance-review-conversation
     p = sub.add_parser(
         "behavioral-guidance-review-conversation",
@@ -915,6 +978,7 @@ def main():
         "behavioral-guidance-review-conversation": cmd_behavioral_guidance_review_conversation,
         "behavioral-guidance-review-day": cmd_behavioral_guidance_review_day,
         "behavioral-guidance-proposal-apply": cmd_behavioral_guidance_proposal_apply,
+        "reflection-journal-day": cmd_reflection_journal_day,
     }
 
     commands[args.command](args)

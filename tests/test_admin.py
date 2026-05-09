@@ -131,6 +131,90 @@ def test_behavioral_guidance_admin_commands(temp_admin, capsys):
     assert "status=approved" in output
 
 
+def test_reflection_journal_day_admin_dry_run(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**kwargs):
+        assert kwargs["write"] is False
+        assert kwargs["date_text"] == "2026-05-08"
+        return {
+            "mode": "dry-run",
+            "status": "generated",
+            "target_path": "journals/2026-05-08.md",
+            "conversation_count": 1,
+            "message_count": 2,
+            "selection": {
+                "selection_mode": "date",
+                "local_date": "2026-05-08",
+                "timezone": "EDT",
+                "local_offset": "-04:00",
+                "utc_start": "2026-05-08T04:00:00+00:00",
+                "utc_end": "2026-05-09T04:00:00+00:00",
+            },
+            "journal": "# Reflection Journal — 2026-05-08\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_reflection_journal_day", fake_run)
+
+    admin_mod.cmd_reflection_journal_day(
+        SimpleNamespace(
+            date="2026-05-08",
+            since=None,
+            write=False,
+            max_conversations=10,
+            model=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Reflection journal complete" in output
+    assert "mode=dry-run" in output
+    assert "target_path=journals/2026-05-08.md" in output
+    assert "# Reflection Journal — 2026-05-08" in output
+
+
+def test_reflection_journal_day_admin_write_summary(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**kwargs):
+        assert kwargs["write"] is True
+        return {
+            "mode": "write",
+            "status": "generated",
+            "target_path": "journals/2026-05-08.md",
+            "conversation_count": 1,
+            "message_count": 2,
+            "selection": {
+                "selection_mode": "since",
+                "since": "2026-05-08T12:00:00Z",
+                "utc_start": "2026-05-08T12:00:00+00:00",
+            },
+            "write_result": {
+                "path": "journals/2026-05-08.md",
+                "bytes": 123,
+            },
+            "journal": "# Reflection Journal — 2026-05-08\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_reflection_journal_day", fake_run)
+
+    admin_mod.cmd_reflection_journal_day(
+        SimpleNamespace(
+            date=None,
+            since="2026-05-08T12:00:00Z",
+            write=True,
+            max_conversations=10,
+            model=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "mode=write" in output
+    assert "since=2026-05-08T12:00:00Z" in output
+    assert "written_path=journals/2026-05-08.md" in output
+    assert "written_bytes=123" in output
+
+
 def test_behavioral_guidance_admin_reject_requires_reason(temp_admin):
     db_mod, admin_mod = temp_admin
     user = db_mod.create_user("Lyle", role="admin")

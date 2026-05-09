@@ -123,12 +123,16 @@ _CAPABILITY_DEFINITIONS = [
     {
         "key": "reflection_journal",
         "label": "Reflection Journal",
-        "implemented": False,
-        "mode": "disabled",
+        "implemented": True,
+        "mode": "manual",
         "requires_approval": False,
         "source_of_truth": False,
         "real_time": False,
-        "notes": "Not implemented.",
+        "notes": (
+            "Manual admin-triggered daily reflection journals can be generated "
+            "and saved under workspace/journals. No scheduler or automatic "
+            "memory indexing is enabled."
+        ),
     },
     {
         "key": "review_queue",

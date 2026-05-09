@@ -148,12 +148,23 @@ def test_file_uploads_reports_manual_available_capability():
     assert capability["requires_approval"] is False
 
 
+def test_reflection_journal_reports_manual_available_capability():
+    capability = build_capabilities_status(FakeRegistry())["capabilities"]["reflection_journal"]
+
+    assert capability["implemented"] is True
+    assert capability["enabled"] is True
+    assert capability["available"] is True
+    assert capability["configured"] is True
+    assert capability["mode"] == "manual"
+    assert capability["status"] == "available"
+    assert capability["requires_approval"] is False
+
+
 def test_future_capabilities_report_disabled_not_implemented():
     capabilities = build_capabilities_status(FakeRegistry())["capabilities"]
     future_keys = {
         "image_generation",
         "autonomous_research",
-        "reflection_journal",
         "review_queue",
         "code_sandbox",
         "speech",
