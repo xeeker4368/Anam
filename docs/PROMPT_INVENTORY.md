@@ -184,7 +184,7 @@ I hit the tool iteration limit before I could finish responding.
 Excerpt:
 
 ```text
-memory may inform but not replace
+memory can provide context; use live tool results for current state
 ```
 
 ## Retrieval / memory framing

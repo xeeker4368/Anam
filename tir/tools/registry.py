@@ -229,7 +229,7 @@ def _freshness_marker(tool_def: ToolDefinition) -> str:
     if freshness.get("source_of_truth"):
         parts.append("source-of-truth")
     if freshness.get("memory_may_inform_but_not_replace"):
-        parts.append("memory may inform but not replace")
+        parts.append("memory can provide context; use live tool results for current state")
 
     return f" [{'; '.join(parts)}]"
 

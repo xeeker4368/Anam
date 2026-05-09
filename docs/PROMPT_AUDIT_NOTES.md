@@ -40,10 +40,11 @@ This file records human review decisions for entries found in `docs/PROMPT_INVEN
   - Decision: loosened
   - Reason: Replaced “You are...” phrasing with neutral situation labels.
 
-## Needs Discussion
-
 - `tir/tools/registry.py` — “memory may inform but not replace”
-  - Question: Confirm whether this belongs in tool freshness metadata or operational guidance.
+  - Decision: loosened/clarified
+  - Reason: Preserves live-source boundary while using clearer source-framing language.
+
+## Needs Discussion
 
 - `tir/api/routes.py` — fallback/error response text
   - Question: Decide whether these should remain plain system fallback copy or use a more entity-consistent failure style.
