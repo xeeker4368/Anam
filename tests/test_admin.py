@@ -303,3 +303,79 @@ def test_behavioral_guidance_review_day_command_prints_summary(temp_admin, capsy
     assert "utc_end=2026-05-09T04:00:00+00:00" in output
     assert conversation_id in output
     assert "Use one atomic guidance change" in output
+
+
+def test_behavioral_guidance_apply_command_dry_run_prints_block(temp_admin, capsys, tmp_path):
+    db_mod, admin_mod = temp_admin
+    user = db_mod.create_user("Lyle", role="admin")
+    proposal = admin_mod.create_behavioral_guidance_proposal(
+        proposal_type="addition",
+        proposal_text="Keep behavioral guidance narrow.",
+        rationale="A reviewed conversation supported this.",
+        source_conversation_id="conv-1",
+        source_message_id="msg-1",
+        source_channel="chat",
+    )
+    approved = admin_mod.update_behavioral_guidance_proposal_status(
+        proposal["proposal_id"],
+        "approved",
+        reviewed_by_user_id=user["id"],
+        reviewed_by_role="admin",
+    )
+    guidance_path = tmp_path / "BEHAVIORAL_GUIDANCE.md"
+    guidance_path.write_text("# BEHAVIORAL_GUIDANCE.md\n", encoding="utf-8")
+
+    with patch("tir.admin.plan_behavioral_guidance_apply") as mock_plan:
+        mock_plan.return_value = {
+            "guidance_path": str(guidance_path),
+            "append_block": f"### Proposal {approved['proposal_id']}\n",
+        }
+        admin_mod.cmd_behavioral_guidance_proposal_apply(
+            SimpleNamespace(
+                proposal_id=approved["proposal_id"],
+                dry_run=True,
+                write=False,
+                applied_by_user_id=None,
+                apply_note=None,
+            )
+        )
+
+    output = capsys.readouterr().out
+    assert "Behavioral guidance proposal apply dry-run" in output
+    assert approved["proposal_id"] in output
+    assert "append_block:" in output
+
+
+def test_behavioral_guidance_apply_command_write_prints_applied(temp_admin, capsys):
+    db_mod, admin_mod = temp_admin
+    user = db_mod.create_user("Lyle", role="admin")
+    proposal = admin_mod.create_behavioral_guidance_proposal(
+        proposal_type="addition",
+        proposal_text="Keep behavioral guidance narrow.",
+        rationale="A reviewed conversation supported this.",
+    )
+    applied = {
+        **proposal,
+        "status": "applied",
+        "applied_by_user_id": user["id"],
+        "applied_at": "2026-05-08T12:00:00+00:00",
+        "apply_note": "Applied.",
+    }
+
+    with patch("tir.admin.apply_behavioral_guidance_proposal", return_value={
+        "proposal": applied,
+        "append_block": "block",
+    }):
+        admin_mod.cmd_behavioral_guidance_proposal_apply(
+            SimpleNamespace(
+                proposal_id=proposal["proposal_id"],
+                dry_run=False,
+                write=True,
+                applied_by_user_id=user["id"],
+                apply_note="Applied.",
+            )
+        )
+
+    output = capsys.readouterr().out
+    assert "Behavioral guidance proposal applied" in output
+    assert "status=applied" in output

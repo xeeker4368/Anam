@@ -28,6 +28,8 @@ Commands:
                     Generate AI-proposed guidance candidates from one chat conversation
     behavioral-guidance-review-day
                     Review a bounded recent/day window for AI-proposed guidance candidates
+    behavioral-guidance-proposal-apply
+                    Apply an approved addition proposal to BEHAVIORAL_GUIDANCE.md
 """
 
 import argparse
@@ -67,6 +69,11 @@ from tir.behavioral_guidance.review import (
     generate_behavioral_guidance_daily_review,
     generate_behavioral_guidance_review,
     write_behavioral_guidance_review_proposals,
+)
+from tir.behavioral_guidance.apply import (
+    BehavioralGuidanceApplyError,
+    apply_behavioral_guidance_proposal,
+    plan_behavioral_guidance_apply,
 )
 
 
@@ -656,6 +663,31 @@ def cmd_behavioral_guidance_review_day(args):
             print(json.dumps({"proposals": result["proposals"]}, indent=2, sort_keys=True))
 
 
+def cmd_behavioral_guidance_proposal_apply(args):
+    """Apply an approved addition proposal to BEHAVIORAL_GUIDANCE.md."""
+    try:
+        if args.write:
+            result = apply_behavioral_guidance_proposal(
+                args.proposal_id,
+                applied_by_user_id=args.applied_by_user_id,
+                apply_note=args.apply_note,
+            )
+            print("Behavioral guidance proposal applied")
+            _print_behavioral_guidance_proposal(result["proposal"])
+            return
+
+        plan = plan_behavioral_guidance_apply(args.proposal_id)
+    except BehavioralGuidanceApplyError as exc:
+        print(f"Behavioral guidance proposal apply failed: {exc}")
+        sys.exit(1)
+
+    print("Behavioral guidance proposal apply dry-run")
+    print(f"proposal_id={args.proposal_id}")
+    print(f"guidance_path={plan['guidance_path']}")
+    print("append_block:")
+    print(plan["append_block"], end="")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -839,6 +871,18 @@ def main():
         help="Review conversations even if conversation_review_v1 proposals already exist",
     )
 
+    # behavioral-guidance-proposal-apply
+    p = sub.add_parser(
+        "behavioral-guidance-proposal-apply",
+        help="Apply an approved addition proposal to BEHAVIORAL_GUIDANCE.md",
+    )
+    p.add_argument("proposal_id", help="Behavioral guidance proposal ID")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="Show append block without writing")
+    mode.add_argument("--write", action="store_true", help="Append guidance and mark applied")
+    p.add_argument("--applied-by-user-id", default=None, help="Applying admin user ID")
+    p.add_argument("--apply-note", default=None, help="Application note")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -870,6 +914,7 @@ def main():
         "behavioral-guidance-proposal-update": cmd_behavioral_guidance_proposal_update,
         "behavioral-guidance-review-conversation": cmd_behavioral_guidance_review_conversation,
         "behavioral-guidance-review-day": cmd_behavioral_guidance_review_day,
+        "behavioral-guidance-proposal-apply": cmd_behavioral_guidance_proposal_apply,
     }
 
     commands[args.command](args)
