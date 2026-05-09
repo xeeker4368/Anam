@@ -2,19 +2,46 @@
 
 ## Current Recommended Task
 
-Create the baseline project-control files and use them to anchor future ChatGPT/Codex/Claude sessions.
+First AI-Generated Behavioral Guidance Proposal Path — design only.
 
 ## Task Goal
 
-Prevent project drift by making the current understanding explicit.
+Design the first path where the entity can generate one behavioral guidance proposal into `working.db` for admin review.
 
-## Files to Add or Update
+This should be a narrow, inspectable path from reviewed experience to a single proposed guidance record. It should not apply guidance to runtime files, load new guidance into prompts, or create autonomous behavior.
 
-- `PROJECT_STATE.md`
-- `DECISIONS.md`
-- `ROADMAP.md`
-- `ACTIVE_TASK.md`
-- `CODING_ASSISTANT_RULES.md`
+## Current Checkpoint
+
+Recent completed foundation work:
+
+- API secret hardening exists for local-network use when `ANAM_API_SECRET` is configured.
+- Governance files are backed up/restored by explicit allowlist.
+- Governance files are blocked from normal artifact ingestion.
+- `working.db` has `schema_versions` baseline/migration foundation.
+- Behavioral guidance proposal model/API/UI exists.
+- Behavioral guidance proposal UI is review-only.
+- `soul.md` includes minimal permission to question, disagree with, or decline proposed corrections or changes.
+
+## Design Constraints
+
+- No automatic apply-to-file.
+- No prompt loading of `BEHAVIORAL_GUIDANCE.md`.
+- No self-modification.
+- No user-created behavioral guidance entries.
+- No scheduler/background review pass yet.
+- No new entity name.
+- No assigned personality.
+- No changes to `soul.md`, `OPERATIONAL_GUIDANCE.md`, or active `BEHAVIORAL_GUIDANCE.md` entries.
+
+## Files/Subsystems To Inspect First
+
+- `tir/behavioral_guidance/service.py`
+- `tir/api/routes.py`
+- `frontend/src/components/SystemPanel.jsx`
+- `tir/memory/db.py`
+- `tir/memory/migrations.py`
+- review queue service/API/UI
+- current context/retrieval debug paths
 
 ## New Chat Kickoff Instruction
 
@@ -39,53 +66,13 @@ After reading, respond with:
 - no code changes yet
 ```
 
-## Do Not Do Yet
+## Success Criteria For The Next Design
 
-- Do not rewrite the core engine.
-- Do not add autonomous web search.
-- Do not add a fixed entity name.
-- Do not call the entity Anam.
-- Do not modify `soul.md` to include a name/personality.
-- Do not build full self-modification yet.
-- Do not add always-on voice or sight yet.
-- Do not merge GPT experimental code into Claude/current code without review.
+A proposal-path design should answer:
 
-## Immediate Next Implementation Candidate
-
-After baseline files are in place, the next practical build target should be:
-
-1. Workspace tools
-2. Artifact registry
-3. Document ingestion / read memory
-4. Working theories
-5. Open questions
-6. Nightly journal
-
-## Why This Order
-
-Workspace and artifact registry should come before many advanced features because they support:
-
-- writing
-- coding
-- research notes
-- image artifacts
-- journals
-- Moltbook drafts
-- voice transcripts
-- visual observations
-- self-mod staging
-
-## Success Criteria
-
-A new AI coding session should be able to read these files and correctly understand:
-
-- Anam is the substrate, not the entity name.
-- The entity currently has no name.
-- No assigned personality.
-- Behavior should be observed, not configured.
-- Memory is raw experience first.
-- Created artifacts should become memory.
-- Autonomous research should form revisable conclusions.
-- Self-modification should be staged and remembered.
-- Workspace is separate from self-modification.
-- Voice/sight are future edge-node capabilities.
+- What experience source can create the first proposal?
+- How is the proposal kept atomic?
+- How is the source conversation/message/user linked?
+- How does the system avoid user-authored guidance entries?
+- How does admin review remain separate from application?
+- What tests prove no file mutation or prompt loading occurs?

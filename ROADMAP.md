@@ -101,6 +101,21 @@ Example events:
 - voice_transcript_created
 - visual_observation_created
 
+## Governance / Review Foundation Checkpoint
+
+Current governance/review foundation includes:
+
+- operator review queue
+- behavioral guidance proposal model/API/UI
+- schema migration foundation with `working.db` baseline versioning
+- optional `ANAM_API_SECRET` local-network hardening
+- governance file backup/restore allowlist
+- governance file blocklist for normal artifact ingestion
+
+The next milestone is the first AI-generated behavioral guidance proposal path.
+
+`BEHAVIORAL_GUIDANCE.md` is not loaded into runtime context yet. The proposal UI is review-only and does not create proposals or apply them to files.
+
 ---
 
 # Phase 4 — Tool Trace Memory
@@ -539,24 +554,22 @@ Suggested concepts:
 
 # Suggested Near-Term Build Order
 
-1. Create/update project baseline files
-2. Stabilize central runtime/session runner
-3. Add event/tool trace foundation
-4. Add workspace tools
-5. Add artifact registry
-6. Add document ingestion
-7. Add identity events
-8. Add behavioral observations
-9. Add working theories and open questions
-10. Upgrade context assembler
-11. Add nightly journal
-12. Add iMessage send-only notifications
-13. Add Moltbook read-only
-14. Add image generation integration
-15. Add live chat web search
-16. Add manual autonomous research sessions
-17. Add autonomous web research budgets
-18. Add voice output/input
-19. Add sight/image review
+1. First AI-generated behavioral guidance proposal path
+2. Event/tool trace foundation hardening
+3. Review pass foundation for conversations and artifacts
+4. Identity events
+5. Behavioral observations
+6. Working theories and open questions
+7. Context assembler upgrade
+8. Nightly journal
+9. iMessage send-only notifications
+10. Moltbook draft-only progression after read-only confidence
+11. Image generation integration
+12. Manual autonomous research sessions
+13. Autonomous web research budgets
+14. Voice output/input
+15. Sight/image review
+
+`SELF_UNDERSTANDING.md` is a future concept only if introduced later. It is not implemented in the current checkpoint.
 20. Add staged self-modification
 21. Add diagnostics/evaluation harness throughout

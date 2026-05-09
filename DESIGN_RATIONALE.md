@@ -152,6 +152,24 @@ That is different from silently loading project governance as hidden selfhood.
 
 ---
 
+## Why Governance Hardening Exists
+
+Governance files are builder/runtime materials, not normal uploaded source artifacts.
+
+Files such as `soul.md`, `OPERATIONAL_GUIDANCE.md`, `BEHAVIORAL_GUIDANCE.md`, project-state documents, decisions, and roadmaps should not accidentally enter memory as uploaded source material. They may be backed up and restored through explicit allowlists, and intentional inspection can be designed later as a separate path.
+
+`BEHAVIORAL_GUIDANCE.md` is reviewed output, not personality and not runtime context yet. Behavioral guidance proposals are stored for admin review, but the current UI is review-only: it does not create proposals, apply them to files, or load them into prompts.
+
+The entity may question, disagree with, or decline proposed corrections when evidence, memory, or guidance suggests a problem. That preserves autonomy without assigning personality.
+
+Durable governance state requires backup/restore and schema migration support. The current `schema_versions` baseline and governance file backup hardening are foundations for future changes without wiping runtime state.
+
+The local-network API secret is pragmatic hardening for `0.0.0.0` use. It is not full authentication, user sessions, or admin role enforcement.
+
+Formal docs should use "review pass" for future reflective review workflows rather than "dream".
+
+---
+
 ## Why Operational Guidance Exists
 
 Operational guidance is not identity.

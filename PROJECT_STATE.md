@@ -276,6 +276,24 @@ Examples:
 
 ---
 
+## Current Implementation Checkpoint
+
+Current completed foundation includes:
+
+- artifact ingestion/upload/indexing for normal uploaded/generated files
+- governance file blocklist preventing normal artifact ingestion of runtime/project-control files
+- governance file backup/restore allowlist
+- `working.db` `schema_versions` baseline support for future migrations
+- operator review queue
+- behavioral guidance proposal model/API/UI
+- `BEHAVIORAL_GUIDANCE.md` as seed/governance file only, not loaded into runtime context
+- optional `ANAM_API_SECRET` local-network API hardening, not full authentication
+- minimal `soul.md` permission for the entity to question, disagree with, or decline proposed corrections or changes
+
+The behavioral guidance proposal UI is review-only. It does not create proposals, apply proposals to files, or load guidance into runtime context.
+
+---
+
 ## Web Search Philosophy
 
 Web search should be treated as perception of the outside world.

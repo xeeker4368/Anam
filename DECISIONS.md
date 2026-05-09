@@ -252,3 +252,75 @@ Implications:
 - Raspberry Pi 5 can act as voice/sight edge node.
 - Start with push-to-talk or snapshots, not always-on perception.
 - Store transcripts and visual observations as memory.
+
+---
+
+## Decision 017 — Governance/runtime files are not normal artifact memory
+
+**Status:** Active
+
+Project governance and runtime files are builder/runtime materials, not ordinary uploaded source artifacts.
+
+Implications:
+
+- Normal artifact ingestion must block governance/runtime filenames.
+- Governance files may be backed up/restored through explicit allowlists.
+- Intentional governance-file inspection should use a dedicated path later.
+- Do not let accidental uploads turn governance files into uploaded source memory.
+
+---
+
+## Decision 018 — Behavioral guidance is AI-proposed and admin-approved
+
+**Status:** Active
+
+Behavioral guidance entries should come from AI-proposed guidance reviewed and approved by an admin.
+
+Implications:
+
+- The UI may review existing proposals but should not create behavioral guidance proposals.
+- `BEHAVIORAL_GUIDANCE.md` is not loaded into runtime context yet.
+- No automatic apply-to-file behavior exists yet.
+- Rejected proposals remain visible as evidence for future review.
+
+---
+
+## Decision 019 — Local-network API secret is hardening, not full auth
+
+**Status:** Active
+
+`ANAM_API_SECRET` provides lightweight protection when the API is exposed on a local network.
+
+Implications:
+
+- It is not a replacement for user sessions, admin roles, or full authentication.
+- Do not store the secret in the database.
+- Do not hardcode secrets.
+- Full admin/user role enforcement remains future work.
+
+---
+
+## Decision 020 — Do not deliberately forget raw experience
+
+**Status:** Active
+
+Deliberate forgetting of raw experience is rejected.
+
+Implications:
+
+- Raw experience should remain preserved.
+- Future salience or value-density systems may affect what is surfaced, summarized, or prioritized.
+- Salience must not silently delete or erase raw records.
+
+---
+
+## Decision 021 — Use “review pass” in formal docs
+
+**Status:** Active
+
+Formal project documents should prefer “review pass” over “dream” for future reflective review workflows.
+
+Implications:
+
+- Keep language operational and inspectable.
+- Do not imply mystical, hidden, or unreviewable background behavior.
