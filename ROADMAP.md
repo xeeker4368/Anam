@@ -116,6 +116,22 @@ The next milestone is the first AI-generated behavioral guidance proposal path.
 
 `BEHAVIORAL_GUIDANCE.md` is not loaded into runtime context yet. The proposal UI is review-only and does not create proposals or apply them to files.
 
+## Current Phase Reorder
+
+### Phase 4 — Media and Generation
+
+- [ ] Image generation artifacts — generated images saved with prompt/provenance.
+- [ ] Generated document artifacts — reports, markdown, docs, plans saved/indexed.
+- [ ] Artifact gallery/manager — browse generated/uploaded artifacts.
+- [ ] Avatar exploration — screen-first avatar development after the entity develops stronger self-understanding and self-presentation direction.
+
+### Phase 5 — Code and Sandbox Foundations
+
+- [ ] Code sandbox/staging — safe place for generated code and patches.
+- [ ] Test execution controls — approved tests only, logged results.
+- [ ] Patch review flow — proposal → staged patch → test → human approval.
+- [ ] Self-modification guardrails — no direct runtime changes without review.
+
 ---
 
 # Phase 4 — Tool Trace Memory
@@ -382,13 +398,18 @@ Tools:
 
 Use cases:
 
-- holographic avatar concepts
-- Pepper's Ghost visuals
+- screen-first avatar concepts
 - AI face/emotion states
 - particle/wireframe studies
 - concept art
 - UI imagery
 - creative exercises
+
+---
+
+## Later Display / Embodiment Experiments
+
+- [ ] Pepper's Ghost adaptation — optional later theatrical display experiment if it still fits the entity's eventual self-presentation. Not the primary avatar platform.
 
 ---
 
@@ -555,21 +576,26 @@ Suggested concepts:
 # Suggested Near-Term Build Order
 
 1. First AI-generated behavioral guidance proposal path
-2. Event/tool trace foundation hardening
-3. Review pass foundation for conversations and artifacts
-4. Identity events
-5. Behavioral observations
-6. Working theories and open questions
-7. Context assembler upgrade
-8. Nightly journal
-9. iMessage send-only notifications
-10. Moltbook draft-only progression after read-only confidence
-11. Image generation integration
-12. Manual autonomous research sessions
-13. Autonomous web research budgets
-14. Voice output/input
-15. Sight/image review
+2. Media and generation foundation
+3. Image generation artifacts
+4. Generated document artifacts
+5. Artifact gallery/manager
+6. Screen-first avatar exploration
+7. Code and sandbox foundations
+8. Event/tool trace foundation hardening
+9. Review pass foundation for conversations and artifacts
+10. Identity events
+11. Behavioral observations
+12. Working theories and open questions
+13. Context assembler upgrade
+14. Nightly journal
+15. iMessage send-only notifications
+16. Moltbook draft-only progression after read-only confidence
+17. Manual autonomous research sessions
+18. Autonomous web research budgets
+19. Voice output/input
+20. Sight/image review
 
 `SELF_UNDERSTANDING.md` is a future concept only if introduced later. It is not implemented in the current checkpoint.
-20. Add staged self-modification
-21. Add diagnostics/evaluation harness throughout
+21. Add staged self-modification
+22. Add diagnostics/evaluation harness throughout
