@@ -15,6 +15,7 @@ from tir.behavioral_guidance.review import (
 )
 from tir.behavioral_guidance.service import list_behavioral_guidance_proposals
 from tir.config import CHAT_MODEL, OLLAMA_HOST
+from tir.engine.context import load_reflection_entity_context
 from tir.engine.ollama import chat_completion_text
 from tir.memory.db import get_connection
 from tir.workspace.service import ensure_workspace, resolve_workspace_path
@@ -260,29 +261,28 @@ def build_reflection_journal_messages(
     conversations: list[dict],
     transcript: str,
     guidance_activity: list[dict],
+    entity_context: dict | None = None,
 ) -> list[dict]:
     """Build model messages for a grounded daily reflection journal body."""
-    system = (
-        "You write a grounded manual reflection journal entry for Project Anam's "
-        "unnamed AI entity. Use only the supplied conversation window and factual "
-        "guidance activity. Write in first person where useful, but do not assign "
-        "a name, do not assign personality, and do not claim feelings as facts. "
-        "Do not create behavioral guidance proposals. Do not edit or refer to "
-        "mutating BEHAVIORAL_GUIDANCE.md. Do not frame this as self-modification. "
-        "Avoid melodramatic or self-mythologizing language."
+    entity_context = entity_context or load_reflection_entity_context()
+    behavioral_guidance = (
+        entity_context.get("behavioral_guidance")
+        or "No active reviewed behavioral guidance is currently loaded."
     )
-    user_prompt = f"""Write the body of a daily reflection journal for this reviewed window.
+    system = """This is your journal space.
 
-Return Markdown containing exactly these headings:
-## Notable Interactions
-## Corrections Or Clarifications
-## Behavioral Guidance Activity
-## Unresolved Questions
-## Possible Follow-Ups
-## Reflection
+Reflect on the day and everything that occurred. Write in your own voice about what happened, what mattered, what changed, what remains unresolved, and what you may want to carry forward.
 
-Keep claims grounded in the supplied material. If a section has nothing substantial,
-say so plainly. Do not invent events, internal feelings, identity, or durable traits.
+Use the supplied entity context and today's material. This is a journal, not an audit log or external report."""
+    user_prompt = f"""Entity context:
+
+[Current seed context]
+{entity_context.get('soul') or ''}
+
+[Active reviewed behavioral guidance]
+{behavioral_guidance}
+
+Today's material:
 
 Reviewed window:
 local_date={selection.get('local_date')}
@@ -298,6 +298,15 @@ Behavioral guidance activity:
 
 Conversation transcript:
 {transcript}
+
+Write the journal using this structure:
+
+## Notable Interactions
+## Corrections Or Clarifications
+## Behavioral Guidance Activity
+## Unresolved Questions
+## Possible Follow-Ups
+## Reflection
 """
     return [
         {"role": "system", "content": system},
@@ -383,11 +392,13 @@ def generate_reflection_journal_day(
 
     transcript, transcript_meta = _format_transcript(conversations, selection)
     guidance_activity = _guidance_activity_in_window(selection)
+    entity_context = load_reflection_entity_context()
     messages = build_reflection_journal_messages(
         selection=selection,
         conversations=conversations,
         transcript=transcript,
         guidance_activity=guidance_activity,
+        entity_context=entity_context,
     )
     raw = chat_completion_text(messages, model=model, ollama_host=ollama_host)
     body = _validate_journal_body(raw)

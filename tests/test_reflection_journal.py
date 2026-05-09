@@ -148,6 +148,76 @@ def test_empty_day_returns_no_content_without_model_call(reflection_env, monkeyp
     assert called is False
 
 
+def test_journal_prompt_uses_short_journal_space_wording(reflection_env):
+    journal = reflection_env["journal"]
+    messages = journal.build_reflection_journal_messages(
+        selection={"local_date": "2026-05-08", "selection_mode": "date"},
+        conversations=[{"id": "conv-1"}],
+        transcript="A conversation happened.",
+        guidance_activity=[],
+        entity_context={
+            "soul": "Seed context line.",
+            "behavioral_guidance": None,
+        },
+    )
+
+    system = messages[0]["content"]
+    user_prompt = messages[1]["content"]
+    assert system.startswith("This is your journal space.")
+    assert "Write in your own voice" in system
+    assert "This is a journal, not an audit log or external report." in system
+    assert "Seed context line." in user_prompt
+    assert "[Current seed context]" in user_prompt
+    assert "[Active reviewed behavioral guidance]" in user_prompt
+
+
+def test_journal_prompt_includes_active_behavioral_guidance(reflection_env):
+    journal = reflection_env["journal"]
+    messages = journal.build_reflection_journal_messages(
+        selection={"local_date": "2026-05-08", "selection_mode": "date"},
+        conversations=[{"id": "conv-1"}],
+        transcript="A conversation happened.",
+        guidance_activity=[],
+        entity_context={
+            "soul": "Seed context line.",
+            "behavioral_guidance": "[Reviewed Behavioral Guidance]\n\n- Speak plainly.",
+        },
+    )
+
+    user_prompt = messages[1]["content"]
+    assert "[Reviewed Behavioral Guidance]" in user_prompt
+    assert "- Speak plainly." in user_prompt
+
+
+def test_journal_prompt_omits_old_compliance_heavy_wording(reflection_env):
+    journal = reflection_env["journal"]
+    messages = journal.build_reflection_journal_messages(
+        selection={"local_date": "2026-05-08", "selection_mode": "date"},
+        conversations=[{"id": "conv-1"}],
+        transcript="A conversation happened.",
+        guidance_activity=[],
+        entity_context={
+            "soul": "Seed context line.",
+            "behavioral_guidance": None,
+        },
+    )
+    prompt_text = "\n\n".join(message["content"] for message in messages)
+
+    forbidden = [
+        "unnamed AI entity operating within Project Anam",
+        "unnamed AI entity",
+        "do not assign a name",
+        "do not assign personality",
+        "do not claim feelings as facts",
+        "Do not create behavioral guidance proposals",
+        "Do not edit or refer to mutating BEHAVIORAL_GUIDANCE.md",
+        "Do not frame this as self-modification",
+        "Avoid melodramatic or self-mythologizing language",
+    ]
+    for phrase in forbidden:
+        assert phrase not in prompt_text
+
+
 def test_dry_run_generates_journal_and_writes_nothing(reflection_env, monkeypatch):
     db_mod = reflection_env["db"]
     journal = reflection_env["journal"]

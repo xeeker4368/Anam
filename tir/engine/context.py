@@ -132,6 +132,21 @@ def _load_behavioral_guidance() -> tuple[str | None, dict]:
     return _format_behavioral_guidance(items)
 
 
+def load_reflection_entity_context() -> dict:
+    """Load entity context for manual reflection journaling.
+
+    Reflection uses the same seed context and active reviewed behavioral
+    guidance extraction as runtime prompt construction, without loading
+    proposal metadata or behavioral guidance governance prose.
+    """
+    behavioral_guidance, behavioral_guidance_debug = _load_behavioral_guidance()
+    return {
+        "soul": _load_soul(),
+        "behavioral_guidance": behavioral_guidance,
+        "behavioral_guidance_debug": behavioral_guidance_debug,
+    }
+
+
 def _current_situation(user_name: str) -> str:
     """Build the current situation section."""
     tz = ZoneInfo(TIMEZONE)
