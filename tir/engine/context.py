@@ -323,7 +323,9 @@ def _format_retrieved_memories(chunks: list[dict]) -> str:
             formatted_chunks.append(f"[Conversation — {created_at}]\n{text}")
         elif source_type == "journal":
             journal_date = chunk.get("journal_date") or chunk.get("metadata", {}).get("journal_date")
-            formatted_chunks.append(f"[Your journal entry from {journal_date or created_at}]\n{text}")
+            formatted_chunks.append(
+                f"[Your reflection journal entry from {journal_date or created_at} — personal reflection]\n{text}"
+            )
         elif source_type == "research":
             formatted_chunks.append(f"[Research you wrote on {created_at}]\n{text}")
         elif source_type == "article":

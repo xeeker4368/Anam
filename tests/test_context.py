@@ -92,7 +92,7 @@ def test_journal_memory_context_uses_journal_date_metadata():
         ],
     )
 
-    assert "[Your journal entry from 2026-05-08]" in prompt
+    assert "[Your reflection journal entry from 2026-05-08 — personal reflection]" in prompt
     assert "Journal reflection text." in prompt
 
 
