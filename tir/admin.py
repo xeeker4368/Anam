@@ -34,6 +34,8 @@ Commands:
                     Generate a manual daily reflection journal
     reflection-journal-register
                     Register and index an existing reflection journal
+    operational-reflection-day
+                    Review operational/system activity for review candidates
 """
 
 import argparse
@@ -83,6 +85,10 @@ from tir.reflection.journal import (
     ReflectionJournalError,
     register_reflection_journal_artifact,
     run_reflection_journal_day,
+)
+from tir.reflection.operational import (
+    OperationalReflectionError,
+    run_operational_reflection_day,
 )
 
 
@@ -772,6 +778,63 @@ def cmd_reflection_journal_register(args):
     print(f"indexing_chunks={indexing.get('chunks_written', 0)}")
 
 
+def cmd_operational_reflection_day(args):
+    """Run a manual operational reflection pass."""
+    try:
+        result = run_operational_reflection_day(
+            date_text=args.date,
+            since=args.since,
+            write=args.write,
+            max_items=args.max_items,
+            model=args.model,
+        )
+    except OperationalReflectionError as exc:
+        print(f"Operational reflection failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Operational reflection failed: {exc}")
+        sys.exit(1)
+
+    print("Operational reflection complete")
+    print(f"mode={result['mode']}")
+    selection = result.get("selection") or {}
+    if selection.get("selection_mode") == "date":
+        print(f"local_date={selection.get('local_date')}")
+        print(f"timezone={selection.get('timezone')}")
+        print(f"local_offset={selection.get('local_offset')}")
+        print(f"utc_start={selection.get('utc_start')}")
+        print(f"utc_end={selection.get('utc_end')}")
+    elif selection.get("selection_mode") == "since":
+        print(f"since={selection.get('since')}")
+        print(f"utc_start={selection.get('utc_start')}")
+    observations = result.get("operational_observations") or []
+    candidates = result.get("review_item_candidates") or []
+    open_loop_candidates = result.get("open_loop_candidates") or []
+    print(f"operational_observations={len(observations)}")
+    print(f"review_item_candidates={len(candidates)}")
+    print(f"open_loop_candidates={len(open_loop_candidates)}")
+    if result.get("no_action_reason"):
+        print(f"no_action_reason={result['no_action_reason']}")
+    if result.get("write_result"):
+        write_result = result["write_result"]
+        print(f"review_items_created={len(write_result['created'])}")
+        print(f"duplicates_skipped={len(write_result['skipped_duplicates'])}")
+        for item in write_result["created"]:
+            print(f"created {item['item_id']} title={item['title']} category={item['category']}")
+    print("json:")
+    printable = {
+        key: result.get(key)
+        for key in (
+            "operational_observations",
+            "review_item_candidates",
+            "open_loop_candidates",
+            "diagnostic_notes",
+            "no_action_reason",
+        )
+    }
+    print(json.dumps(printable, indent=2, sort_keys=True))
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -937,6 +1000,19 @@ def main():
     )
     p.add_argument("date", help="Journal local date, YYYY-MM-DD")
 
+    # operational-reflection-day
+    p = sub.add_parser(
+        "operational-reflection-day",
+        help="Review operational/system activity for review candidates",
+    )
+    p.add_argument("--date", default=None, help="Local/system date to review, YYYY-MM-DD")
+    p.add_argument("--since", default=None, help="Timezone-aware ISO timestamp lower bound")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="Review without writing")
+    mode.add_argument("--write", action="store_true", help="Create review queue items")
+    p.add_argument("--model", default=None, help="Optional Ollama model override")
+    p.add_argument("--max-items", type=int, default=20, help="Max activity/candidate items")
+
     # behavioral-guidance-review-conversation
     p = sub.add_parser(
         "behavioral-guidance-review-conversation",
@@ -1031,6 +1107,7 @@ def main():
         "behavioral-guidance-proposal-apply": cmd_behavioral_guidance_proposal_apply,
         "reflection-journal-day": cmd_reflection_journal_day,
         "reflection-journal-register": cmd_reflection_journal_register,
+        "operational-reflection-day": cmd_operational_reflection_day,
     }
 
     commands[args.command](args)
