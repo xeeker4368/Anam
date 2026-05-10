@@ -116,6 +116,8 @@ The next milestone is the first AI-generated behavioral guidance proposal path.
 
 `BEHAVIORAL_GUIDANCE.md` is not loaded into runtime context yet. The proposal UI is review-only and does not create proposals or apply them to files.
 
+Guidance scoping now has a concept design in `docs/GUIDANCE_SCOPING_DESIGN.md`. No schema, runtime filtering, proposal-scope review, or scoped apply-to-file behavior is implemented yet.
+
 ## Current Phase Reorder
 
 ### Phase 4 — Media and Generation

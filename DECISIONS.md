@@ -342,3 +342,22 @@ Implications:
 - Rejected proposals should remain visible with review reasons.
 - Runtime loading is deferred and must be separately designed.
 - If runtime loading is later added, it should sit below `soul.md` and operational guidance and should not be treated as behavioral instruction.
+
+---
+
+## Decision 023 — Behavioral guidance needs explicit scope before scale
+
+**Status:** Active
+
+Future active behavioral guidance should support explicit user, channel, context, and applicability scope before the guidance file grows large.
+
+Implications:
+
+- Existing unscoped guidance is interpreted as global/default guidance.
+- Future global guidance should be chosen deliberately, not created by omission.
+- Scope should be present in both proposal records and applied Markdown entries.
+- Early proposal scope may live in `metadata_json` or a structured metadata object before first-class columns are justified.
+- Applied `BEHAVIORAL_GUIDANCE.md` entries should include human-readable scope metadata.
+- Runtime filtering is deferred and must preserve debug visibility.
+- If scope matching is uncertain, labeled inclusion is safer than silent exclusion.
+- Scoped guidance does not override `soul.md` or `OPERATIONAL_GUIDANCE.md`.
