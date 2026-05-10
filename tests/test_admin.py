@@ -162,6 +162,7 @@ def test_reflection_journal_day_admin_dry_run(temp_admin, capsys, monkeypatch):
             since=None,
             write=False,
             register_artifact=False,
+            include_memory=False,
             max_conversations=10,
             model=None,
         )
@@ -171,6 +172,40 @@ def test_reflection_journal_day_admin_dry_run(temp_admin, capsys, monkeypatch):
     assert "Reflection journal complete" in output
     assert "mode=dry-run" in output
     assert "target_path=journals/2026-05-08.md" in output
+    assert "# Reflection Journal — 2026-05-08" in output
+
+
+def test_reflection_journal_day_admin_passes_include_memory(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**kwargs):
+        assert kwargs["include_memory"] is True
+        return {
+            "mode": "dry-run",
+            "status": "generated",
+            "target_path": "journals/2026-05-08.md",
+            "conversation_count": 1,
+            "message_count": 2,
+            "selection": {},
+            "journal": "# Reflection Journal — 2026-05-08\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_reflection_journal_day", fake_run)
+
+    admin_mod.cmd_reflection_journal_day(
+        SimpleNamespace(
+            date="2026-05-08",
+            since=None,
+            write=False,
+            register_artifact=False,
+            include_memory=True,
+            max_conversations=10,
+            model=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Reflection journal complete" in output
     assert "# Reflection Journal — 2026-05-08" in output
 
 
@@ -205,6 +240,7 @@ def test_reflection_journal_day_admin_write_summary(temp_admin, capsys, monkeypa
             since="2026-05-08T12:00:00Z",
             write=True,
             register_artifact=False,
+            include_memory=False,
             max_conversations=10,
             model=None,
         )
@@ -255,6 +291,7 @@ def test_reflection_journal_day_admin_register_summary(temp_admin, capsys, monke
             since=None,
             write=True,
             register_artifact=True,
+            include_memory=False,
             max_conversations=10,
             model=None,
         )

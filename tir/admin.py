@@ -707,6 +707,7 @@ def cmd_reflection_journal_day(args):
             register_artifact=args.register_artifact,
             max_conversations=args.max_conversations,
             model=args.model,
+            include_memory=args.include_memory,
         )
     except ReflectionJournalError as exc:
         print(f"Reflection journal failed: {exc}")
@@ -918,6 +919,11 @@ def main():
     mode.add_argument("--write", action="store_true", help="Write journal to workspace/journals")
     p.add_argument("--model", default=None, help="Optional Ollama model override")
     p.add_argument("--max-conversations", type=int, default=10, help="Max conversations to review")
+    p.add_argument(
+        "--include-memory",
+        action="store_true",
+        help="Include bounded prior relevant memories in the journal prompt",
+    )
     p.add_argument(
         "--register-artifact",
         action="store_true",
