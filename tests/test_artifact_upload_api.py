@@ -123,6 +123,23 @@ def test_upload_rejects_governance_runtime_file(upload_env):
     upsert_chunk.assert_not_called()
 
 
+@pytest.mark.parametrize("filename", ["ROADMAP.md", "PROJECT_STATE.md", "DECISIONS.md"])
+def test_upload_allows_project_reference_control_docs(upload_env, filename):
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        response = _post_upload(
+            upload_env["client"],
+            filename=filename,
+            content=b"project reference content",
+            data={"user_id": upload_env["user"]["id"]},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["artifact"]["metadata"]["filename"] == filename
+    assert data["artifact"]["metadata"]["source_role"] == "uploaded_source"
+
+
 def test_uploaded_text_is_retrievable_by_marker(upload_env):
     marker = "retrievableartifactmarker"
     with patch("tir.memory.artifact_indexing.upsert_chunk"):

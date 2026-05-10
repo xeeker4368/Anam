@@ -335,6 +335,11 @@ def _format_retrieved_memories(chunks: list[dict]) -> str:
             metadata = chunk.get("metadata", {})
             title = chunk.get("title") or metadata.get("title", "untitled artifact")
             filename = metadata.get("filename", "unknown file")
+            if metadata.get("source_role") == "project_reference":
+                formatted_chunks.append(
+                    f"[Project reference document: {filename} — source material, not runtime guidance]\n{text}"
+                )
+                continue
             source_role = display_source_role(
                 metadata.get("source_role"),
                 authority=metadata.get("authority"),

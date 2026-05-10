@@ -78,7 +78,6 @@ def test_ingest_saves_file_to_controlled_upload_path(temp_ingestion_env):
         "soul.md",
         "OPERATIONAL_GUIDANCE.md",
         "BEHAVIORAL_GUIDANCE.md",
-        "PROJECT_STATE.md",
         "Soul.md",
         "path/to/soul.md",
     ],
@@ -96,6 +95,33 @@ def test_ingest_rejects_governance_runtime_filenames(temp_ingestion_env, filenam
     assert _fts_rows(temp_ingestion_env["working_db"]) == []
     assert not any(path.is_file() for path in temp_ingestion_env["workspace_root"].rglob("*"))
     upsert_chunk.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "ROADMAP.md",
+        "PROJECT_STATE.md",
+        "DECISIONS.md",
+        "ACTIVE_TASK.md",
+        "DESIGN_RATIONALE.md",
+        "DB_SCHEMA.md",
+        "PROMPT_INVENTORY.md",
+        "PROMPT_AUDIT_NOTES.md",
+        "Project_Anam_Phase_3_Governance_Reflection_Roadmap.md",
+    ],
+)
+def test_ingest_allows_project_reference_control_docs(temp_ingestion_env, filename):
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        result = ingest_artifact_file(
+            filename=filename,
+            content=b"project reference content",
+            workspace_root=temp_ingestion_env["workspace_root"],
+        )
+
+    assert result["artifact"]["metadata"]["filename"] == filename
+    assert result["artifact"]["metadata"]["source_role"] == "uploaded_source"
+    assert _artifact_count(temp_ingestion_env["working_db"]) == 1
 
 
 def test_ingest_allows_near_miss_governance_filename(temp_ingestion_env):
@@ -342,8 +368,10 @@ def test_reflection_journal_origin_and_role_are_valid():
 
     assert validate_origin("reflection_journal") == "reflection_journal"
     assert validate_source_role("journal") == "journal"
+    assert validate_source_role("project_reference") == "project_reference"
     assert display_origin("reflection_journal") == "Reflection journal"
     assert display_source_role("journal") == "Journal"
+    assert display_source_role("project_reference") == "Project reference"
 
 
 def test_artifact_document_context_formatting_identifies_source_material():
@@ -370,6 +398,30 @@ def test_artifact_document_context_formatting_identifies_source_material():
     ) in prompt
     assert "Artifact body text" in prompt
     assert "authority: source_material" not in prompt
+
+
+def test_project_reference_context_formatting_marks_not_runtime_guidance():
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[
+            {
+                "text": "Roadmap source text.",
+                "metadata": {
+                    "source_type": "artifact_document",
+                    "title": "Roadmap",
+                    "filename": "ROADMAP.md",
+                    "origin": "user_upload",
+                    "source_role": "project_reference",
+                    "created_at": "2026-05-05T12:00:00+00:00",
+                },
+            }
+        ],
+    )
+
+    assert (
+        "[Project reference document: ROADMAP.md — source material, not runtime guidance]"
+    ) in prompt
+    assert "Roadmap source text." in prompt
 
 
 def test_artifact_document_context_falls_back_from_old_authority_metadata():

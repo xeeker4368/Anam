@@ -96,6 +96,29 @@ def test_journal_memory_context_uses_journal_date_metadata():
     assert "Journal reflection text." in prompt
 
 
+def test_project_reference_artifact_context_is_labeled_as_source_material():
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[
+            {
+                "source_type": "artifact_document",
+                "text": "Roadmap text.",
+                "metadata": {
+                    "title": "Roadmap",
+                    "filename": "ROADMAP.md",
+                    "source_type": "artifact_document",
+                    "source_role": "project_reference",
+                },
+            }
+        ],
+    )
+
+    assert (
+        "[Project reference document: ROADMAP.md — source material, not runtime guidance]"
+    ) in prompt
+    assert "Roadmap text." in prompt
+
+
 def test_system_prompt_breakdown_counts_sections():
     retrieved_chunks = [
         {

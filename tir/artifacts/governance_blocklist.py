@@ -7,13 +7,6 @@ GOVERNANCE_FILE_NAMES = frozenset({
     "soul.md",
     "OPERATIONAL_GUIDANCE.md",
     "BEHAVIORAL_GUIDANCE.md",
-    "PROJECT_STATE.md",
-    "DECISIONS.md",
-    "ROADMAP.md",
-    "ACTIVE_TASK.md",
-    "CODING_ASSISTANT_RULES.md",
-    "DESIGN_RATIONALE.md",
-    "Project_Anam_Phase_3_Governance_Reflection_Roadmap.md",
 })
 
 GOVERNANCE_FILE_REJECTION_MESSAGE = (

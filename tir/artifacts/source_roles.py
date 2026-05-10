@@ -17,6 +17,7 @@ ALLOWED_SOURCE_ROLES = {
     "generated_artifact",
     "research_reference",
     "runtime_guidance",
+    "project_reference",
     "current_project_state",
     "correction",
     "draft",
@@ -30,6 +31,7 @@ _SOURCE_ROLE_LABELS = {
     "generated_artifact": "Generated artifact",
     "research_reference": "Research reference",
     "runtime_guidance": "Runtime guidance",
+    "project_reference": "Project reference",
     "current_project_state": "Current project state",
     "correction": "Correction",
     "draft": "Draft",
@@ -124,6 +126,7 @@ def source_trust_for_source_role(source_role: str | None) -> str:
     if source_role in {
         "generated_artifact",
         "runtime_guidance",
+        "project_reference",
         "current_project_state",
         "correction",
         "draft",
