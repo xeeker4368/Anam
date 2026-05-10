@@ -118,6 +118,8 @@ The next milestone is the first AI-generated behavioral guidance proposal path.
 
 Guidance scoping now has a concept design in `docs/GUIDANCE_SCOPING_DESIGN.md`. No schema, runtime filtering, proposal-scope review, or scoped apply-to-file behavior is implemented yet.
 
+Removal and revision apply mechanics now have a concept design in `docs/BEHAVIORAL_GUIDANCE_REVISION_DESIGN.md`. Current apply behavior remains addition-only.
+
 ## Current Phase Reorder
 
 ### Phase 4 — Media and Generation

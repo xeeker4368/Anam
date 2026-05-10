@@ -361,3 +361,21 @@ Implications:
 - Runtime filtering is deferred and must preserve debug visibility.
 - If scope matching is uncertain, labeled inclusion is safer than silent exclusion.
 - Scoped guidance does not override `soul.md` or `OPERATIONAL_GUIDANCE.md`.
+
+---
+
+## Decision 024 — Behavioral guidance removal and revision preserve history
+
+**Status:** Active
+
+Future approved removal and revision proposals should retire and supersede guidance rather than deleting or silently rewriting it.
+
+Implications:
+
+- Removal proposals should mark or move active guidance to retired guidance, not delete it.
+- Revision proposals should retire the old entry and append a new active entry.
+- Targeting should prefer stable guidance/proposal IDs over text matching.
+- `target_text` may be a fallback only with exact validation.
+- Retired and superseded guidance should remain reviewable but must not load as active runtime guidance.
+- Dry-run diff/plan output should be required before write behavior.
+- Proposal status should become `applied` only after successful file application.
