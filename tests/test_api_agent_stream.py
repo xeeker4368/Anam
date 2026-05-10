@@ -641,6 +641,101 @@ def test_stream_chat_context_debug_includes_journal_chunk_details(
     assert chunk["journal"]["full_journal_included"] is None
 
 
+@patch("tir.api.routes.build_primary_journal_context")
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_injects_primary_journal_context_and_keeps_retrieval(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+    mock_build_primary_journal_context,
+):
+    app.state.registry = FakeRegistry(has_tools=False)
+    current_text = "What did your May 8 reflection journal say?"
+    journal_context = (
+        "[Primary reflection journal source — 2026-05-08]\n\n"
+        "This is the journal entry for the requested date. Treat it as the primary source "
+        "for questions about that journal. Distinguish what the journal states from later interpretation.\n\n"
+        "Journal source text."
+    )
+    mock_build_primary_journal_context.return_value = (
+        journal_context,
+        {
+            "included": True,
+            "journal_date": "2026-05-08",
+            "artifact_id": "artifact-journal",
+            "path": "journals/2026-05-08.md",
+            "chars": len(journal_context),
+            "truncated": False,
+            "budget_chars": 8000,
+            "reason": None,
+            "year_inferred": True,
+            "duplicate_count": 1,
+        },
+    )
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = [
+        {
+            "chunk_id": "conversation-about-journal",
+            "text": "A prior conversation about the journal.",
+            "source_type": "conversation",
+        }
+    ]
+    mock_save_message.side_effect = [
+        _fake_message("user", current_text, "msg-user"),
+        _fake_message("assistant", "The journal mentioned source framing.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", current_text, "msg-user")]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "The journal mentioned source framing."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="The journal mentioned source framing.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": current_text})
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    mock_retrieve.assert_called_once_with(
+        query=current_text,
+        active_conversation_id="conv-1",
+        max_results=AUTO_RETRIEVAL_RESULTS,
+        artifact_intent=False,
+    )
+    model_messages = mock_loop.call_args.kwargs["messages"]
+    assert model_messages[0] == {"role": "system", "content": journal_context}
+    assert model_messages[1]["content"] == current_text
+    assert events[0]["journal_primary_context"]["included"] is True
+    assert events[0]["journal_primary_context"]["journal_date"] == "2026-05-08"
+    assert events[0]["journal_primary_context"]["artifact_id"] == "artifact-journal"
+    assert events[0]["prompt_breakdown"]["journal_primary_context_chars"] == len(journal_context)
+    assert events[0]["prompt_breakdown"]["primary_context_chars"] == len(journal_context)
+    assert events[0]["context_debug"]["primary_context"]["journal"]["included"] is True
+    assert events[0]["context_debug"]["retrieval"]["sources_by_type"] == {
+        "conversation": 1,
+    }
+
+
 @patch("tir.api.routes.build_recent_artifacts_context")
 @patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")

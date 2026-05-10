@@ -69,6 +69,10 @@ from tir.engine.artifact_context import (
     build_recent_artifacts_context,
     has_recent_artifact_intent,
 )
+from tir.engine.journal_context import (
+    PRIMARY_JOURNAL_CONTEXT_CHAR_BUDGET,
+    build_primary_journal_context,
+)
 from tir.engine.retrieval_policy import classify_retrieval_policy
 from tir.engine.tool_trace_context import build_moltbook_selection_context
 from tir.engine.url_prefetch import get_url_prefetch_candidate
@@ -471,6 +475,29 @@ def stream_chat(req: ChatRequest):
             "chars": 0,
             "truncated": False,
         }
+        journal_primary_context = None
+        journal_primary_context_meta = {
+            "included": False,
+            "journal_date": None,
+            "artifact_id": None,
+            "path": None,
+            "chars": 0,
+            "truncated": False,
+            "budget_chars": PRIMARY_JOURNAL_CONTEXT_CHAR_BUDGET,
+            "reason": "no_journal_date_intent",
+            "year_inferred": False,
+            "duplicate_count": 0,
+        }
+        journal_primary_context, journal_primary_context_meta = build_primary_journal_context(
+            req.text
+        )
+        if journal_primary_context:
+            model_messages.insert(
+                current_user_index,
+                {"role": "system", "content": journal_primary_context},
+            )
+            current_user_index += 1
+
         if artifact_intent:
             recent_artifact_context, recent_artifact_context_meta = (
                 build_recent_artifacts_context(
@@ -493,11 +520,15 @@ def stream_chat(req: ChatRequest):
                 {"role": "system", "content": moltbook_selection_context},
             )
         timings["history_load_ms"] = elapsed_ms(phase_start)
+        journal_primary_context_chars = len(journal_primary_context or "")
+        primary_context_chars = journal_primary_context_chars
         recent_artifact_context_chars = len(recent_artifact_context or "")
         artifact_context_chars = recent_artifact_context_chars
         prompt_breakdown = {
             **prompt_breakdown,
             "conversation_history_chars": conversation_history_chars,
+            "journal_primary_context_chars": journal_primary_context_chars,
+            "primary_context_chars": primary_context_chars,
             "artifact_context_chars": artifact_context_chars,
             "recent_artifact_context_chars": recent_artifact_context_chars,
             "selection_context_chars": selection_context_chars,
@@ -505,6 +536,7 @@ def stream_chat(req: ChatRequest):
         prompt_breakdown["total_chars"] = (
             prompt_breakdown["system_prompt_chars"]
             + conversation_history_chars
+            + primary_context_chars
             + artifact_context_chars
             + selection_context_chars
         )
@@ -516,6 +548,9 @@ def stream_chat(req: ChatRequest):
             query=req.text,
             retrieved_chunks=retrieved_chunks,
             retrieval_budget=retrieval_budget,
+            primary_context={
+                "journal": journal_primary_context_meta,
+            },
         )
 
         # --- Emit debug event ---
@@ -551,6 +586,7 @@ def stream_chat(req: ChatRequest):
             "prompt_budget_warning": prompt_budget_warning,
             "prompt_breakdown": prompt_breakdown,
             "context_debug": context_debug,
+            "journal_primary_context": journal_primary_context_meta,
             "recent_artifact_context": recent_artifact_context_meta,
             "history_message_count": len(model_messages),
             "timings": timings,

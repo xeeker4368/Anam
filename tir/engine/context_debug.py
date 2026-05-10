@@ -88,6 +88,7 @@ def build_context_debug(
     query: str,
     retrieved_chunks: list[dict],
     retrieval_budget: dict,
+    primary_context: dict | None = None,
 ) -> dict:
     """Build safe, structured context assembly debug metadata."""
     source_counts = Counter(_source_type(chunk) for chunk in retrieved_chunks)
@@ -148,4 +149,5 @@ def build_context_debug(
             "skipped_budget_chunks": retrieval_budget.get("skipped_budget_chunks", 0),
             "truncated_chunks": retrieval_budget.get("truncated_chunks", 0),
         },
+        "primary_context": primary_context or {},
     }
