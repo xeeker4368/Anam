@@ -596,6 +596,6 @@ Suggested concepts:
 19. Voice output/input
 20. Sight/image review
 
-`SELF_UNDERSTANDING.md` is a future concept only if introduced later. It is not implemented in the current checkpoint.
+`SELF_UNDERSTANDING.md` now has a concept design in `docs/SELF_UNDERSTANDING_DESIGN.md`. It is not implemented, not loaded into runtime context, and has no schema, service, UI, model tool, or apply workflow in the current checkpoint.
 21. Add staged self-modification
 22. Add diagnostics/evaluation harness throughout

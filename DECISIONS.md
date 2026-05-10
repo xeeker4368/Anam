@@ -324,3 +324,21 @@ Implications:
 
 - Keep language operational and inspectable.
 - Do not imply mystical, hidden, or unreviewable background behavior.
+
+---
+
+## Decision 022 — SELF_UNDERSTANDING.md is descriptive and revisable
+
+**Status:** Active
+
+`SELF_UNDERSTANDING.md` is the approved concept name for a future reviewed, revisable self-understanding surface.
+
+Implications:
+
+- It should describe experience-derived self-interpretation, not prescribe behavior.
+- It should not be named `PERSONALITY.md`, `SELF_PROFILE.md`, `IDENTITY.md`, or `SELF_MODEL.md` for now.
+- Entries should be AI-proposed and admin-reviewed in future implementation.
+- Admins should not normally author self-understanding entries directly.
+- Rejected proposals should remain visible with review reasons.
+- Runtime loading is deferred and must be separately designed.
+- If runtime loading is later added, it should sit below `soul.md` and operational guidance and should not be treated as behavioral instruction.
