@@ -448,6 +448,7 @@ Research track status:
 - [x] Retrieved research source framing
 - [x] Research Continuation Design v1
 - [x] Manual research continuation implementation
+- [ ] External Review Checkpoint v1
 - [ ] Title/search continuation design
 - [ ] Research open-loop/review-item design
 - [ ] Research open-loop/review-item implementation

@@ -36,6 +36,7 @@ Commands:
                     Register and index an existing reflection journal
     operational-reflection-day
                     Review operational/system activity for review candidates
+    research-run     Generate a manual provisional research note
 """
 
 import argparse
@@ -90,6 +91,7 @@ from tir.reflection.operational import (
     OperationalReflectionError,
     run_operational_reflection_day,
 )
+from tir.research.manual import ManualResearchError, run_manual_research
 
 
 def cmd_init_db(args):
@@ -835,6 +837,52 @@ def cmd_operational_reflection_day(args):
     print(json.dumps(printable, indent=2, sort_keys=True))
 
 
+def cmd_research_run(args):
+    """Generate a manual provisional research note."""
+    try:
+        result = run_manual_research(
+            question=args.question,
+            scope=args.scope,
+            title=args.title,
+            write=args.write,
+            register_artifact=args.register_artifact,
+            continue_artifact=args.continue_artifact,
+            continue_file=args.continue_file,
+            model=args.model,
+        )
+    except ManualResearchError as exc:
+        print(f"Manual research failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Manual research failed: {exc}")
+        sys.exit(1)
+
+    print("Manual research complete")
+    print(f"mode={result['mode']}")
+    print(f"title={result['title']}")
+    print(f"target_path={result['relative_path']}")
+    if result.get("continuation"):
+        continuation = result["continuation"]
+        print(f"continued_from={continuation['continued_from']}")
+        print(f"continuation_source_registered={continuation['registered']}")
+        if continuation.get("artifact_id"):
+            print(f"continuation_artifact_id={continuation['artifact_id']}")
+        print(f"continuation_path={continuation['path']}")
+    if result.get("write_result"):
+        print(f"written_path={result['write_result']['path']}")
+        print(f"written_bytes={result['write_result']['bytes']}")
+    if result.get("artifact_result"):
+        artifact_result = result["artifact_result"]
+        artifact = artifact_result["artifact"]
+        indexing = artifact_result["indexing"]
+        print(f"artifact_id={artifact['artifact_id']}")
+        print(f"artifact_type={artifact['artifact_type']}")
+        print(f"indexing_status={indexing['status']}")
+        print(f"indexing_chunks_written={indexing.get('chunks_written', 0)}")
+    print("research_note:")
+    print(result["document"], end="")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -1013,6 +1061,35 @@ def main():
     p.add_argument("--model", default=None, help="Optional Ollama model override")
     p.add_argument("--max-items", type=int, default=20, help="Max activity/candidate items")
 
+    # research-run
+    p = sub.add_parser(
+        "research-run",
+        help="Generate a manual provisional research note",
+    )
+    p.add_argument("--question", required=True, help="Research question")
+    p.add_argument("--scope", required=True, help="Research scope/bounds")
+    p.add_argument("--title", default=None, help="Optional research note title")
+    p.add_argument("--model", default=None, help="Optional Ollama model override")
+    continuation = p.add_mutually_exclusive_group()
+    continuation.add_argument(
+        "--continue-artifact",
+        default=None,
+        help="Continue from a registered research artifact ID",
+    )
+    continuation.add_argument(
+        "--continue-file",
+        default=None,
+        help="Continue from a Markdown file under workspace/research",
+    )
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="Generate without writing")
+    mode.add_argument("--write", action="store_true", help="Write note to workspace/research")
+    p.add_argument(
+        "--register-artifact",
+        action="store_true",
+        help="After --write, register and index the note as research memory",
+    )
+
     # behavioral-guidance-review-conversation
     p = sub.add_parser(
         "behavioral-guidance-review-conversation",
@@ -1079,9 +1156,14 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+    if args.command == "research-run" and args.register_artifact and not args.write:
+        parser.error("research-run --register-artifact requires --write")
+
     # Ensure databases exist for DB-facing commands. Backup/restore must not
     # create or mutate runtime state before their own safety checks run.
-    if args.command not in {"init-db", "backup", "restore"}:
+    if args.command not in {"init-db", "backup", "restore", "research-run"} or (
+        args.command == "research-run" and args.register_artifact
+    ):
         init_databases()
 
     commands = {
@@ -1108,6 +1190,7 @@ def main():
         "reflection-journal-day": cmd_reflection_journal_day,
         "reflection-journal-register": cmd_reflection_journal_register,
         "operational-reflection-day": cmd_operational_reflection_day,
+        "research-run": cmd_research_run,
     }
 
     commands[args.command](args)

@@ -175,6 +175,225 @@ def test_reflection_journal_day_admin_dry_run(temp_admin, capsys, monkeypatch):
     assert "# Reflection Journal — 2026-05-08" in output
 
 
+def test_research_run_admin_dry_run_prints_note(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**kwargs):
+        assert kwargs["question"] == "What should v1 do?"
+        assert kwargs["scope"] == "CLI-only."
+        assert kwargs["title"] is None
+        assert kwargs["write"] is False
+        assert kwargs["register_artifact"] is False
+        assert kwargs["continue_artifact"] is None
+        assert kwargs["continue_file"] is None
+        return {
+            "mode": "dry-run",
+            "title": "What should v1 do",
+            "relative_path": "research/2026-05-10-what-should-v1-do.md",
+            "document": "# Research Note — What should v1 do\n\n- Provisional: true\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_manual_research", fake_run)
+
+    admin_mod.cmd_research_run(
+        SimpleNamespace(
+            question="What should v1 do?",
+            scope="CLI-only.",
+            title=None,
+            write=False,
+            register_artifact=False,
+            continue_artifact=None,
+            continue_file=None,
+            model=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Manual research complete" in output
+    assert "mode=dry-run" in output
+    assert "target_path=research/2026-05-10-what-should-v1-do.md" in output
+    assert "# Research Note — What should v1 do" in output
+
+
+def test_research_run_admin_write_register_prints_artifact_summary(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**kwargs):
+        assert kwargs["write"] is True
+        assert kwargs["register_artifact"] is True
+        assert kwargs["continue_artifact"] is None
+        assert kwargs["continue_file"] is None
+        return {
+            "mode": "write",
+            "title": "Research Runtime",
+            "relative_path": "research/2026-05-10-research-runtime.md",
+            "write_result": {
+                "path": "research/2026-05-10-research-runtime.md",
+                "bytes": 123,
+            },
+            "artifact_result": {
+                "artifact": {
+                    "artifact_id": "artifact-1",
+                    "artifact_type": "research_note",
+                },
+                "indexing": {
+                    "status": "indexed",
+                    "chunks_written": 1,
+                },
+            },
+            "document": "# Research Note — Research Runtime\n\n- Provisional: true\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_manual_research", fake_run)
+
+    admin_mod.cmd_research_run(
+        SimpleNamespace(
+            question="What should v1.1 do?",
+            scope="Registration only.",
+            title="Research Runtime",
+            write=True,
+            register_artifact=True,
+            continue_artifact=None,
+            continue_file=None,
+            model=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "artifact_id=artifact-1" in output
+    assert "artifact_type=research_note" in output
+    assert "indexing_status=indexed" in output
+    assert "indexing_chunks_written=1" in output
+
+
+def test_research_run_admin_passes_continue_artifact(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**kwargs):
+        assert kwargs["continue_artifact"] == "artifact-1"
+        assert kwargs["continue_file"] is None
+        return {
+            "mode": "dry-run",
+            "title": "Research Continuation",
+            "relative_path": "research/2026-05-13-research-continuation.md",
+            "continuation": {
+                "continued_from": "Prior / research/prior.md / artifact artifact-1 / 2026-05-10",
+                "registered": True,
+                "artifact_id": "artifact-1",
+                "path": "research/prior.md",
+            },
+            "document": "# Research Note — Research Continuation\n\n- Provisional: true\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_manual_research", fake_run)
+
+    admin_mod.cmd_research_run(
+        SimpleNamespace(
+            question="What changed?",
+            scope="Continue.",
+            title=None,
+            write=False,
+            register_artifact=False,
+            continue_artifact="artifact-1",
+            continue_file=None,
+            model=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "continued_from=Prior / research/prior.md / artifact artifact-1 / 2026-05-10" in output
+    assert "continuation_source_registered=True" in output
+    assert "continuation_artifact_id=artifact-1" in output
+    assert "continuation_path=research/prior.md" in output
+
+
+def test_research_run_admin_passes_continue_file(temp_admin, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**kwargs):
+        assert kwargs["continue_artifact"] is None
+        assert kwargs["continue_file"] == "workspace/research/prior.md"
+        return {
+            "mode": "dry-run",
+            "title": "Research Continuation",
+            "relative_path": "research/2026-05-13-research-continuation.md",
+            "continuation": {
+                "continued_from": "prior / research/prior.md / file-only/unregistered",
+                "registered": False,
+                "path": "research/prior.md",
+            },
+            "document": "# Research Note — Research Continuation\n\n- Provisional: true\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_manual_research", fake_run)
+
+    admin_mod.cmd_research_run(
+        SimpleNamespace(
+            question="What changed?",
+            scope="Continue.",
+            title=None,
+            write=False,
+            register_artifact=False,
+            continue_artifact=None,
+            continue_file="workspace/research/prior.md",
+            model=None,
+        )
+    )
+
+
+def test_research_run_continue_flags_are_mutually_exclusive(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "research-run",
+            "--question",
+            "What changed?",
+            "--scope",
+            "Continue.",
+            "--continue-artifact",
+            "artifact-1",
+            "--continue-file",
+            "workspace/research/prior.md",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "not allowed with argument --continue-artifact" in captured.err
+
+
+def test_research_run_register_without_write_fails_cleanly(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "research-run",
+            "--question",
+            "What should v1.1 do?",
+            "--scope",
+            "Registration only.",
+            "--register-artifact",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "research-run --register-artifact requires --write" in captured.err
+
+
 def test_reflection_journal_day_admin_passes_include_memory(temp_admin, capsys, monkeypatch):
     _db_mod, admin_mod = temp_admin
 

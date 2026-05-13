@@ -4,14 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from tir.artifacts.service import create_artifact
-from tir.open_loops.service import (
-    OpenLoopValidationError,
-    create_open_loop,
-    get_open_loop,
-    list_open_loops,
-    update_open_loop_status,
-)
+import tir.artifacts.service as artifact_service
+import tir.open_loops.service as open_loop_service
 from tir.workspace.service import ensure_workspace
 
 
@@ -26,9 +20,13 @@ def temp_stores(tmp_path):
         import tir.memory.db as db_mod
 
         importlib.reload(db_mod)
+        importlib.reload(open_loop_service)
+        importlib.reload(artifact_service)
         db_mod.init_databases()
         yield {
             "db": db_mod,
+            "artifacts": artifact_service,
+            "open_loops": open_loop_service,
             "workspace_root": workspace_root,
             "archive_db": tmp_path / "archive.db",
             "working_db": tmp_path / "working.db",
@@ -36,7 +34,7 @@ def temp_stores(tmp_path):
 
 
 def test_create_get_list_and_update_open_loop(temp_stores):
-    open_loop = create_open_loop(
+    open_loop = open_loop_service.create_open_loop(
         title="Continue research",
         description="Unfinished research note",
         status="open",
@@ -65,10 +63,10 @@ def test_create_get_list_and_update_open_loop(temp_stores):
     assert open_loop["metadata"] == {"topic": "continuity"}
     assert open_loop["metadata_json"] == '{"topic": "continuity"}'
 
-    fetched = get_open_loop(open_loop["open_loop_id"])
+    fetched = open_loop_service.get_open_loop(open_loop["open_loop_id"])
     assert fetched == open_loop
 
-    listed = list_open_loops(
+    listed = open_loop_service.list_open_loops(
         status="open",
         loop_type="interrupted_research",
         priority="high",
@@ -76,21 +74,21 @@ def test_create_get_list_and_update_open_loop(temp_stores):
     )
     assert [item["open_loop_id"] for item in listed] == [open_loop["open_loop_id"]]
 
-    updated = update_open_loop_status(open_loop["open_loop_id"], "in_progress")
+    updated = open_loop_service.update_open_loop_status(open_loop["open_loop_id"], "in_progress")
     assert updated["status"] == "in_progress"
     assert updated["closed_at"] is None
     assert updated["updated_at"] >= open_loop["updated_at"]
 
 
 def test_optional_artifact_link(temp_stores):
-    artifact = create_artifact(
+    artifact = artifact_service.create_artifact(
         artifact_type="research_note",
         title="Linked artifact",
         path="research/linked.md",
         workspace_root=temp_stores["workspace_root"],
     )
 
-    open_loop = create_open_loop(
+    open_loop = open_loop_service.create_open_loop(
         title="Summarize artifact",
         loop_type="unfinished_artifact",
         related_artifact_id=artifact["artifact_id"],
@@ -98,24 +96,24 @@ def test_optional_artifact_link(temp_stores):
 
     assert open_loop["related_artifact_id"] == artifact["artifact_id"]
 
-    listed = list_open_loops(related_artifact_id=artifact["artifact_id"])
+    listed = open_loop_service.list_open_loops(related_artifact_id=artifact["artifact_id"])
     assert [item["open_loop_id"] for item in listed] == [open_loop["open_loop_id"]]
 
 
 def test_related_artifact_foreign_key_is_enforced(temp_stores):
     with pytest.raises(sqlite3.IntegrityError):
-        create_open_loop(
+        open_loop_service.create_open_loop(
             title="Bad artifact link",
             related_artifact_id="missing-artifact",
         )
 
 
 def test_closed_at_is_set_for_closed_and_archived(temp_stores):
-    first = create_open_loop(title="Close this")
-    second = create_open_loop(title="Archive this")
+    first = open_loop_service.create_open_loop(title="Close this")
+    second = open_loop_service.create_open_loop(title="Archive this")
 
-    closed = update_open_loop_status(first["open_loop_id"], "closed")
-    archived = update_open_loop_status(second["open_loop_id"], "archived")
+    closed = open_loop_service.update_open_loop_status(first["open_loop_id"], "closed")
+    archived = open_loop_service.update_open_loop_status(second["open_loop_id"], "archived")
 
     assert closed["status"] == "closed"
     assert closed["closed_at"] is not None
@@ -124,39 +122,39 @@ def test_closed_at_is_set_for_closed_and_archived(temp_stores):
 
 
 def test_closed_at_is_cleared_when_reopened(temp_stores):
-    open_loop = create_open_loop(title="Reopen this", status="closed")
+    open_loop = open_loop_service.create_open_loop(title="Reopen this", status="closed")
     assert open_loop["closed_at"] is not None
 
-    reopened = update_open_loop_status(open_loop["open_loop_id"], "open")
+    reopened = open_loop_service.update_open_loop_status(open_loop["open_loop_id"], "open")
     assert reopened["status"] == "open"
     assert reopened["closed_at"] is None
 
-    blocked = update_open_loop_status(open_loop["open_loop_id"], "blocked")
+    blocked = open_loop_service.update_open_loop_status(open_loop["open_loop_id"], "blocked")
     assert blocked["status"] == "blocked"
     assert blocked["closed_at"] is None
 
 
 def test_invalid_status_type_priority_and_title_rejected(temp_stores):
-    with pytest.raises(OpenLoopValidationError):
-        create_open_loop(title="Bad status", status="unknown")
+    with pytest.raises(open_loop_service.OpenLoopValidationError):
+        open_loop_service.create_open_loop(title="Bad status", status="unknown")
 
-    with pytest.raises(OpenLoopValidationError):
-        create_open_loop(title="Bad type", loop_type="task_manager_item")
+    with pytest.raises(open_loop_service.OpenLoopValidationError):
+        open_loop_service.create_open_loop(title="Bad type", loop_type="task_manager_item")
 
-    with pytest.raises(OpenLoopValidationError):
-        create_open_loop(title="Bad priority", priority="urgent")
+    with pytest.raises(open_loop_service.OpenLoopValidationError):
+        open_loop_service.create_open_loop(title="Bad priority", priority="urgent")
 
-    with pytest.raises(OpenLoopValidationError):
-        create_open_loop(title="   ")
+    with pytest.raises(open_loop_service.OpenLoopValidationError):
+        open_loop_service.create_open_loop(title="   ")
 
-    open_loop = create_open_loop(title="Good")
-    with pytest.raises(OpenLoopValidationError):
-        update_open_loop_status(open_loop["open_loop_id"], "unknown")
+    open_loop = open_loop_service.create_open_loop(title="Good")
+    with pytest.raises(open_loop_service.OpenLoopValidationError):
+        open_loop_service.update_open_loop_status(open_loop["open_loop_id"], "unknown")
 
 
 def test_invalid_metadata_rejected(temp_stores):
-    with pytest.raises(OpenLoopValidationError):
-        create_open_loop(
+    with pytest.raises(open_loop_service.OpenLoopValidationError):
+        open_loop_service.create_open_loop(
             title="Bad metadata",
             metadata={"bad": object()},
         )
@@ -189,7 +187,7 @@ def test_open_loops_table_is_working_db_only(temp_stores):
 def test_open_loop_creation_does_not_invoke_memory_indexing(temp_stores):
     with patch("tir.memory.chunking._store_chunk") as mock_store_chunk, \
          patch("tir.memory.chroma.upsert_chunk") as mock_upsert_chunk:
-        create_open_loop(
+        open_loop_service.create_open_loop(
             title="No indexing",
             loop_type="generic",
             metadata={"source": "test"},

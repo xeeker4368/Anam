@@ -2,10 +2,11 @@
 
 from tir.artifacts.service import list_recent_artifacts_for_user
 from tir.artifacts.source_roles import display_origin, display_source_role
+from tir.config import RECENT_ARTIFACT_CONTEXT_BUDGET_CHARS
 
 
 RECENT_ARTIFACT_LIMIT = 5
-RECENT_ARTIFACT_CONTEXT_CHAR_BUDGET = 2000
+RECENT_ARTIFACT_CONTEXT_CHAR_BUDGET = RECENT_ARTIFACT_CONTEXT_BUDGET_CHARS
 
 _INTENT_TERMS = {
     "upload",

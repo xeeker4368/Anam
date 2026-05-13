@@ -19,14 +19,18 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
-from tir.config import TIMEZONE, PROJECT_ROOT
+from tir.config import (
+    BEHAVIORAL_GUIDANCE_RUNTIME_BUDGET_CHARS,
+    TIMEZONE,
+    PROJECT_ROOT,
+)
 from tir.artifacts.source_roles import display_origin, display_source_role
 from tir.memory.retrieval import retrieve
 
 import logging
 logger = logging.getLogger(__name__)
 
-BEHAVIORAL_GUIDANCE_CHAR_BUDGET = 3000
+BEHAVIORAL_GUIDANCE_CHAR_BUDGET = BEHAVIORAL_GUIDANCE_RUNTIME_BUDGET_CHARS
 BEHAVIORAL_GUIDANCE_LABEL = """[Reviewed Behavioral Guidance]
 
 Active behavioral guidance proposed by the AI and approved/applied by an admin. Use these entries to inform future behavior. They sit below soul.md and operational guidance in precedence."""
@@ -315,33 +319,48 @@ def _format_retrieved_memories(chunks: list[dict]) -> str:
     formatted_chunks = []
 
     for chunk in chunks:
-        source_type = chunk.get("source_type") or chunk.get("metadata", {}).get("source_type", "conversation")
-        created_at = chunk.get("created_at") or chunk.get("metadata", {}).get("created_at", "unknown date")
+        metadata = chunk.get("metadata", {})
+        source_type = chunk.get("source_type") or metadata.get("source_type", "conversation")
+        source_role = chunk.get("source_role") or metadata.get("source_role")
+        created_at = chunk.get("created_at") or metadata.get("created_at", "unknown date")
         text = chunk.get("text", "")
 
         if source_type == "conversation":
             formatted_chunks.append(f"[Conversation — {created_at}]\n{text}")
         elif source_type == "journal":
-            journal_date = chunk.get("journal_date") or chunk.get("metadata", {}).get("journal_date")
+            journal_date = chunk.get("journal_date") or metadata.get("journal_date")
             formatted_chunks.append(
                 f"[Your reflection journal entry from {journal_date or created_at} — personal reflection]\n{text}"
             )
-        elif source_type == "research":
-            formatted_chunks.append(f"[Research you wrote on {created_at}]\n{text}")
+        elif source_type == "research" or source_role == "research_reference":
+            research_date = chunk.get("research_date") or metadata.get("research_date") or created_at
+            research_title = (
+                chunk.get("research_title")
+                or metadata.get("research_title")
+                or chunk.get("title")
+                or metadata.get("title")
+            )
+            if research_title:
+                formatted_chunks.append(
+                    f"[Research you wrote on {research_date}: {research_title} — working research notes]\n{text}"
+                )
+            else:
+                formatted_chunks.append(
+                    f"[Research you wrote on {research_date} — working research notes]\n{text}"
+                )
         elif source_type == "article":
             title = chunk.get("title", "untitled")
             formatted_chunks.append(f"[External source you read: {title}, ingested {created_at}]\n{text}")
         elif source_type == "artifact_document":
-            metadata = chunk.get("metadata", {})
             title = chunk.get("title") or metadata.get("title", "untitled artifact")
             filename = metadata.get("filename", "unknown file")
-            if metadata.get("source_role") == "project_reference":
+            if source_role == "project_reference":
                 formatted_chunks.append(
                     f"[Project reference document: {filename} — source material, not runtime guidance]\n{text}"
                 )
                 continue
             source_role = display_source_role(
-                metadata.get("source_role"),
+                source_role,
                 authority=metadata.get("authority"),
             )
             origin = display_origin(metadata.get("origin"))

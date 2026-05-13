@@ -14,7 +14,7 @@ from tir.behavioral_guidance.service import (
     list_behavioral_guidance_proposals,
     create_behavioral_guidance_proposal,
 )
-from tir.config import CHAT_MODEL, OLLAMA_HOST
+from tir.config import BEHAVIORAL_GUIDANCE_REVIEW_MODEL, OLLAMA_HOST
 from tir.engine.ollama import chat_completion_json
 from tir.memory.db import (
     get_connection,
@@ -353,7 +353,7 @@ def validate_generated_proposals(
     conversation: dict,
     messages: list[dict],
     max_proposals: int = DEFAULT_REVIEW_PROPOSALS,
-    model: str = CHAT_MODEL,
+    model: str = BEHAVIORAL_GUIDANCE_REVIEW_MODEL,
 ) -> list[dict]:
     """Validate and normalize model proposals before any DB writes."""
     max_proposals = _normalize_max_proposals(max_proposals)
@@ -441,7 +441,7 @@ def generate_behavioral_guidance_review(
     ollama_host: str = OLLAMA_HOST,
 ) -> dict:
     """Generate validated proposal candidates for one conversation."""
-    model = model or CHAT_MODEL
+    model = model or BEHAVIORAL_GUIDANCE_REVIEW_MODEL
     loaded = load_conversation_for_guidance_review(conversation_id)
     messages = build_behavioral_guidance_review_messages(
         conversation=loaded["conversation"],
@@ -449,7 +449,12 @@ def generate_behavioral_guidance_review(
         user=loaded["user"],
         max_proposals=max_proposals,
     )
-    raw = chat_completion_json(messages, model=model, ollama_host=ollama_host)
+    raw = chat_completion_json(
+        messages,
+        model=model,
+        ollama_host=ollama_host,
+        role="behavioral_guidance_review",
+    )
     payload = parse_behavioral_guidance_review_json(raw)
     proposals = validate_generated_proposals(
         payload,

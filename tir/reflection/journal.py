@@ -17,7 +17,15 @@ from tir.behavioral_guidance.review import (
     local_day_window_to_utc,
 )
 from tir.behavioral_guidance.service import list_behavioral_guidance_proposals
-from tir.config import CHAT_MODEL, OLLAMA_HOST
+from tir.config import (
+    OLLAMA_HOST,
+    REFLECTION_ACTIVITY_BUDGET_CHARS,
+    REFLECTION_JOURNAL_MODEL,
+    REFLECTION_MEMORY_BUDGET_CHARS,
+    REFLECTION_MEMORY_MAX_CHUNKS_CONFIG,
+    REFLECTION_MEMORY_QUERY_BUDGET_CHARS,
+    REFLECTION_TRANSCRIPT_BUDGET_CHARS,
+)
 from tir.engine.context import load_reflection_entity_context
 from tir.engine.context_budget import budget_retrieved_chunks
 from tir.engine.ollama import chat_completion_text
@@ -28,8 +36,8 @@ from tir.workspace.service import ensure_workspace, resolve_workspace_path
 
 
 DEFAULT_REFLECTION_MAX_CONVERSATIONS = 10
-REFLECTION_TRANSCRIPT_CHAR_BUDGET = 24000
-REFLECTION_ACTIVITY_CHAR_BUDGET = 12000
+REFLECTION_TRANSCRIPT_CHAR_BUDGET = REFLECTION_TRANSCRIPT_BUDGET_CHARS
+REFLECTION_ACTIVITY_CHAR_BUDGET = REFLECTION_ACTIVITY_BUDGET_CHARS
 REFLECTION_ACTIVITY_SECTION_LIMIT = 20
 REFLECTION_TOOL_TRACE_LIMIT = 20
 REFLECTION_ARTIFACT_LIMIT = 20
@@ -37,9 +45,9 @@ REFLECTION_REVIEW_LIMIT = 20
 REFLECTION_OPEN_LOOP_LIMIT = 20
 REFLECTION_ACTIVITY_EXCERPT_CHARS = 240
 REFLECTION_JOURNAL_VERSION = "reflection_journal_v1"
-REFLECTION_MEMORY_MAX_CHUNKS = 5
-REFLECTION_MEMORY_CHAR_BUDGET = 6000
-REFLECTION_MEMORY_QUERY_CHAR_BUDGET = 4000
+REFLECTION_MEMORY_MAX_CHUNKS = REFLECTION_MEMORY_MAX_CHUNKS_CONFIG
+REFLECTION_MEMORY_CHAR_BUDGET = REFLECTION_MEMORY_BUDGET_CHARS
+REFLECTION_MEMORY_QUERY_CHAR_BUDGET = REFLECTION_MEMORY_QUERY_BUDGET_CHARS
 REFLECTION_MEMORY_CANDIDATE_LIMIT = 15
 REFLECTION_MEMORY_CONTEXT_HEADER = (
     "[Relevant remembered context]\n\n"
@@ -1172,7 +1180,7 @@ def generate_reflection_journal_day(
     include_memory: bool = False,
 ) -> dict:
     """Generate a dry-run journal result for a local day or since-window."""
-    model = model or CHAT_MODEL
+    model = model or REFLECTION_JOURNAL_MODEL
     conversations, selection = list_conversations_for_reflection_journal(
         date_text=date_text,
         since=since,
@@ -1245,7 +1253,12 @@ def generate_reflection_journal_day(
         entity_context=entity_context,
         relevant_memory_context=relevant_memory_context,
     )
-    raw = chat_completion_text(messages, model=model, ollama_host=ollama_host)
+    raw = chat_completion_text(
+        messages,
+        model=model,
+        ollama_host=ollama_host,
+        role="reflection_journal",
+    )
     body = _validate_journal_body(raw)
     generated_at = _now()
     document = build_journal_document(

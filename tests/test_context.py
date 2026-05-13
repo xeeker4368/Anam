@@ -119,6 +119,78 @@ def test_project_reference_artifact_context_is_labeled_as_source_material():
     assert "Roadmap text." in prompt
 
 
+def test_research_memory_context_uses_working_research_label():
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[
+            {
+                "source_type": "research",
+                "created_at": "2026-05-10T12:00:00+00:00",
+                "text": "Research note text.",
+                "metadata": {
+                    "research_date": "2026-05-10",
+                    "research_title": "Manual Research Cycle",
+                    "source_type": "research",
+                    "source_role": "research_reference",
+                    "origin": "manual_research",
+                    "provisional": True,
+                },
+            }
+        ],
+    )
+
+    assert (
+        "[Research you wrote on 2026-05-10: Manual Research Cycle — working research notes]"
+    ) in prompt
+    assert "Research note text." in prompt
+    assert "[Conversation —" not in prompt
+    assert "[Project reference document:" not in prompt
+
+
+def test_research_reference_role_takes_precedence_over_project_reference_label():
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[
+            {
+                "source_type": "artifact_document",
+                "text": "Registered research note text.",
+                "metadata": {
+                    "filename": "2026-05-10-local-models.md",
+                    "research_date": "2026-05-10",
+                    "research_title": "Local Models",
+                    "source_type": "artifact_document",
+                    "source_role": "research_reference",
+                    "origin": "manual_research",
+                    "provisional": True,
+                },
+            }
+        ],
+    )
+
+    assert "[Research you wrote on 2026-05-10: Local Models — working research notes]" in prompt
+    assert "[Project reference document:" not in prompt
+    assert "[Artifact source:" not in prompt
+
+
+def test_research_memory_context_falls_back_when_metadata_is_missing():
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[
+            {
+                "source_type": "research",
+                "created_at": "2026-05-10T12:00:00+00:00",
+                "text": "Research note text.",
+                "metadata": {},
+            }
+        ],
+    )
+
+    assert (
+        "[Research you wrote on 2026-05-10T12:00:00+00:00 — working research notes]"
+    ) in prompt
+    assert "Research note text." in prompt
+
+
 def test_system_prompt_breakdown_counts_sections():
     retrieved_chunks = [
         {

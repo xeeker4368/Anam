@@ -7,7 +7,24 @@ and response parsing. Nothing else.
 
 import json
 import requests
-from tir.config import OLLAMA_HOST, CHAT_MODEL
+from tir.config import (
+    CHAT_MODEL,
+    OLLAMA_HOST,
+    get_model_options,
+    get_model_timeout,
+)
+
+
+def _apply_model_options(payload: dict, role: str, model_options: dict | None = None) -> None:
+    options = dict(get_model_options(role))
+    if model_options:
+        options.update(model_options)
+
+    if "think" in options:
+        payload["think"] = bool(options.pop("think"))
+    options.pop("timeout_seconds", None)
+    if options:
+        payload["options"] = options
 
 
 def chat_completion_stream_with_tools(
@@ -16,6 +33,9 @@ def chat_completion_stream_with_tools(
     tools: list[dict] | None = None,
     model: str = CHAT_MODEL,
     ollama_host: str = OLLAMA_HOST,
+    role: str = "chat",
+    model_options: dict | None = None,
+    timeout: int | None = None,
 ):
     """
     Stream chat completion with tool support. Yields raw parsed chunks.
@@ -27,9 +47,6 @@ def chat_completion_stream_with_tools(
 
     Unlike chat_completion_stream (which yields content strings), this
     yields the full parsed chunk so callers can detect tool_calls.
-
-    CRITICAL: think: false is mandatory. Without it, 800+ reasoning tokens
-    and 40s+ response times.
 
     Yields:
         dict: Individual parsed chunks from Ollama's streaming response.
@@ -44,8 +61,8 @@ def chat_completion_stream_with_tools(
         "model": model,
         "messages": api_messages,
         "stream": True,
-        "think": False,
     }
+    _apply_model_options(payload, role, model_options)
 
     if tools:
         payload["tools"] = tools
@@ -54,7 +71,7 @@ def chat_completion_stream_with_tools(
         f"{ollama_host}/api/chat",
         json=payload,
         stream=True,
-        timeout=300,
+        timeout=timeout or get_model_timeout(role),
     )
     resp.raise_for_status()
 
@@ -68,6 +85,9 @@ def chat_completion_json(
     messages: list[dict],
     model: str = CHAT_MODEL,
     ollama_host: str = OLLAMA_HOST,
+    role: str = "default",
+    model_options: dict | None = None,
+    timeout: int | None = None,
 ) -> str:
     """
     Run a non-streaming JSON-oriented chat completion.
@@ -80,14 +100,14 @@ def chat_completion_json(
         "model": model,
         "messages": messages,
         "stream": False,
-        "think": False,
         "format": "json",
     }
+    _apply_model_options(payload, role, model_options)
 
     resp = requests.post(
         f"{ollama_host}/api/chat",
         json=payload,
-        timeout=300,
+        timeout=timeout or get_model_timeout(role),
     )
     resp.raise_for_status()
     data = resp.json()
@@ -98,6 +118,9 @@ def chat_completion_text(
     messages: list[dict],
     model: str = CHAT_MODEL,
     ollama_host: str = OLLAMA_HOST,
+    role: str = "default",
+    model_options: dict | None = None,
+    timeout: int | None = None,
 ) -> str:
     """
     Run a non-streaming text chat completion.
@@ -109,13 +132,13 @@ def chat_completion_text(
         "model": model,
         "messages": messages,
         "stream": False,
-        "think": False,
     }
+    _apply_model_options(payload, role, model_options)
 
     resp = requests.post(
         f"{ollama_host}/api/chat",
         json=payload,
-        timeout=300,
+        timeout=timeout or get_model_timeout(role),
     )
     resp.raise_for_status()
     data = resp.json()

@@ -2,13 +2,13 @@
 
 ## Current Recommended Task
 
-Research Open-Loop / Review-Item Design v1.
+External Review Checkpoint v1.
 
 ## Task Goal
 
-Design how manual research notes and continuations should surface open questions, follow-ups, and suggested review items as explicit future records without creating those records automatically.
+Run an external review checkpoint after the completed Phase 3 governance/reflection/research foundation and pre-live single-model temperature calibration.
 
-This is a design-only next step. It should not add runtime code, database schema, web source collection, autonomous research, scheduler behavior, automatic open-loop/review-item creation, or promotion paths.
+This is a review-prep and triage step. It should not add runtime code, database schema changes, retrieval behavior changes, model config changes, prompt rewrites, scheduler behavior, automatic review queue item creation, or governance/runtime file mutations.
 
 ## Current Checkpoint
 
@@ -19,15 +19,49 @@ Recent completed foundation work:
 - Approved addition guidance can be applied to `BEHAVIORAL_GUIDANCE.md`.
 - Active behavioral guidance is loaded into runtime context.
 - Reflection journals can be written, registered, indexed, and retrieved.
+- Journal artifact/indexing/retrieval grounding is complete.
 - Operational reflection review exists as a manual admin command.
-- Prompt audit and database schema documentation exist.
+- Prompt inventory and prompt audit pass exist.
+- Database schema documentation exists.
 - Runtime configuration foundation exists with TOML/env overrides and Ollama model options.
+- Single-model global temperature calibration is complete:
+  - committed Anam-owned roles use `gemma4:26b`
+  - `model_options.default.temperature = 0.35`
+  - `think=false` is preserved
+  - `ANAM_MODEL_TEMPERATURE` env override exists
 - `SELF_UNDERSTANDING.md` has concept design only; no implementation exists.
 - Guidance scoping and guidance removal/revision mechanics have design docs only.
 - Manual Research Foundation is complete for the first bounded CLI path.
 - Research Continuation Runtime v1 is complete for the manual CLI path. `research-run` can continue from a registered research artifact with `--continue-artifact` or from a constrained Markdown file under `workspace/research/` with `--continue-file`. Continuation creates a new provisional research note, preserves lineage, frames the prior note as provisional context, and never overwrites or mutates the prior note.
+- Full pytest passed: 624 tests at the checkpoint.
 
 Research remains provisional and does not become truth, guidance, self-understanding, project decisions, open loops, or review items automatically.
+
+## Current Review Scope
+
+Use `docs/EXTERNAL_REVIEW_CHECKPOINT_V1.md` to prepare review packets and prompts for:
+
+- Claude architecture/philosophy/system review.
+- Claude Code engineering review.
+- Codex engineering review.
+
+External reviewers are not the AI entity's own voice. Review outputs are advisory, not authority, and should not be ingested as runtime memory authority or automatically converted into review queue items.
+
+## Review Triage Requirements
+
+After review outputs are collected, Lyle/admin should classify findings as:
+
+- blocker before live
+- should fix soon
+- design follow-up
+- rejected
+- needs discussion
+
+Only after triage should any follow-up implementation, documentation patch, or review queue item be created.
+
+## Next Task After Review
+
+Research Open-Loop / Review-Item Design v1.
 
 ## Next Design Scope
 
@@ -57,34 +91,40 @@ Research Open-Loop / Review-Item Design v1 should answer:
 - Retrieval ranking changes.
 - Title/search research continuation.
 - Changes to `BEHAVIORAL_GUIDANCE.md`, `SELF_UNDERSTANDING.md`, `OPERATIONAL_GUIDANCE.md`, or `soul.md`.
+- Automatic ingestion of external review outputs as runtime memory authority.
 
 ## Design Constraints
 
+- Project Anam is the substrate/project, not the entity name.
+- The AI entity currently has no name.
+- The system must not assign a fixed personality.
+- Drift is not inherently bad.
+- Healthy emergent drift must be distinguished from source confusion, accidental authority, over-prescription, self-reinforcing memory, or brittle rules.
 - Research conclusions are provisional working notes.
 - Research artifacts need a clear purpose and consumption path.
 - Research suggestions may become candidate records only through explicit, reviewable operator action.
 - Future record creation must preserve source lineage to the originating research note or continuation.
 - The design must preserve the Anam/entity distinction.
-- The design must not assign the entity a name or personality.
 
 ## Files/Subsystems To Inspect First
 
+- `docs/EXTERNAL_REVIEW_CHECKPOINT_V1.md`
+- `PROJECT_STATE.md`
+- `DECISIONS.md`
+- `ROADMAP.md`
+- `ACTIVE_TASK.md`
+- `CODING_ASSISTANT_RULES.md`
+- `docs/PROMPT_AUDIT_NOTES.md`
+- `docs/PROMPT_INVENTORY.md`
 - `docs/MANUAL_RESEARCH_CYCLE_DESIGN.md`
 - `docs/RESEARCH_CONTINUATION_DESIGN.md`
-- `tir/research/manual.py`
-- `tir/open_loops/service.py`
-- review queue service/API patterns
-- `tir/admin.py`
-- `tests/test_manual_research.py`
-- `tests/test_open_loops.py`
-- `tests/test_review_queue.py`
 
 ## New Chat Kickoff Instruction
 
-Use this in the new design chat:
+Use this in the new review chat:
 
 ```text
-You are helping me continue Project Anam.
+You are helping me review Project Anam at the External Review Checkpoint v1.
 
 Before making suggestions or writing code, read the attached project baseline documents in this order:
 
@@ -93,21 +133,23 @@ Before making suggestions or writing code, read the attached project baseline do
 3. ROADMAP.md
 4. ACTIVE_TASK.md
 5. CODING_ASSISTANT_RULES.md
+6. docs/EXTERNAL_REVIEW_CHECKPOINT_V1.md
 
 After reading, respond with:
 - your understanding of Project Anam in 8 bullets
-- the current active task
-- the files/subsystems you need to inspect first
+- the current review checkpoint
+- which reviewer packet or prompt you are preparing
 - any assumptions or risks
 - no code changes yet
 ```
 
-## Success Criteria For The Next Design Patch
+## Success Criteria For The Current Review Checkpoint
 
-The Research Open-Loop / Review-Item Design v1 patch should prove:
+External Review Checkpoint v1 should prove:
 
-- Research open questions and suggested review items remain provisional until explicitly written.
-- Future record creation has dry-run preview requirements.
-- Source lineage and duplicate-prevention rules are specified.
-- Open-loop and review-item workflows remain separate from behavioral guidance and project decisions.
-- No runtime, schema, scheduler, guidance, self-understanding, operational guidance, soul, or project-decision files are mutated except approved documentation.
+- Reviewer roles and boundaries are explicit.
+- External models are framed as reviewers, not Anam's own voice.
+- Review output is advisory, not authority.
+- Review prompts pressure-test architecture, implementation, source boundaries, drift risks, prompt behavior, and data collection purpose.
+- Review outputs require Lyle/admin triage before any project changes.
+- Research Open-Loop / Review-Item Design v1 remains preserved as the next task after review.

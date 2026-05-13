@@ -13,7 +13,11 @@ from tir.behavioral_guidance.review import (
     BehavioralGuidanceReviewError,
     local_day_window_to_utc,
 )
-from tir.config import CHAT_MODEL, OLLAMA_HOST
+from tir.config import (
+    OLLAMA_HOST,
+    OPERATIONAL_REFLECTION_MODEL,
+    OPERATIONAL_REFLECTION_PACKET_BUDGET_CHARS,
+)
 from tir.engine.ollama import chat_completion_json
 from tir.memory.db import get_connection
 from tir.review.service import (
@@ -26,7 +30,7 @@ from tir.review.service import (
 
 DEFAULT_OPERATIONAL_REFLECTION_MAX_ITEMS = 20
 OPERATIONAL_REFLECTION_METHOD = "operational_reflection_v1"
-OPERATIONAL_PACKET_CHAR_BUDGET = 16000
+OPERATIONAL_PACKET_CHAR_BUDGET = OPERATIONAL_REFLECTION_PACKET_BUDGET_CHARS
 OPERATIONAL_EXCERPT_CHARS = 280
 OBSERVATION_CATEGORIES = {
     "tool_failure",
@@ -626,7 +630,13 @@ def generate_operational_reflection_day(
         activity_packet=packet,
         max_items=max_items,
     )
-    raw = chat_completion_json(messages, model=model or CHAT_MODEL, ollama_host=ollama_host)
+    selected_model = model or OPERATIONAL_REFLECTION_MODEL
+    raw = chat_completion_json(
+        messages,
+        model=selected_model,
+        ollama_host=ollama_host,
+        role="operational_reflection",
+    )
     parsed = _parse_model_json(raw)
     normalized = validate_operational_reflection_output(parsed, max_items=max_items)
     return {
@@ -635,7 +645,7 @@ def generate_operational_reflection_day(
         "selection": selection,
         "activity_packet": packet,
         "activity_packet_meta": packet_meta,
-        "model": model or CHAT_MODEL,
+        "model": selected_model,
         **normalized,
     }
 

@@ -1,0 +1,21 @@
+# Example local override file.
+# Copy to config/local.toml. Do not commit config/local.toml.
+# Do not put secrets in this file. ANAM_API_SECRET remains environment-only.
+
+[models]
+# chat = "qwen3.6:27b"
+# reflection_journal = "qwen3.6:27b"
+# behavioral_guidance_review = "qwen3.6:27b"
+# operational_reflection = "qwen3.6:27b"
+
+[ollama]
+# host = "http://localhost:11434"
+# timeout_seconds = 300
+
+[model_options.default]
+# think = false
+# temperature = 0.35
+
+[model_options.reflection_journal]
+# think = false
+# timeout_seconds = 600

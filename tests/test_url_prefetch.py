@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
-from tir.api.routes import app
+import tir.api.routes as routes_mod
 from tir.engine.url_prefetch import (
     extract_http_urls,
     get_url_prefetch_candidate,
@@ -98,7 +98,7 @@ def test_url_content_intent_covers_detail_questions():
     )
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -114,10 +114,10 @@ def test_url_content_question_prefetches_before_model_tokens(
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
     registry = FakeRegistry()
-    app.state.registry = registry
+    routes_mod.app.state.registry = registry
     mock_resolve_user.return_value = _fake_user()
     mock_start_conversation.return_value = "conv-1"
     mock_retrieve.return_value = []
@@ -145,7 +145,7 @@ def test_url_content_question_prefetches_before_model_tokens(
         },
     ])
 
-    client = TestClient(app)
+    client = TestClient(routes_mod.app)
     response = client.post(
         "/api/chat/stream",
         json={"text": "Can you summarize this URL: https://example.com/article"},
@@ -190,7 +190,7 @@ def test_url_content_question_prefetches_before_model_tokens(
     )
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -206,7 +206,7 @@ def test_failed_web_fetch_result_is_passed_to_model(
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
     registry = FakeRegistry(
         envelope={
@@ -219,7 +219,7 @@ def test_failed_web_fetch_result_is_passed_to_model(
             "normalized_args": {"url": "http://localhost/page"},
         }
     )
-    app.state.registry = registry
+    routes_mod.app.state.registry = registry
     mock_resolve_user.return_value = _fake_user()
     mock_start_conversation.return_value = "conv-1"
     mock_retrieve.return_value = []
@@ -247,7 +247,7 @@ def test_failed_web_fetch_result_is_passed_to_model(
         },
     ])
 
-    client = TestClient(app)
+    client = TestClient(routes_mod.app)
     response = client.post(
         "/api/chat/stream",
         json={"text": "What does this page say? http://localhost/page"},
@@ -269,7 +269,7 @@ def test_failed_web_fetch_result_is_passed_to_model(
     )
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -285,10 +285,10 @@ def test_generic_url_mention_does_not_force_fetch(
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
     registry = FakeRegistry()
-    app.state.registry = registry
+    routes_mod.app.state.registry = registry
     mock_resolve_user.return_value = _fake_user()
     mock_start_conversation.return_value = "conv-1"
     mock_retrieve.return_value = []
@@ -316,7 +316,7 @@ def test_generic_url_mention_does_not_force_fetch(
         },
     ])
 
-    client = TestClient(app)
+    client = TestClient(routes_mod.app)
     response = client.post(
         "/api/chat/stream",
         json={"text": "Here is a URL I may use later: https://example.com"},
@@ -332,7 +332,7 @@ def test_generic_url_mention_does_not_force_fetch(
     registry.dispatch.assert_not_called()
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -348,7 +348,7 @@ def test_prefetch_uses_first_url_only(
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
     registry = FakeRegistry(
         envelope={
@@ -357,7 +357,7 @@ def test_prefetch_uses_first_url_only(
             "normalized_args": {"url": "https://first.example/article"},
         }
     )
-    app.state.registry = registry
+    routes_mod.app.state.registry = registry
     mock_resolve_user.return_value = _fake_user()
     mock_start_conversation.return_value = "conv-1"
     mock_retrieve.return_value = []
@@ -388,7 +388,7 @@ def test_prefetch_uses_first_url_only(
         },
     ])
 
-    client = TestClient(app)
+    client = TestClient(routes_mod.app)
     client.post(
         "/api/chat/stream",
         json={

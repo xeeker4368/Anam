@@ -535,3 +535,124 @@
 2026-05-08 16:59:27,032 [tir.api.routes] INFO: Tír API started — 14 tools loaded
 2026-05-08 16:59:45,980 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 12 chunks
 2026-05-08 17:10:36,396 [tir.memory.chunking] INFO: Checkpointed conversation 92f127b9 chunk 6 (8 messages)
+2026-05-09 18:52:35,012 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-09 18:52:35,015 [tir.tools.registry] INFO: Registered tool 'moltbook_find_author_posts' from skill 'moltbook'
+2026-05-09 18:52:35,022 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_feed' from skill 'moltbook'
+2026-05-09 18:52:35,022 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_search' from skill 'moltbook'
+2026-05-09 18:52:35,022 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_posts_by_author' from skill 'moltbook'
+2026-05-09 18:52:35,022 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_profile' from skill 'moltbook'
+2026-05-09 18:52:35,022 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_me' from skill 'moltbook'
+2026-05-09 18:52:35,022 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_read_post' from skill 'moltbook'
+2026-05-09 18:52:35,022 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_post_comments' from skill 'moltbook'
+2026-05-09 18:52:35,022 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt' from skill 'moltbook'
+2026-05-09 18:52:35,022 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_feed' from skill 'moltbook'
+2026-05-09 18:52:35,022 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_moderators' from skill 'moltbook'
+2026-05-09 18:52:35,316 [tir.tools.registry] INFO: Registered tool 'web_fetch' from skill 'web_search'
+2026-05-09 18:52:35,316 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-09 18:52:35,316 [tir.tools.registry] INFO: Skill registry loaded: 3 skills, 14 tools
+2026-05-09 18:52:35,316 [tir.api.routes] WARNING: ANAM_API_SECRET is not configured; API routes are unauthenticated.
+2026-05-09 18:52:35,316 [tir.api.routes] INFO: Tír API started — 14 tools loaded
+2026-05-09 18:52:41,504 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 18 chunks
+2026-05-09 18:52:45,084 [tir.api.routes] INFO: Started conversation 1ab8afab for Lyle
+2026-05-09 18:53:32,363 [tir.memory.chunking] INFO: Checkpointed conversation 1ab8afab chunk 0 (2 messages)
+2026-05-09 19:11:27,418 [tir.api.routes] INFO: Started conversation c2d258e4 for Lyle
+2026-05-09 19:12:34,103 [tir.memory.chunking] INFO: Checkpointed conversation c2d258e4 chunk 0 (3 messages)
+2026-05-09 19:15:11,367 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-09 19:15:11,367 [tir.tools.registry] INFO: Registered tool 'moltbook_find_author_posts' from skill 'moltbook'
+2026-05-09 19:15:11,375 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_feed' from skill 'moltbook'
+2026-05-09 19:15:11,375 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_search' from skill 'moltbook'
+2026-05-09 19:15:11,375 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_posts_by_author' from skill 'moltbook'
+2026-05-09 19:15:11,375 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_profile' from skill 'moltbook'
+2026-05-09 19:15:11,375 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_me' from skill 'moltbook'
+2026-05-09 19:15:11,375 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_read_post' from skill 'moltbook'
+2026-05-09 19:15:11,375 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_post_comments' from skill 'moltbook'
+2026-05-09 19:15:11,375 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt' from skill 'moltbook'
+2026-05-09 19:15:11,375 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_feed' from skill 'moltbook'
+2026-05-09 19:15:11,375 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_moderators' from skill 'moltbook'
+2026-05-09 19:15:11,525 [tir.tools.registry] INFO: Registered tool 'web_fetch' from skill 'web_search'
+2026-05-09 19:15:11,525 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-09 19:15:11,525 [tir.tools.registry] INFO: Skill registry loaded: 3 skills, 14 tools
+2026-05-09 19:15:11,525 [tir.api.routes] WARNING: ANAM_API_SECRET is not configured; API routes are unauthenticated.
+2026-05-09 19:15:11,525 [tir.api.routes] INFO: Tír API started — 14 tools loaded
+2026-05-09 19:15:19,486 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 20 chunks
+2026-05-09 21:15:30,451 [tir.api.routes] INFO: Started conversation 605e29b7 for Lyle
+2026-05-09 21:16:23,083 [tir.memory.chunking] INFO: Checkpointed conversation 605e29b7 chunk 0 (2 messages)
+2026-05-09 21:18:12,243 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-09 21:18:12,244 [tir.tools.registry] INFO: Registered tool 'moltbook_find_author_posts' from skill 'moltbook'
+2026-05-09 21:18:12,251 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_feed' from skill 'moltbook'
+2026-05-09 21:18:12,251 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_search' from skill 'moltbook'
+2026-05-09 21:18:12,251 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_posts_by_author' from skill 'moltbook'
+2026-05-09 21:18:12,251 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_profile' from skill 'moltbook'
+2026-05-09 21:18:12,251 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_me' from skill 'moltbook'
+2026-05-09 21:18:12,251 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_read_post' from skill 'moltbook'
+2026-05-09 21:18:12,251 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_post_comments' from skill 'moltbook'
+2026-05-09 21:18:12,251 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt' from skill 'moltbook'
+2026-05-09 21:18:12,251 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_feed' from skill 'moltbook'
+2026-05-09 21:18:12,251 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_moderators' from skill 'moltbook'
+2026-05-09 21:18:12,388 [tir.tools.registry] INFO: Registered tool 'web_fetch' from skill 'web_search'
+2026-05-09 21:18:12,388 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-09 21:18:12,388 [tir.tools.registry] INFO: Skill registry loaded: 3 skills, 14 tools
+2026-05-09 21:18:12,388 [tir.api.routes] WARNING: ANAM_API_SECRET is not configured; API routes are unauthenticated.
+2026-05-09 21:18:12,388 [tir.api.routes] INFO: Tír API started — 14 tools loaded
+2026-05-09 21:18:27,472 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 21 chunks
+2026-05-09 21:19:28,148 [tir.api.routes] INFO: Started conversation 74641c53 for Lyle
+2026-05-09 21:20:07,950 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 0 (2 messages)
+2026-05-09 21:28:28,902 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 0 (4 messages)
+2026-05-09 21:53:46,503 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 0 (6 messages)
+2026-05-09 21:54:40,886 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 0 (8 messages)
+2026-05-09 21:58:48,560 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 0 (10 messages)
+2026-05-09 22:01:56,084 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 1 (2 messages)
+2026-05-09 22:06:25,694 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 1 (4 messages)
+2026-05-09 22:10:40,611 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 1 (6 messages)
+2026-05-09 22:14:10,385 [tir.memory.chunking] ERROR: ChromaDB upsert failed for 74641c53-3b22-4f82-b2f0-7f0b02ce28d9_chunk_1: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-09 22:14:10,386 [tir.api.routes] WARNING: Conversation checkpointing failed: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-09 22:17:59,670 [tir.memory.chunking] ERROR: ChromaDB upsert failed for 74641c53-3b22-4f82-b2f0-7f0b02ce28d9_chunk_1: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-09 22:17:59,670 [tir.api.routes] WARNING: Conversation checkpointing failed: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-09 22:21:33,444 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 2 (2 messages)
+2026-05-09 22:23:51,486 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 2 (4 messages)
+2026-05-09 22:25:37,943 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 2 (6 messages)
+2026-05-09 22:27:29,816 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 2 (8 messages)
+2026-05-09 22:43:03,920 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 2 (10 messages)
+2026-05-09 22:46:21,718 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 3 (2 messages)
+2026-05-09 22:47:54,787 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 3 (4 messages)
+2026-05-09 22:50:05,513 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 3 (6 messages)
+2026-05-09 22:51:29,146 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 3 (8 messages)
+2026-05-09 22:53:19,791 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 3 (10 messages)
+2026-05-09 22:55:30,298 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 4 (2 messages)
+2026-05-09 22:57:36,061 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 4 (4 messages)
+2026-05-09 23:00:24,619 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 4 (6 messages)
+2026-05-09 23:03:22,216 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 4 (8 messages)
+2026-05-09 23:06:51,239 [tir.memory.chunking] ERROR: ChromaDB upsert failed for 74641c53-3b22-4f82-b2f0-7f0b02ce28d9_chunk_4: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-09 23:06:51,239 [tir.api.routes] WARNING: Conversation checkpointing failed: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-09 23:10:23,110 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 5 (2 messages)
+2026-05-09 23:13:24,277 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 5 (4 messages)
+2026-05-09 23:15:13,699 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 5 (6 messages)
+2026-05-09 23:17:28,563 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 5 (8 messages)
+2026-05-09 23:22:23,828 [tir.memory.chunking] ERROR: ChromaDB upsert failed for 74641c53-3b22-4f82-b2f0-7f0b02ce28d9_chunk_5: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-09 23:22:23,828 [tir.api.routes] WARNING: Conversation checkpointing failed: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-09 23:24:31,438 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 6 (2 messages)
+2026-05-09 23:26:53,993 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 6 (4 messages)
+2026-05-09 23:29:09,047 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 6 (6 messages)
+2026-05-09 23:31:33,644 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 6 (8 messages)
+2026-05-09 23:34:20,359 [tir.memory.chunking] ERROR: ChromaDB upsert failed for 74641c53-3b22-4f82-b2f0-7f0b02ce28d9_chunk_6: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-09 23:34:20,360 [tir.api.routes] WARNING: Conversation checkpointing failed: 400 Client Error: Bad Request for url: http://localhost:11434/api/embed
+2026-05-09 23:37:05,991 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 7 (2 messages)
+2026-05-10 20:42:00,968 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-10 20:42:00,969 [tir.tools.registry] INFO: Registered tool 'moltbook_find_author_posts' from skill 'moltbook'
+2026-05-10 20:42:00,976 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_feed' from skill 'moltbook'
+2026-05-10 20:42:00,976 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_search' from skill 'moltbook'
+2026-05-10 20:42:00,976 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_posts_by_author' from skill 'moltbook'
+2026-05-10 20:42:00,976 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_profile' from skill 'moltbook'
+2026-05-10 20:42:00,976 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_me' from skill 'moltbook'
+2026-05-10 20:42:00,976 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_read_post' from skill 'moltbook'
+2026-05-10 20:42:00,976 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_post_comments' from skill 'moltbook'
+2026-05-10 20:42:00,976 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt' from skill 'moltbook'
+2026-05-10 20:42:00,976 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_feed' from skill 'moltbook'
+2026-05-10 20:42:00,976 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_moderators' from skill 'moltbook'
+2026-05-10 20:42:01,126 [tir.tools.registry] INFO: Registered tool 'web_fetch' from skill 'web_search'
+2026-05-10 20:42:01,126 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-10 20:42:01,126 [tir.tools.registry] INFO: Skill registry loaded: 3 skills, 14 tools
+2026-05-10 20:42:01,126 [tir.api.routes] WARNING: ANAM_API_SECRET is not configured; API routes are unauthenticated.
+2026-05-10 20:42:01,126 [tir.api.routes] INFO: Tír API started — 14 tools loaded
+2026-05-10 20:42:05,566 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 36 chunks
+2026-05-10 20:43:27,057 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 7 (4 messages)

@@ -6,18 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from tir.artifacts.service import (
-    ArtifactValidationError,
-    create_artifact,
-    create_artifact_file,
-    create_artifact_file_with_open_loop,
-    count_artifact_revisions,
-    get_artifact,
-    list_artifact_revisions,
-    list_artifacts,
-    update_artifact_status,
-)
-from tir.open_loops.service import OpenLoopValidationError, list_open_loops
+import tir.artifacts.service as artifact_service
+import tir.open_loops.service as open_loop_service
 from tir.workspace.service import ensure_workspace
 
 
@@ -32,9 +22,13 @@ def temp_stores(tmp_path):
         import tir.memory.db as db_mod
 
         importlib.reload(db_mod)
+        importlib.reload(open_loop_service)
+        importlib.reload(artifact_service)
         db_mod.init_databases()
         yield {
             "db": db_mod,
+            "artifacts": artifact_service,
+            "open_loops": open_loop_service,
             "workspace_root": workspace_root,
             "archive_db": tmp_path / "archive.db",
             "working_db": tmp_path / "working.db",
@@ -44,7 +38,7 @@ def temp_stores(tmp_path):
 def test_create_get_list_and_update_artifact(temp_stores):
     workspace_root = temp_stores["workspace_root"]
 
-    artifact = create_artifact(
+    artifact = artifact_service.create_artifact(
         artifact_type="research_note",
         title="Session notes",
         description="Initial notes",
@@ -66,23 +60,23 @@ def test_create_get_list_and_update_artifact(temp_stores):
     assert artifact["metadata"] == {"topic": "memory"}
     assert artifact["metadata_json"] == '{"topic": "memory"}'
 
-    fetched = get_artifact(artifact["artifact_id"])
+    fetched = artifact_service.get_artifact(artifact["artifact_id"])
     assert fetched == artifact
 
-    listed = list_artifacts(
+    listed = artifact_service.list_artifacts(
         artifact_type="research_note",
         status="draft",
         workspace_root=workspace_root,
     )
     assert [item["artifact_id"] for item in listed] == [artifact["artifact_id"]]
 
-    updated = update_artifact_status(artifact["artifact_id"], "active")
+    updated = artifact_service.update_artifact_status(artifact["artifact_id"], "active")
     assert updated["status"] == "active"
     assert updated["updated_at"] >= artifact["updated_at"]
 
 
 def test_path_none_is_allowed(temp_stores):
-    artifact = create_artifact(
+    artifact = artifact_service.create_artifact(
         artifact_type="generic",
         title="No file yet",
         path=None,
@@ -95,35 +89,35 @@ def test_path_none_is_allowed(temp_stores):
 def test_invalid_type_and_status_rejected(temp_stores):
     workspace_root = temp_stores["workspace_root"]
 
-    with pytest.raises(ArtifactValidationError):
-        create_artifact(
+    with pytest.raises(artifact_service.ArtifactValidationError):
+        artifact_service.create_artifact(
             artifact_type="unknown",
             title="Bad type",
             workspace_root=workspace_root,
         )
 
-    with pytest.raises(ArtifactValidationError):
-        create_artifact(
+    with pytest.raises(artifact_service.ArtifactValidationError):
+        artifact_service.create_artifact(
             artifact_type="generic",
             title="Bad status",
             status="unknown",
             workspace_root=workspace_root,
         )
 
-    artifact = create_artifact(
+    artifact = artifact_service.create_artifact(
         artifact_type="generic",
         title="Good",
         workspace_root=workspace_root,
     )
-    with pytest.raises(ArtifactValidationError):
-        update_artifact_status(artifact["artifact_id"], "unknown")
+    with pytest.raises(artifact_service.ArtifactValidationError):
+        artifact_service.update_artifact_status(artifact["artifact_id"], "unknown")
 
 
 def test_path_validation_rejects_absolute_and_traversal(temp_stores, tmp_path):
     workspace_root = temp_stores["workspace_root"]
 
     with pytest.raises(ValueError):
-        create_artifact(
+        artifact_service.create_artifact(
             artifact_type="generic",
             title="Absolute",
             path=tmp_path / "outside.txt",
@@ -131,7 +125,7 @@ def test_path_validation_rejects_absolute_and_traversal(temp_stores, tmp_path):
         )
 
     with pytest.raises(ValueError):
-        create_artifact(
+        artifact_service.create_artifact(
             artifact_type="generic",
             title="Traversal",
             path="../outside.txt",
@@ -153,7 +147,7 @@ def test_path_validation_rejects_symlink_escape(temp_stores, tmp_path):
         pytest.skip(f"symlink creation not available: {exc}")
 
     with pytest.raises(ValueError):
-        create_artifact(
+        artifact_service.create_artifact(
             artifact_type="generic",
             title="Escape",
             path="research/escape/file.txt",
@@ -188,7 +182,7 @@ def test_artifacts_table_is_working_db_only(temp_stores):
 def test_artifact_creation_does_not_invoke_memory_indexing(temp_stores):
     with patch("tir.memory.chunking._store_chunk") as mock_store_chunk, \
          patch("tir.memory.chroma.upsert_chunk") as mock_upsert_chunk:
-        create_artifact(
+        artifact_service.create_artifact(
             artifact_type="generic",
             title="No indexing",
             workspace_root=temp_stores["workspace_root"],
@@ -200,34 +194,34 @@ def test_artifact_creation_does_not_invoke_memory_indexing(temp_stores):
 
 def test_list_filters_by_path(temp_stores):
     workspace_root = temp_stores["workspace_root"]
-    first = create_artifact(
+    first = artifact_service.create_artifact(
         artifact_type="code",
         title="A",
         path="coding/a.py",
         workspace_root=workspace_root,
     )
-    create_artifact(
+    artifact_service.create_artifact(
         artifact_type="code",
         title="B",
         path="coding/b.py",
         workspace_root=workspace_root,
     )
 
-    listed = list_artifacts(path="coding/a.py", workspace_root=workspace_root)
+    listed = artifact_service.list_artifacts(path="coding/a.py", workspace_root=workspace_root)
 
     assert [item["artifact_id"] for item in listed] == [first["artifact_id"]]
 
 
 def test_artifact_revision_count_and_list(temp_stores):
     workspace_root = temp_stores["workspace_root"]
-    original = create_artifact(
+    original = artifact_service.create_artifact(
         artifact_type="research_note",
         title="Original",
         path="research/original.md",
         status="active",
         workspace_root=workspace_root,
     )
-    revision = create_artifact(
+    revision = artifact_service.create_artifact(
         artifact_type="research_note",
         title="Revision",
         path="research/revision.md",
@@ -236,21 +230,21 @@ def test_artifact_revision_count_and_list(temp_stores):
         workspace_root=workspace_root,
     )
 
-    fetched_original = get_artifact(original["artifact_id"])
-    fetched_revision = get_artifact(revision["artifact_id"])
-    revisions = list_artifact_revisions(original["artifact_id"])
+    fetched_original = artifact_service.get_artifact(original["artifact_id"])
+    fetched_revision = artifact_service.get_artifact(revision["artifact_id"])
+    revisions = artifact_service.list_artifact_revisions(original["artifact_id"])
 
     assert fetched_original["revised_by_count"] == 1
-    assert count_artifact_revisions(original["artifact_id"]) == 1
+    assert artifact_service.count_artifact_revisions(original["artifact_id"]) == 1
     assert fetched_revision["revision_of"] == original["artifact_id"]
     assert [item["artifact_id"] for item in revisions] == [revision["artifact_id"]]
-    assert get_artifact(original["artifact_id"])["status"] == "active"
+    assert artifact_service.get_artifact(original["artifact_id"])["status"] == "active"
 
 
 def test_create_artifact_file_creates_file_and_metadata(temp_stores):
     workspace_root = temp_stores["workspace_root"]
 
-    result = create_artifact_file(
+    result = artifact_service.create_artifact_file(
         relative_path="research/session-2/notes.md",
         content="Session notes",
         artifact_type="research_note",
@@ -288,7 +282,7 @@ def test_create_artifact_file_creates_file_and_metadata(temp_stores):
 
 
 def test_create_artifact_file_supports_draft_status(temp_stores):
-    result = create_artifact_file(
+    result = artifact_service.create_artifact_file(
         relative_path="drafts/example.md",
         content="Draft",
         artifact_type="writing",
@@ -305,7 +299,7 @@ def test_create_artifact_file_invalid_path_does_not_create_metadata(temp_stores)
     workspace_root = temp_stores["workspace_root"]
 
     with pytest.raises(ValueError):
-        create_artifact_file(
+        artifact_service.create_artifact_file(
             relative_path="../outside.md",
             content="No file",
             artifact_type="generic",
@@ -313,14 +307,14 @@ def test_create_artifact_file_invalid_path_does_not_create_metadata(temp_stores)
             workspace_root=workspace_root,
         )
 
-    assert list_artifacts(workspace_root=workspace_root) == []
+    assert artifact_service.list_artifacts(workspace_root=workspace_root) == []
 
 
 def test_create_artifact_file_invalid_metadata_does_not_create_file_or_metadata(temp_stores):
     workspace_root = temp_stores["workspace_root"]
 
-    with pytest.raises(ArtifactValidationError):
-        create_artifact_file(
+    with pytest.raises(artifact_service.ArtifactValidationError):
+        artifact_service.create_artifact_file(
             relative_path="drafts/bad-metadata.md",
             content="No file",
             artifact_type="generic",
@@ -330,14 +324,14 @@ def test_create_artifact_file_invalid_metadata_does_not_create_file_or_metadata(
         )
 
     assert not (workspace_root / "drafts/bad-metadata.md").exists()
-    assert list_artifacts(workspace_root=workspace_root) == []
+    assert artifact_service.list_artifacts(workspace_root=workspace_root) == []
 
 
 def test_create_artifact_file_invalid_type_and_status_do_not_create_file(temp_stores):
     workspace_root = temp_stores["workspace_root"]
 
-    with pytest.raises(ArtifactValidationError):
-        create_artifact_file(
+    with pytest.raises(artifact_service.ArtifactValidationError):
+        artifact_service.create_artifact_file(
             relative_path="drafts/bad-type.md",
             content="No file",
             artifact_type="unknown",
@@ -345,8 +339,8 @@ def test_create_artifact_file_invalid_type_and_status_do_not_create_file(temp_st
             workspace_root=workspace_root,
         )
 
-    with pytest.raises(ArtifactValidationError):
-        create_artifact_file(
+    with pytest.raises(artifact_service.ArtifactValidationError):
+        artifact_service.create_artifact_file(
             relative_path="drafts/bad-status.md",
             content="No file",
             artifact_type="generic",
@@ -357,13 +351,13 @@ def test_create_artifact_file_invalid_type_and_status_do_not_create_file(temp_st
 
     assert not (workspace_root / "drafts/bad-type.md").exists()
     assert not (workspace_root / "drafts/bad-status.md").exists()
-    assert list_artifacts(workspace_root=workspace_root) == []
+    assert artifact_service.list_artifacts(workspace_root=workspace_root) == []
 
 
 def test_create_artifact_file_does_not_invoke_memory_indexing(temp_stores):
     with patch("tir.memory.chunking._store_chunk") as mock_store_chunk, \
          patch("tir.memory.chroma.upsert_chunk") as mock_upsert_chunk:
-        create_artifact_file(
+        artifact_service.create_artifact_file(
             relative_path="drafts/no-index.md",
             content="No indexing",
             artifact_type="generic",
@@ -378,7 +372,7 @@ def test_create_artifact_file_does_not_invoke_memory_indexing(temp_stores):
 def test_create_artifact_file_with_open_loop_creates_linked_records(temp_stores):
     workspace_root = temp_stores["workspace_root"]
 
-    result = create_artifact_file_with_open_loop(
+    result = artifact_service.create_artifact_file_with_open_loop(
         relative_path="drafts/linked.md",
         content="Draft to continue",
         artifact_type="writing",
@@ -419,12 +413,12 @@ def test_create_artifact_file_with_open_loop_creates_linked_records(temp_stores)
     assert open_loop["source_message_id"] == "msg-3"
     assert open_loop["source_tool_name"] == "internal_helper"
 
-    listed = list_open_loops(related_artifact_id=artifact["artifact_id"])
+    listed = open_loop_service.list_open_loops(related_artifact_id=artifact["artifact_id"])
     assert [item["open_loop_id"] for item in listed] == [open_loop["open_loop_id"]]
 
 
 def test_create_artifact_file_with_open_loop_is_optional(temp_stores):
-    result = create_artifact_file_with_open_loop(
+    result = artifact_service.create_artifact_file_with_open_loop(
         relative_path="drafts/no-loop.md",
         content="Finished enough",
         artifact_type="writing",
@@ -435,11 +429,11 @@ def test_create_artifact_file_with_open_loop_is_optional(temp_stores):
 
     assert result["artifact"]["title"] == "No Loop"
     assert result["open_loop"] is None
-    assert list_open_loops(related_artifact_id=result["artifact"]["artifact_id"]) == []
+    assert open_loop_service.list_open_loops(related_artifact_id=result["artifact"]["artifact_id"]) == []
 
 
 def test_create_artifact_file_with_open_loop_preserves_custom_loop_data(temp_stores):
-    result = create_artifact_file_with_open_loop(
+    result = artifact_service.create_artifact_file_with_open_loop(
         relative_path="research/custom-loop.md",
         content="Research note",
         artifact_type="research_note",
@@ -477,7 +471,7 @@ def test_create_artifact_file_with_open_loop_invalid_path_creates_nothing(temp_s
     workspace_root = temp_stores["workspace_root"]
 
     with pytest.raises(ValueError):
-        create_artifact_file_with_open_loop(
+        artifact_service.create_artifact_file_with_open_loop(
             relative_path="../outside.md",
             content="No file",
             artifact_type="writing",
@@ -486,15 +480,15 @@ def test_create_artifact_file_with_open_loop_invalid_path_creates_nothing(temp_s
             workspace_root=workspace_root,
         )
 
-    assert list_artifacts(workspace_root=workspace_root) == []
-    assert list_open_loops() == []
+    assert artifact_service.list_artifacts(workspace_root=workspace_root) == []
+    assert open_loop_service.list_open_loops() == []
 
 
 def test_create_artifact_file_with_open_loop_invalid_loop_rejects_before_writing(temp_stores):
     workspace_root = temp_stores["workspace_root"]
 
-    with pytest.raises(OpenLoopValidationError):
-        create_artifact_file_with_open_loop(
+    with pytest.raises(open_loop_service.OpenLoopValidationError):
+        artifact_service.create_artifact_file_with_open_loop(
             relative_path="drafts/bad-loop-priority.md",
             content="No file",
             artifact_type="writing",
@@ -504,8 +498,8 @@ def test_create_artifact_file_with_open_loop_invalid_loop_rejects_before_writing
             workspace_root=workspace_root,
         )
 
-    with pytest.raises(OpenLoopValidationError):
-        create_artifact_file_with_open_loop(
+    with pytest.raises(open_loop_service.OpenLoopValidationError):
+        artifact_service.create_artifact_file_with_open_loop(
             relative_path="drafts/bad-loop-type.md",
             content="No file",
             artifact_type="writing",
@@ -515,8 +509,8 @@ def test_create_artifact_file_with_open_loop_invalid_loop_rejects_before_writing
             workspace_root=workspace_root,
         )
 
-    with pytest.raises(OpenLoopValidationError):
-        create_artifact_file_with_open_loop(
+    with pytest.raises(open_loop_service.OpenLoopValidationError):
+        artifact_service.create_artifact_file_with_open_loop(
             relative_path="drafts/bad-loop-title.md",
             content="No file",
             artifact_type="writing",
@@ -529,14 +523,14 @@ def test_create_artifact_file_with_open_loop_invalid_loop_rejects_before_writing
     assert not (workspace_root / "drafts/bad-loop-priority.md").exists()
     assert not (workspace_root / "drafts/bad-loop-type.md").exists()
     assert not (workspace_root / "drafts/bad-loop-title.md").exists()
-    assert list_artifacts(workspace_root=workspace_root) == []
-    assert list_open_loops() == []
+    assert artifact_service.list_artifacts(workspace_root=workspace_root) == []
+    assert open_loop_service.list_open_loops() == []
 
 
 def test_create_artifact_file_with_open_loop_does_not_invoke_memory_indexing(temp_stores):
     with patch("tir.memory.chunking._store_chunk") as mock_store_chunk, \
          patch("tir.memory.chroma.upsert_chunk") as mock_upsert_chunk:
-        create_artifact_file_with_open_loop(
+        artifact_service.create_artifact_file_with_open_loop(
             relative_path="drafts/no-loop-index.md",
             content="No indexing",
             artifact_type="writing",

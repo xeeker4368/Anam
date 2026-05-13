@@ -379,3 +379,40 @@ Implications:
 - Retired and superseded guidance should remain reviewable but must not load as active runtime guidance.
 - Dry-run diff/plan output should be required before write behavior.
 - Proposal status should become `applied` only after successful file application.
+
+---
+
+## Decision 025 — Manual research produces provisional artifacts, not truth
+
+**Status:** Active
+
+Manual research should be a user-triggered, bounded artifact-producing workflow. Research conclusions are working notes, not permanent truth, runtime guidance, self-understanding, or project decisions.
+
+Current implementation note: Manual Research Foundation is complete for the first bounded CLI path. `research-run` supports dry-run, `--write` file creation, explicit `--write --register-artifact` registration/indexing, and working-research retrieval framing.
+
+Implications:
+
+- Research should have a clear purpose and consumption path.
+- Dry-run should be the default for future manual research commands.
+- File creation should be explicit through `--write`.
+- Artifact registration and indexing should be explicit through `--register-artifact`.
+- Retrieved research should be framed as working research notes.
+- Research may suggest open loops, review items, or future working-theory proposals.
+- Research must not directly mutate `BEHAVIORAL_GUIDANCE.md`, `SELF_UNDERSTANDING.md`, runtime prompt guidance, or project decisions.
+- Web research requires a separate bounded source collection design before implementation.
+
+---
+
+## Decision 026 — Research continuation creates new notes
+
+**Status:** Active
+
+Manual research continuation should create a new provisional research note rather than overwriting, editing, or silently revising the prior note.
+
+Implications:
+
+- Prior research notes remain intact as source artifacts.
+- Continuation notes must preserve lineage to the prior artifact or file.
+- Prior findings are inputs, not authorities.
+- Weakened or superseded prior claims should be stated in the new note, not applied by mutating the previous artifact.
+- Formal working-theory promotion, supersession, or revision remains a separate future design.

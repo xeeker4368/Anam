@@ -5,12 +5,12 @@ import re
 from datetime import date, datetime
 from pathlib import Path
 
-from tir.config import WORKSPACE_DIR
+from tir.config import PRIMARY_JOURNAL_CONTEXT_BUDGET_CHARS, WORKSPACE_DIR
 from tir.memory.db import get_connection
 from tir.workspace.service import resolve_workspace_path
 
 
-PRIMARY_JOURNAL_CONTEXT_CHAR_BUDGET = 8000
+PRIMARY_JOURNAL_CONTEXT_CHAR_BUDGET = PRIMARY_JOURNAL_CONTEXT_BUDGET_CHARS
 PRIMARY_JOURNAL_CONTEXT_TRUNCATION_MARKER = "\n\n[primary journal context truncated]"
 
 _JOURNAL_TERM_RE = re.compile(r"\b(?:reflection\s+journal|journal\s+entry|journal)\b", re.I)

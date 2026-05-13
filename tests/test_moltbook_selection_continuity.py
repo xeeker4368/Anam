@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from tir.api.routes import app
+import tir.api.routes as routes_mod
 from tir.engine.agent_loop import run_agent_loop
 from tir.engine.tool_trace_context import (
     build_moltbook_authored_posts_selection,
@@ -284,7 +284,7 @@ def test_agent_loop_persists_compact_moltbook_selection_metadata(mock_stream):
     assert "content_preview" not in str(selection)
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -300,9 +300,9 @@ def test_routes_inject_selection_context_before_current_user_message(
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
-    app.state.registry = FakeRegistry()
+    routes_mod.app.state.registry = FakeRegistry()
     mock_resolve_user.return_value = _fake_user()
     mock_start_conversation.return_value = "conv-1"
     mock_retrieve.return_value = []
@@ -332,7 +332,7 @@ def test_routes_inject_selection_context_before_current_user_message(
         },
     ])
 
-    client = TestClient(app)
+    client = TestClient(routes_mod.app)
     response = client.post("/api/chat/stream", json={"text": "read the first one"})
     events = _stream_lines(response)
 
@@ -351,7 +351,7 @@ def test_routes_inject_selection_context_before_current_user_message(
     assert "title=Token Budget Notes" in injected["content"]
 
 
-@patch("tir.api.routes.maybe_chunk_live")
+@patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")
 @patch("tir.api.routes.get_conversation_messages")
 @patch("tir.api.routes.start_conversation")
@@ -367,9 +367,9 @@ def test_routes_do_not_inject_context_without_selection_trace(
     mock_start_conversation,
     mock_get_messages,
     mock_save_message,
-    mock_maybe_chunk_live,
+    mock_checkpoint_conversation,
 ):
-    app.state.registry = FakeRegistry()
+    routes_mod.app.state.registry = FakeRegistry()
     mock_resolve_user.return_value = _fake_user()
     mock_start_conversation.return_value = "conv-1"
     mock_retrieve.return_value = []
@@ -394,7 +394,7 @@ def test_routes_do_not_inject_context_without_selection_trace(
         },
     ])
 
-    client = TestClient(app)
+    client = TestClient(routes_mod.app)
     response = client.post("/api/chat/stream", json={"text": "read the first one"})
 
     assert response.status_code == 200

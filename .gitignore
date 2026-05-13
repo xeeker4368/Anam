@@ -27,6 +27,7 @@ logs/
 # Environment
 .env
 .env.*
+config/local.toml
 wiped_runtime/
 workspace/uploads/
 workspace/generated/

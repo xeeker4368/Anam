@@ -1,0 +1,57 @@
+[models]
+chat = "gemma4:26b"
+reflection_journal = "gemma4:26b"
+behavioral_guidance_review = "gemma4:26b"
+operational_reflection = "gemma4:26b"
+embedding = "nomic-embed-text"
+
+[ollama]
+host = "http://localhost:11434"
+timeout_seconds = 300
+
+[model_options.default]
+think = false
+temperature = 0.35
+
+[model_options.chat]
+think = false
+
+[model_options.reflection_journal]
+think = false
+timeout_seconds = 600
+
+[model_options.behavioral_guidance_review]
+think = false
+
+[model_options.operational_reflection]
+think = false
+
+[retrieval]
+results = 20
+retrieved_context_budget_chars = 14000
+prompt_budget_warning_chars = 30000
+
+[journals]
+transcript_budget_chars = 24000
+activity_packet_budget_chars = 12000
+relevant_memory_max_chunks = 5
+relevant_memory_budget_chars = 6000
+relevant_memory_query_budget_chars = 4000
+primary_journal_context_budget_chars = 8000
+
+[behavioral_guidance]
+runtime_budget_chars = 3000
+
+[operational_reflection]
+packet_budget_chars = 16000
+
+[artifacts]
+recent_artifact_context_budget_chars = 2000
+
+[api]
+host = "127.0.0.1"
+port = 8000
+
+[web_search]
+searxng_url = "http://127.0.0.1:8080"
+timeout_seconds = 10
