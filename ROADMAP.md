@@ -438,6 +438,23 @@ Chat policy:
 
 Initial autonomous research should use memory, documents, working theories, open questions, and local tools. Web should be disabled at first.
 
+Manual Research Foundation is complete for the first bounded CLI path. `research-run` can generate provisional research notes, write them to `workspace/research/`, optionally register/index them with `--write --register-artifact`, and retrieve them with explicit working-research source framing. Research remains provisional and does not become truth, guidance, self-understanding, project decisions, open loops, or review items automatically.
+
+Research track status:
+
+- [x] Manual Research Cycle Design v1
+- [x] CLI dry-run/write research note generation
+- [x] Explicit artifact registration/indexing with `--write --register-artifact`
+- [x] Retrieved research source framing
+- [x] Research Continuation Design v1
+- [x] Manual research continuation implementation
+- [ ] Title/search continuation design
+- [ ] Research open-loop/review-item design
+- [ ] Research open-loop/review-item implementation
+- [ ] Web source collection design
+- [ ] Research promotion / working-theory rules design
+- [ ] Autonomous research scheduling/budgets
+
 Session flow:
 
 ```text
@@ -595,11 +612,15 @@ Suggested concepts:
 14. Nightly journal
 15. iMessage send-only notifications
 16. Moltbook draft-only progression after read-only confidence
-17. Manual autonomous research sessions
-18. Autonomous web research budgets
-19. Voice output/input
-20. Sight/image review
+17. Research Continuation Design v1
+18. Research open-loop/review-item design
+19. Web source collection design
+20. Research promotion / working-theory rules design
+21. Autonomous research scheduling/budgets
+22. Autonomous web research budgets
+23. Voice output/input
+24. Sight/image review
 
 `SELF_UNDERSTANDING.md` now has a concept design in `docs/SELF_UNDERSTANDING_DESIGN.md`. It is not implemented, not loaded into runtime context, and has no schema, service, UI, model tool, or apply workflow in the current checkpoint.
-21. Add staged self-modification
-22. Add diagnostics/evaluation harness throughout
+25. Add staged self-modification
+26. Add diagnostics/evaluation harness throughout

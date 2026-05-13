@@ -225,7 +225,7 @@ Working theories should include:
 
 ---
 
-## Autonomous Research Cycle
+## Research Cycles
 
 The autonomous research cycle is a bounded period where the entity investigates a question, uses memory and approved sources, forms provisional conclusions, records the reasoning path, and makes those conclusions available for future research and conversation.
 
@@ -243,6 +243,10 @@ A research cycle should produce:
 8. Working theories created or updated
 9. Open questions created or updated
 10. Tool/action traces from the session
+
+Manual Research Foundation is complete for the first bounded CLI path. `research-run` can generate provisional research notes, write them to `workspace/research/`, optionally register/index them with `--write --register-artifact`, and retrieve them with explicit working-research source framing.
+
+Manual research is not autonomous research. It should not use web search, create schedules, create open loops, create review items, or promote conclusions unless those behaviors are separately designed and approved. Registration/indexing is available only through the explicit `--write --register-artifact` path.
 
 ---
 
@@ -286,11 +290,29 @@ Current completed foundation includes:
 - `working.db` `schema_versions` baseline support for future migrations
 - operator review queue
 - behavioral guidance proposal model/API/UI
-- `BEHAVIORAL_GUIDANCE.md` as seed/governance file only, not loaded into runtime context
+- AI-generated behavioral guidance proposal review paths
+- approved addition guidance apply-to-file workflow
+- active `BEHAVIORAL_GUIDANCE.md` runtime loading
+- reflection journal write/register/index/retrieval paths
+- operational reflection review pass
+- prompt inventory/audit notes and database schema documentation
+- runtime configuration foundation with TOML/env overrides and Ollama model options
+- Manual Research Foundation for the first bounded CLI path:
+  - `research-run` dry-run/write note generation
+  - explicit `--write --register-artifact` registration/indexing
+  - `source_type=research`, `artifact_type=research_note`, `source_role=research_reference`, `origin=manual_research`
+  - retrieved research framed as working research notes
+- Research Continuation Runtime v1 for the manual CLI path:
+  - `research-run --continue-artifact` from an active registered research artifact
+  - constrained `research-run --continue-file` from Markdown files under `workspace/research/`
+  - prior notes framed as provisional context
+  - continuation creates a new note and never overwrites or mutates the prior note
 - optional `ANAM_API_SECRET` local-network API hardening, not full authentication
 - minimal `soul.md` permission for the entity to question, disagree with, or decline proposed corrections or changes
 
-The behavioral guidance proposal UI is review-only. It does not create proposals, apply proposals to files, or load guidance into runtime context.
+The behavioral guidance proposal UI is review-only. It does not create proposals or apply proposals to files.
+
+`SELF_UNDERSTANDING.md`, guidance scoping, and guidance removal/revision mechanics are design-only concepts. They are not implemented.
 
 ---
 
