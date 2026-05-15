@@ -1,7 +1,8 @@
-"""Apply approved behavioral guidance proposals to BEHAVIORAL_GUIDANCE.md.
+"""Behavioral guidance apply helpers.
 
-This module is intentionally CLI/operator oriented. It only supports approved
-addition proposals in v1 and does not load guidance into runtime context.
+Behavioral guidance application is dormant before go-live. The historical
+append-block helpers remain for review context, but public apply entrypoints
+fail clearly instead of writing active runtime guidance.
 """
 
 from datetime import datetime, timezone
@@ -17,6 +18,9 @@ from tir.config import PROJECT_ROOT
 
 ACTIVE_GUIDANCE_HEADING = "## Active Guidance"
 DEFAULT_GUIDANCE_PATH = PROJECT_ROOT / "BEHAVIORAL_GUIDANCE.md"
+DORMANT_BEFORE_GO_LIVE_ERROR = (
+    "Behavioral guidance is dormant before go-live and is not runtime-active."
+)
 
 
 class BehavioralGuidanceApplyError(ValueError):
@@ -114,21 +118,7 @@ def plan_behavioral_guidance_apply(
     guidance_path: Path = DEFAULT_GUIDANCE_PATH,
 ) -> dict:
     """Validate and return the exact append block without mutating state."""
-    guidance_path = Path(guidance_path)
-    proposal = _validate_applicable_proposal(
-        get_behavioral_guidance_proposal(proposal_id)
-    )
-    content = _read_guidance_file(guidance_path)
-    _ensure_not_duplicate(content, proposal["proposal_id"])
-    applied_at = _now()
-    block = build_guidance_append_block(proposal, applied_at=applied_at)
-    return {
-        "ok": True,
-        "proposal": proposal,
-        "guidance_path": str(guidance_path),
-        "applied_at": applied_at,
-        "append_block": block,
-    }
+    raise BehavioralGuidanceApplyError(DORMANT_BEFORE_GO_LIVE_ERROR)
 
 
 def apply_behavioral_guidance_proposal(
@@ -139,31 +129,4 @@ def apply_behavioral_guidance_proposal(
     guidance_path: Path = DEFAULT_GUIDANCE_PATH,
 ) -> dict:
     """Append an approved addition proposal and mark it applied."""
-    plan = plan_behavioral_guidance_apply(
-        proposal_id,
-        guidance_path=guidance_path,
-    )
-    path = Path(guidance_path)
-    content = _read_guidance_file(path)
-    new_content = _append_block(content, plan["append_block"])
-    _write_atomic(path, new_content)
-
-    try:
-        proposal = update_behavioral_guidance_proposal_status(
-            proposal_id,
-            "applied",
-            reviewed_by_user_id=plan["proposal"].get("reviewed_by_user_id"),
-            reviewed_by_role="admin",
-            review_decision_reason=plan["proposal"].get("review_decision_reason"),
-            applied_by_user_id=applied_by_user_id,
-            apply_note=apply_note,
-        )
-    except BehavioralGuidanceValidationError as exc:
-        raise BehavioralGuidanceApplyError(str(exc)) from exc
-
-    return {
-        "ok": True,
-        "proposal": proposal,
-        "guidance_path": str(path),
-        "append_block": plan["append_block"],
-    }
+    raise BehavioralGuidanceApplyError(DORMANT_BEFORE_GO_LIVE_ERROR)

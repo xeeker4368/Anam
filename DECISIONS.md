@@ -274,13 +274,13 @@ Implications:
 
 **Status:** Active
 
-Behavioral guidance entries should come from AI-proposed guidance reviewed and approved by an admin.
+Behavioral guidance entries should come from AI-proposed guidance reviewed and approved by an admin if the subsystem is reintroduced.
 
 Implications:
 
 - The UI may review existing proposals but should not create behavioral guidance proposals.
-- `BEHAVIORAL_GUIDANCE.md` is not loaded into runtime context yet.
-- No automatic apply-to-file behavior exists yet.
+- `BEHAVIORAL_GUIDANCE.md` is dormant before go-live and is not loaded into runtime context.
+- Apply-to-file behavior is dormant before go-live.
 - Rejected proposals remain visible as evidence for future review.
 
 ---
@@ -353,7 +353,7 @@ Future active behavioral guidance should support explicit user, channel, context
 
 Implications:
 
-- Existing unscoped guidance is interpreted as global/default guidance.
+- If active behavioral guidance is reintroduced later, existing unscoped guidance would be interpreted as global/default guidance unless explicitly migrated.
 - Future global guidance should be chosen deliberately, not created by omission.
 - Scope should be present in both proposal records and applied Markdown entries.
 - Early proposal scope may live in `metadata_json` or a structured metadata object before first-class columns are justified.
@@ -416,3 +416,21 @@ Implications:
 - Prior findings are inputs, not authorities.
 - Weakened or superseded prior claims should be stated in the new note, not applied by mutating the previous artifact.
 - Formal working-theory promotion, supersession, or revision remains a separate future design.
+
+---
+
+## Decision 027 — Behavioral guidance runtime loading is dormant before go-live
+
+**Status:** Active
+
+Behavioral guidance runtime loading is dormant before go-live.
+
+Reason: the reviewed learning channel was useful as an experiment, but runtime-loaded behavioral guidance was judged too prescriptive for Project Anam's emergence goal. It risked turning early corrections or identity-adjacent observations into every-turn runtime steering before the entity had accumulated enough lived experience.
+
+Implications:
+
+- `BEHAVIORAL_GUIDANCE.md` must not shape runtime prompts at go-live.
+- Reflection journals must not receive active behavioral guidance as entity context.
+- The root guidance file should remain a dormant placeholder with no active `- Guidance:` lines.
+- Pre-live proposal/apply records do not need to be preserved as operational go-live history because the go-live database will be reset.
+- Future reintroduction requires a separate reviewed design decision with explicit runtime scope, per-entry rationale, debug visibility, and safeguards against identity, personality, emotion, name, or self-understanding guidance becoming every-turn instruction.

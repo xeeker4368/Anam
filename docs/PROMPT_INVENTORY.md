@@ -9,9 +9,9 @@ Risk flags searched: `assistant`, `chatbot`, `agent`, `persona`, `personality`, 
 
 ## Runtime context / identity
 
-### 1. `tir/engine/context.py:34`
+### 1. `tir/engine/context.py:32`
 
-- Name: `BEHAVIORAL_GUIDANCE_LABEL`
+- Name: `BEHAVIORAL_GUIDANCE_DORMANT_STATUS`
 - Category: Runtime context / identity
 - Risk flags: none
 - Audit note: `needs discussion`
@@ -19,12 +19,10 @@ Risk flags searched: `assistant`, `chatbot`, `agent`, `persona`, `personality`, 
 Excerpt:
 
 ```text
-[Reviewed Behavioral Guidance]
-
-Active behavioral guidance proposed by the AI and approved/applied by an admin. Use these entries to inform future behavior. They sit below soul.md and operational guidance in precedence.
+dormant_before_go_live
 ```
 
-### 2. `tir/engine/context.py:56` — `_load_operational_guidance`
+### 2. `tir/engine/context.py:52` — `_load_operational_guidance`
 
 - Name: `return_value`
 - Category: Runtime context / identity
@@ -39,7 +37,7 @@ Excerpt:
 {...}
 ```
 
-### 3. `tir/engine/context.py:160` — `_current_situation`
+### 3. `tir/engine/context.py:88` — `_current_situation`
 
 - Name: `return_value`
 - Category: Runtime context / identity
@@ -55,7 +53,7 @@ Conversation with: {...}
 Time: {...}
 ```
 
-### 4. `tir/engine/context.py:169` — `_autonomous_situation`
+### 4. `tir/engine/context.py:97` — `_autonomous_situation`
 
 - Name: `return_value`
 - Category: Runtime context / identity
@@ -71,7 +69,7 @@ Mode: autonomous work session
 Time: {...}
 ```
 
-### 5. `tir/engine/context.py:329` — `_format_retrieved_memories`
+### 5. `tir/engine/context.py:268` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -85,7 +83,7 @@ Excerpt:
 {...}
 ```
 
-### 6. `tir/engine/context.py:333` — `_format_retrieved_memories`
+### 6. `tir/engine/context.py:272` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -99,7 +97,7 @@ Excerpt:
 {...}
 ```
 
-### 7. `tir/engine/context.py:345` — `_format_retrieved_memories`
+### 7. `tir/engine/context.py:284` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -113,7 +111,7 @@ Excerpt:
 {...}
 ```
 
-### 8. `tir/engine/context.py:349` — `_format_retrieved_memories`
+### 8. `tir/engine/context.py:288` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -127,7 +125,7 @@ Excerpt:
 {...}
 ```
 
-### 9. `tir/engine/context.py:353` — `_format_retrieved_memories`
+### 9. `tir/engine/context.py:292` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -141,7 +139,7 @@ Excerpt:
 {...}
 ```
 
-### 10. `tir/engine/context.py:359` — `_format_retrieved_memories`
+### 10. `tir/engine/context.py:298` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -155,7 +153,7 @@ Excerpt:
 {...}
 ```
 
-### 11. `tir/engine/context.py:368` — `_format_retrieved_memories`
+### 11. `tir/engine/context.py:307` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -169,7 +167,7 @@ Excerpt:
 {...}
 ```
 
-### 12. `tir/engine/context.py:372` — `_format_retrieved_memories`
+### 12. `tir/engine/context.py:311` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -554,7 +552,7 @@ Excerpt:
 Daily activity signals:
 ```
 
-### 13. `tir/reflection/journal.py:1077` — `build_reflection_journal_messages`
+### 13. `tir/reflection/journal.py:1073` — `build_reflection_journal_messages`
 
 - Name: `system`
 - Category: Reflection / journal
@@ -571,7 +569,7 @@ Reflect on the day and everything that occurred. Write in your own voice about w
 Use the supplied entity context and today's material. This is a journal, not an audit log or external report.
 ```
 
-### 14. `tir/reflection/journal.py:1085` — `build_reflection_journal_messages`
+### 14. `tir/reflection/journal.py:1081` — `build_reflection_journal_messages`
 
 - Name: `user_prompt`
 - Category: Reflection / journal
@@ -584,9 +582,6 @@ Excerpt:
 Entity context:
 
 [Current seed context]
-{...}
-
-[Active reviewed behavioral guidance]
 {...}
 
 Today's material:

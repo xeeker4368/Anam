@@ -14,10 +14,12 @@ This is a review-prep and triage step. It should not add runtime code, database 
 
 Recent completed foundation work:
 
-- Behavioral guidance proposal model/API/UI exists.
+- Behavioral guidance proposal model/API/UI was built and tested pre-live.
 - AI-generated behavioral guidance proposal review paths exist.
-- Approved addition guidance can be applied to `BEHAVIORAL_GUIDANCE.md`.
-- Active behavioral guidance is loaded into runtime context.
+- Approved addition guidance apply-to-file workflow was tested pre-live.
+- Behavioral guidance runtime loading is dormant before go-live.
+- `BEHAVIORAL_GUIDANCE.md` is a dormant placeholder and contains no active `- Guidance:` lines.
+- Reflection journals no longer receive active behavioral guidance as entity context.
 - Reflection journals can be written, registered, indexed, and retrieved.
 - Journal artifact/indexing/retrieval grounding is complete.
 - Operational reflection review exists as a manual admin command.
@@ -92,6 +94,8 @@ Research Open-Loop / Review-Item Design v1 should answer:
 - Title/search research continuation.
 - Changes to `BEHAVIORAL_GUIDANCE.md`, `SELF_UNDERSTANDING.md`, `OPERATIONAL_GUIDANCE.md`, or `soul.md`.
 - Automatic ingestion of external review outputs as runtime memory authority.
+- Reintroducing behavioral guidance runtime loading.
+- Implementing household multi-user support.
 
 ## Design Constraints
 
@@ -101,6 +105,8 @@ Research Open-Loop / Review-Item Design v1 should answer:
 - Drift is not inherently bad.
 - Healthy emergent drift must be distinguished from source confusion, accidental authority, over-prescription, self-reinforcing memory, or brittle rules.
 - Research conclusions are provisional working notes.
+- Behavioral guidance runtime loading is dormant before go-live because it was judged too prescriptive for the emergence goal.
+- Pre-go-live household multi-user support is required but not implemented here: Lyle/admin user, wife/trusted household user, `source_user_id` preservation where applicable, and admin-only operations remaining admin-only.
 - Research artifacts need a clear purpose and consumption path.
 - Research suggestions may become candidate records only through explicit, reviewable operator action.
 - Future record creation must preserve source lineage to the originating research note or continuation.

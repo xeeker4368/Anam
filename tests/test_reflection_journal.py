@@ -212,12 +212,12 @@ def test_journal_prompt_uses_short_journal_space_wording(reflection_env):
     assert "This is a journal, not an audit log or external report." in system
     assert "Seed context line." in user_prompt
     assert "[Current seed context]" in user_prompt
-    assert "[Active reviewed behavioral guidance]" in user_prompt
+    assert "[Active reviewed behavioral guidance]" not in user_prompt
     assert "Today's activity packet" in user_prompt
     assert "- compact packet line" in user_prompt
 
 
-def test_journal_prompt_includes_active_behavioral_guidance(reflection_env):
+def test_journal_prompt_omits_active_behavioral_guidance(reflection_env):
     journal = reflection_env["journal"]
     messages = journal.build_reflection_journal_messages(
         selection={"local_date": "2026-05-08", "selection_mode": "date"},
@@ -232,8 +232,9 @@ def test_journal_prompt_includes_active_behavioral_guidance(reflection_env):
     )
 
     user_prompt = messages[1]["content"]
-    assert "[Reviewed Behavioral Guidance]" in user_prompt
-    assert "- Speak plainly." in user_prompt
+    assert "[Active reviewed behavioral guidance]" not in user_prompt
+    assert "[Reviewed Behavioral Guidance]" not in user_prompt
+    assert "- Speak plainly." not in user_prompt
 
 
 def test_journal_prompt_omits_old_compliance_heavy_wording(reflection_env):

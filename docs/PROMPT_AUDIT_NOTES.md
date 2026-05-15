@@ -30,15 +30,19 @@ This file records human review decisions for entries found in `docs/PROMPT_INVEN
   - Decision: keep
   - Reason: Clear operational failure text; not identity-shaping. Prefer plain error/fallback language over stylized entity voice for failure cases.
 
+- `tir/engine/context.py` — `BEHAVIORAL_GUIDANCE_DORMANT_STATUS`
+  - Decision: keep
+  - Reason: Debug/status marker only; records that behavioral guidance runtime loading is dormant before go-live.
+
 ## Reviewed — Changed
 
 - `tir/behavioral_guidance/review.py` — system prompt
   - Decision: loosened
   - Reason: Removed Project Anam/personality/persona-heavy wording while preserving strict JSON task constraints.
 
-- `tir/engine/context.py` — `BEHAVIORAL_GUIDANCE_LABEL`
-  - Decision: loosened
-  - Reason: Removed defensive identity/personality wording while preserving source and precedence.
+- `tir/engine/context.py` — behavioral guidance runtime label
+  - Decision: retired
+  - Reason: The label was removed from runtime prompt construction when behavioral guidance runtime loading became dormant before go-live.
 
 - `tir/engine/context.py` — current/autonomous situation labels
   - Decision: loosened
@@ -47,3 +51,7 @@ This file records human review decisions for entries found in `docs/PROMPT_INVEN
 - `tir/tools/registry.py` — “memory may inform but not replace”
   - Decision: loosened/clarified
   - Reason: Preserves live-source boundary while using clearer source-framing language.
+
+- `tir/engine/context.py` — behavioral guidance runtime label/loading
+  - Decision: removed from runtime prompt construction
+  - Reason: Behavioral guidance is dormant before go-live; runtime-loaded behavioral guidance was judged too prescriptive for the emergence goal.

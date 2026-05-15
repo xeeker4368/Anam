@@ -681,7 +681,7 @@ def cmd_behavioral_guidance_review_day(args):
 
 
 def cmd_behavioral_guidance_proposal_apply(args):
-    """Apply an approved addition proposal to BEHAVIORAL_GUIDANCE.md."""
+    """Report that behavioral guidance application is dormant before go-live."""
     try:
         if args.write:
             result = apply_behavioral_guidance_proposal(
@@ -696,6 +696,7 @@ def cmd_behavioral_guidance_proposal_apply(args):
         plan = plan_behavioral_guidance_apply(args.proposal_id)
     except BehavioralGuidanceApplyError as exc:
         print(f"Behavioral guidance proposal apply failed: {exc}")
+        print(f"proposal_id={args.proposal_id}")
         sys.exit(1)
 
     print("Behavioral guidance proposal apply dry-run")
@@ -1141,12 +1142,12 @@ def main():
     # behavioral-guidance-proposal-apply
     p = sub.add_parser(
         "behavioral-guidance-proposal-apply",
-        help="Apply an approved addition proposal to BEHAVIORAL_GUIDANCE.md",
+        help="Dormant before go-live; does not apply guidance to runtime context",
     )
     p.add_argument("proposal_id", help="Behavioral guidance proposal ID")
     mode = p.add_mutually_exclusive_group()
-    mode.add_argument("--dry-run", action="store_true", help="Show append block without writing")
-    mode.add_argument("--write", action="store_true", help="Append guidance and mark applied")
+    mode.add_argument("--dry-run", action="store_true", help="Report dormant status without writing")
+    mode.add_argument("--write", action="store_true", help="Fail clearly; behavioral guidance is dormant")
     p.add_argument("--applied-by-user-id", default=None, help="Applying admin user ID")
     p.add_argument("--apply-note", default=None, help="Application note")
 

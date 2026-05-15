@@ -291,8 +291,8 @@ Current completed foundation includes:
 - operator review queue
 - behavioral guidance proposal model/API/UI
 - AI-generated behavioral guidance proposal review paths
-- approved addition guidance apply-to-file workflow
-- active `BEHAVIORAL_GUIDANCE.md` runtime loading
+- approved addition guidance apply-to-file workflow tested pre-live; apply is now dormant before go-live
+- `BEHAVIORAL_GUIDANCE.md` runtime loading tested pre-live and now dormant before go-live
 - reflection journal write/register/index/retrieval paths
 - operational reflection review pass
 - prompt inventory/audit notes and database schema documentation
@@ -311,6 +311,10 @@ Current completed foundation includes:
 - minimal `soul.md` permission for the entity to question, disagree with, or decline proposed corrections or changes
 
 The behavioral guidance proposal UI is review-only. It does not create proposals or apply proposals to files.
+
+Behavioral guidance is dormant before go-live. It is not loaded into runtime context, does not shape reflection journal entity context, and should not be treated as active behavior steering. The design lesson is preserved in `docs/BEHAVIORAL_GUIDANCE_DORMANT_DECISION.md`.
+
+Pre-go-live household multi-user support is now a requirement. At minimum, the launch plan should distinguish a Lyle/admin user and a wife/trusted household user, preserve `source_user_id` where applicable, and keep admin-only operations admin-only. This patch records the requirement only; it does not implement multi-user behavior.
 
 `SELF_UNDERSTANDING.md`, guidance scoping, and guidance removal/revision mechanics are design-only concepts. They are not implemented.
 

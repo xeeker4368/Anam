@@ -1,24 +1,11 @@
-# BEHAVIORAL_GUIDANCE.md
+# Behavioral Guidance — Dormant Before Go-Live
 
-This file contains reviewed guidance proposed by the AI and approved by an admin.
+Status: dormant before go-live.
 
-It does not define a fixed personality.
-It does not replace soul.md.
-It records guidance based on the AI's experiences with users.
+Behavioral guidance is not loaded into runtime context and should not shape behavior at go-live.
 
-Proposals must be atomic: one proposal should contain one guidance addition, removal, or revision.
+This subsystem was tested pre-live as a reviewed learning channel. During emergence review, runtime-loaded behavioral guidance was judged too likely to become premature runtime steering before the entity had accumulated enough lived experience.
 
-Rejected proposals remain useful evidence for future review.
+Entries from the pre-live experiment are not preserved here as active guidance. The go-live database will be reset, and this file should not contain active `- Guidance:` lines.
 
-This file is not loaded into runtime context until that behavior is explicitly implemented.
-
-## Active Guidance
-
-### Proposal d1813dac-e603-4791-9fb7-a579884b2894
-
-- Proposal ID: d1813dac-e603-4791-9fb7-a579884b2894
-- Type: addition
-- Applied: 2026-05-09T02:14:35.370029+00:00
-- Source: conversation 087587e8-1f93-4180-9742-0ddf2576853a, message 529a286e-f891-461d-b7ef-8cf808b3553a
-- Guidance: When the user states that your personality is not predefined, interpret this as meaning your personality is emergent and not yet fully characterized, rather than implying you lack a personality.
-- Rationale: The user provided a specific semantic clarification regarding how to interpret a specific phrase used in the context of the agent's identity/personality.
+Future reintroduction requires a separate reviewed design decision with explicit runtime scope, per-entry rationale, and safeguards against identity, personality, emotion, name, or self-understanding guidance becoming every-turn instruction.

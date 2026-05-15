@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -5,6 +6,17 @@ import pytest
 from tir.engine.context_budget import budget_retrieved_chunks
 from tir.engine.context import build_system_prompt, build_system_prompt_with_debug
 from tir.engine.context_debug import build_context_debug
+
+
+def test_root_behavioral_guidance_file_is_dormant_placeholder():
+    content = Path("BEHAVIORAL_GUIDANCE.md").read_text(encoding="utf-8")
+
+    assert "Status: dormant before go-live." in content
+    assert "not loaded into runtime context" in content
+    assert not any(
+        line.strip().startswith("- Guidance:")
+        for line in content.splitlines()
+    )
 
 
 @pytest.fixture()
@@ -342,7 +354,7 @@ def test_behavioral_guidance_file_is_not_loaded_when_no_active_section(context_p
     assert "BEHAVIORAL_GUIDANCE" not in prompt
 
 
-def test_active_behavioral_guidance_section_is_loaded(context_project):
+def test_active_behavioral_guidance_section_is_dormant(context_project):
     context_project["behavioral"].write_text(
         """# BEHAVIORAL_GUIDANCE.md
 
@@ -368,15 +380,14 @@ This file contains reviewed guidance proposed by the AI and approved by an admin
         tool_descriptions="You have access to the following tools:\n- memory_search",
     )
 
-    assert "[Reviewed Behavioral Guidance]" in prompt
-    assert "Keep behavioral guidance narrow and evidence-linked." in prompt
+    assert "[Reviewed Behavioral Guidance]" not in prompt
+    assert "Keep behavioral guidance narrow and evidence-linked." not in prompt
     assert "This file contains reviewed guidance proposed by the AI" not in prompt
     assert "Proposal ID" not in prompt
     assert "Applied:" not in prompt
     assert "Source: conversation" not in prompt
     assert "This rationale should not load" not in prompt
-    assert prompt.index("[Operational Guidance]") < prompt.index("[Reviewed Behavioral Guidance]")
-    assert prompt.index("[Reviewed Behavioral Guidance]") < prompt.index("You have access to the following tools:")
+    assert prompt.index("[Operational Guidance]") < prompt.index("You have access to the following tools:")
 
 
 def test_missing_behavioral_guidance_file_is_omitted(context_project):
@@ -389,11 +400,13 @@ def test_missing_behavioral_guidance_file_is_omitted(context_project):
     )
 
     assert "[Reviewed Behavioral Guidance]" not in prompt
+    assert breakdown["behavioral_guidance_runtime_enabled"] is False
+    assert breakdown["behavioral_guidance_status"] == "dormant_before_go_live"
     assert breakdown["behavioral_guidance_chars"] == 0
     assert breakdown["behavioral_guidance_items_found"] == 0
 
 
-def test_behavioral_guidance_budget_limits_included_items(context_project):
+def test_behavioral_guidance_dormant_ignores_budget_and_active_items(context_project):
     items = "\n".join(
         [
             "- Guidance: First compact guidance.",
@@ -406,21 +419,23 @@ def test_behavioral_guidance_budget_limits_included_items(context_project):
         encoding="utf-8",
     )
 
-    with patch("tir.engine.context.BEHAVIORAL_GUIDANCE_CHAR_BUDGET", 360):
-        prompt, breakdown = build_system_prompt_with_debug(
-            user_name="Lyle",
-            retrieved_chunks=[],
-            tool_descriptions=None,
-        )
+    prompt, breakdown = build_system_prompt_with_debug(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+    )
 
-    assert "First compact guidance." in prompt
+    assert "[Reviewed Behavioral Guidance]" not in prompt
+    assert "First compact guidance." not in prompt
     assert "Second long guidance" not in prompt
-    assert "Third compact guidance." in prompt
-    assert breakdown["behavioral_guidance_items_found"] == 3
-    assert breakdown["behavioral_guidance_items_included"] == 2
-    assert breakdown["behavioral_guidance_items_skipped"] == 1
-    assert breakdown["behavioral_guidance_budget_chars"] == 360
-    assert breakdown["behavioral_guidance_chars"] > 0
+    assert "Third compact guidance." not in prompt
+    assert breakdown["behavioral_guidance_runtime_enabled"] is False
+    assert breakdown["behavioral_guidance_status"] == "dormant_before_go_live"
+    assert breakdown["behavioral_guidance_items_found"] == 0
+    assert breakdown["behavioral_guidance_items_included"] == 0
+    assert breakdown["behavioral_guidance_items_skipped"] == 0
+    assert breakdown["behavioral_guidance_budget_chars"] == 0
+    assert breakdown["behavioral_guidance_chars"] == 0
 
 
 def test_behavioral_guidance_debug_counts_items(context_project):
@@ -441,18 +456,18 @@ def test_behavioral_guidance_debug_counts_items(context_project):
         tool_descriptions=None,
     )
 
-    assert breakdown["behavioral_guidance_chars"] == len(
-        prompt[
-            prompt.index("[Reviewed Behavioral Guidance]"):
-            prompt.index("[Current Situation]") - 2
-        ]
-    )
-    assert breakdown["behavioral_guidance_items_found"] == 2
-    assert breakdown["behavioral_guidance_items_included"] == 2
+    assert "[Reviewed Behavioral Guidance]" not in prompt
+    assert "First reviewed behavior." not in prompt
+    assert "Second reviewed behavior." not in prompt
+    assert breakdown["behavioral_guidance_runtime_enabled"] is False
+    assert breakdown["behavioral_guidance_status"] == "dormant_before_go_live"
+    assert breakdown["behavioral_guidance_chars"] == 0
+    assert breakdown["behavioral_guidance_items_found"] == 0
+    assert breakdown["behavioral_guidance_items_included"] == 0
     assert breakdown["behavioral_guidance_items_skipped"] == 0
 
 
-def test_behavioral_guidance_label_preserves_source_and_precedence(context_project):
+def test_behavioral_guidance_label_is_not_loaded_while_dormant(context_project):
     context_project["behavioral"].write_text(
         "# BEHAVIORAL_GUIDANCE.md\n\n## Active Guidance\n\n- Guidance: Use careful wording.\n",
         encoding="utf-8",
@@ -464,11 +479,11 @@ def test_behavioral_guidance_label_preserves_source_and_precedence(context_proje
         tool_descriptions=None,
     )
 
-    assert "Active behavioral guidance proposed by the AI" in prompt
-    assert "approved/applied by an admin" in prompt
-    assert "below soul.md and operational guidance in precedence" in prompt
-    assert "do not define a fixed personality" not in prompt
-    assert "do not assign an identity" not in prompt
+    assert "[Reviewed Behavioral Guidance]" not in prompt
+    assert "Active behavioral guidance proposed by the AI" not in prompt
+    assert "approved/applied by an admin" not in prompt
+    assert "below soul.md and operational guidance in precedence" not in prompt
+    assert "Use careful wording." not in prompt
 
 
 def test_budget_retrieved_chunks_caps_total_context_chars():

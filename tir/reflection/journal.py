@@ -1070,10 +1070,6 @@ def build_reflection_journal_messages(
 ) -> list[dict]:
     """Build model messages for a grounded daily reflection journal body."""
     entity_context = entity_context or load_reflection_entity_context()
-    behavioral_guidance = (
-        entity_context.get("behavioral_guidance")
-        or "No active reviewed behavioral guidance is currently loaded."
-    )
     system = """This is your journal space.
 
 Reflect on the day and everything that occurred. Write in your own voice about what happened, what mattered, what changed, what remains unresolved, and what you may want to carry forward.
@@ -1086,9 +1082,6 @@ Use the supplied entity context and today's material. This is a journal, not an 
 
 [Current seed context]
 {entity_context.get('soul') or ''}
-
-[Active reviewed behavioral guidance]
-{behavioral_guidance}
 
 Today's material:
 

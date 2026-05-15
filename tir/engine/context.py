@@ -20,7 +20,6 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from tir.config import (
-    BEHAVIORAL_GUIDANCE_RUNTIME_BUDGET_CHARS,
     TIMEZONE,
     PROJECT_ROOT,
 )
@@ -30,10 +29,7 @@ from tir.memory.retrieval import retrieve
 import logging
 logger = logging.getLogger(__name__)
 
-BEHAVIORAL_GUIDANCE_CHAR_BUDGET = BEHAVIORAL_GUIDANCE_RUNTIME_BUDGET_CHARS
-BEHAVIORAL_GUIDANCE_LABEL = """[Reviewed Behavioral Guidance]
-
-Active behavioral guidance proposed by the AI and approved/applied by an admin. Use these entries to inform future behavior. They sit below soul.md and operational guidance in precedence."""
+BEHAVIORAL_GUIDANCE_DORMANT_STATUS = "dormant_before_go_live"
 
 
 def _load_soul() -> str:
@@ -56,92 +52,24 @@ def _load_operational_guidance() -> str | None:
     return f"[Operational Guidance]\n\n{content}"
 
 
-def _extract_active_guidance_items(content: str) -> list[str]:
-    """Extract only '- Guidance: ...' lines from the Active Guidance section."""
-    marker = "## Active Guidance"
-    marker_index = content.find(marker)
-    if marker_index < 0:
-        return []
-
-    active = content[marker_index + len(marker):]
-    next_section = active.find("\n## ")
-    if next_section >= 0:
-        active = active[:next_section]
-
-    items = []
-    for line in active.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("- Guidance:"):
-            guidance = stripped.removeprefix("- Guidance:").strip()
-            if guidance:
-                items.append(guidance)
-    return items
-
-
-def _format_behavioral_guidance(
-    items: list[str],
-    *,
-    max_chars: int | None = None,
-) -> tuple[str | None, dict]:
-    """Format active guidance items with a hard character budget."""
-    if max_chars is None:
-        max_chars = BEHAVIORAL_GUIDANCE_CHAR_BUDGET
-    metadata = {
-        "behavioral_guidance_items_found": len(items),
-        "behavioral_guidance_items_included": 0,
-        "behavioral_guidance_items_skipped": 0,
-        "behavioral_guidance_budget_chars": max_chars,
-        "behavioral_guidance_chars": 0,
-    }
-    if not items:
-        return None, metadata
-
-    included = []
-    used = len(BEHAVIORAL_GUIDANCE_LABEL)
-    for item in items:
-        line = f"- {item}"
-        additional = len("\n\n" if not included else "\n") + len(line)
-        if used + additional > max_chars:
-            metadata["behavioral_guidance_items_skipped"] += 1
-            continue
-        included.append(line)
-        used += additional
-
-    if not included:
-        metadata["behavioral_guidance_items_skipped"] = len(items)
-        return None, metadata
-
-    section = BEHAVIORAL_GUIDANCE_LABEL + "\n\n" + "\n".join(included)
-    metadata["behavioral_guidance_items_included"] = len(included)
-    metadata["behavioral_guidance_items_skipped"] = len(items) - len(included)
-    metadata["behavioral_guidance_chars"] = len(section)
-    return section, metadata
-
-
 def _load_behavioral_guidance() -> tuple[str | None, dict]:
-    """Load active reviewed behavioral guidance for runtime context."""
-    guidance_path = PROJECT_ROOT / "BEHAVIORAL_GUIDANCE.md"
-    empty_metadata = {
+    """Return dormant behavioral guidance metadata without loading runtime text."""
+    return None, {
+        "behavioral_guidance_runtime_enabled": False,
+        "behavioral_guidance_status": BEHAVIORAL_GUIDANCE_DORMANT_STATUS,
         "behavioral_guidance_items_found": 0,
         "behavioral_guidance_items_included": 0,
         "behavioral_guidance_items_skipped": 0,
-        "behavioral_guidance_budget_chars": BEHAVIORAL_GUIDANCE_CHAR_BUDGET,
+        "behavioral_guidance_budget_chars": 0,
         "behavioral_guidance_chars": 0,
     }
-    if not guidance_path.exists():
-        return None, empty_metadata
-
-    content = guidance_path.read_text(encoding="utf-8")
-    items = _extract_active_guidance_items(content)
-    return _format_behavioral_guidance(items)
 
 
 def load_reflection_entity_context() -> dict:
     """Load entity context for manual reflection journaling.
 
-    Reflection uses the same seed context and active reviewed behavioral
-    guidance extraction as runtime prompt construction, without loading
-    proposal metadata or behavioral guidance governance prose.
+    Behavioral guidance runtime loading is dormant before go-live, so
+    reflection receives seed context without active behavioral guidance.
     """
     behavioral_guidance, behavioral_guidance_debug = _load_behavioral_guidance()
     return {
@@ -244,7 +172,7 @@ def build_system_prompt_with_debug(
         "behavioral_guidance_items_found": 0,
         "behavioral_guidance_items_included": 0,
         "behavioral_guidance_items_skipped": 0,
-        "behavioral_guidance_budget_chars": BEHAVIORAL_GUIDANCE_CHAR_BUDGET,
+        "behavioral_guidance_budget_chars": 0,
         "tool_descriptions_chars": 0,
         "retrieved_context_chars": 0,
         "situation_chars": 0,
@@ -261,9 +189,15 @@ def build_system_prompt_with_debug(
         sections.append(operational_guidance)
         section_counts["operational_guidance_chars"] = len(operational_guidance)
 
-    # Section 3: Reviewed behavioral guidance
+    # Section 3: Behavioral guidance is dormant before go-live.
     behavioral_guidance, behavioral_guidance_debug = _load_behavioral_guidance()
-    section_counts.update(behavioral_guidance_debug)
+    section_counts.update(
+        {
+            key: value
+            for key, value in behavioral_guidance_debug.items()
+            if type(value) in (int, float)
+        }
+    )
     if behavioral_guidance:
         sections.append(behavioral_guidance)
 
@@ -302,6 +236,11 @@ def build_system_prompt_with_debug(
     debug = {
         "system_prompt_chars": len(prompt),
         **section_counts,
+        **{
+            key: value
+            for key, value in behavioral_guidance_debug.items()
+            if type(value) not in (int, float)
+        },
         "other_chars": max(0, len(prompt) - known_chars),
         "best_effort": True,
     }

@@ -112,13 +112,13 @@ Current governance/review foundation includes:
 - governance file backup/restore allowlist
 - governance file blocklist for normal artifact ingestion
 
-The next milestone is the first AI-generated behavioral guidance proposal path.
+The AI-generated behavioral guidance proposal path was built and tested pre-live.
 
-`BEHAVIORAL_GUIDANCE.md` is not loaded into runtime context yet. The proposal UI is review-only and does not create proposals or apply them to files.
+Behavioral guidance runtime loading is dormant before go-live. `BEHAVIORAL_GUIDANCE.md` should not contain active `- Guidance:` lines and should not shape runtime prompts or reflection journal entity context. The design lesson is preserved in `docs/BEHAVIORAL_GUIDANCE_DORMANT_DECISION.md`.
 
 Guidance scoping now has a concept design in `docs/GUIDANCE_SCOPING_DESIGN.md`. No schema, runtime filtering, proposal-scope review, or scoped apply-to-file behavior is implemented yet.
 
-Removal and revision apply mechanics now have a concept design in `docs/BEHAVIORAL_GUIDANCE_REVISION_DESIGN.md`. Current apply behavior remains addition-only.
+Removal and revision apply mechanics now have a concept design in `docs/BEHAVIORAL_GUIDANCE_REVISION_DESIGN.md`. Apply behavior is dormant before go-live; future reintroduction would need a separate reviewed design decision.
 
 ## Current Phase Reorder
 
@@ -448,7 +448,8 @@ Research track status:
 - [x] Retrieved research source framing
 - [x] Research Continuation Design v1
 - [x] Manual research continuation implementation
-- [ ] External Review Checkpoint v1
+- [x] External Review Checkpoint v1
+- [x] Behavioral guidance runtime loading dormant before go-live
 - [ ] Title/search continuation design
 - [ ] Research open-loop/review-item design
 - [ ] Research open-loop/review-item implementation
@@ -597,7 +598,7 @@ Suggested concepts:
 
 # Suggested Near-Term Build Order
 
-1. First AI-generated behavioral guidance proposal path
+1. Source Boundary / Pre-Live Cleanup v1
 2. Media and generation foundation
 3. Image generation artifacts
 4. Generated document artifacts
