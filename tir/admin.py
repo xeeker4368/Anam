@@ -37,6 +37,8 @@ Commands:
     operational-reflection-day
                     Review operational/system activity for review candidates
     research-run     Generate a manual provisional research note
+    research-open-loop-next
+                    Preview the next eligible bounded research open loop
 """
 
 import argparse
@@ -97,6 +99,7 @@ from tir.research.open_loops import (
     create_research_open_loops,
     preview_research_open_loops,
 )
+from tir.research.bounded import plan_next_bounded_research_open_loop
 
 
 def cmd_init_db(args):
@@ -943,6 +946,76 @@ def cmd_research_open_loops_create(args):
     _print_research_open_loop_result(result, include_created=True)
 
 
+def _print_bounded_research_open_loop_plan(result: dict, *, limit: int = 5) -> None:
+    detail_limit = max(0, limit)
+    print("Bounded research open-loop planner dry run")
+    print(f"current_local_date={result['current_local_date']}")
+    print(f"total_open_loops_evaluated={result['total_count']}")
+    print(f"eligible_count={result['eligible_count']}")
+    print(f"skipped_count={result['skipped_count']}")
+    global_cap = result.get("global_daily_cap") or {}
+    print(f"global_daily_cap_enforced={str(global_cap.get('enforced') is True).lower()}")
+    if global_cap.get("reason"):
+        print(f"global_daily_cap_note={global_cap['reason']}")
+
+    selected = result.get("selected")
+    if selected is None:
+        print("No eligible bounded research open loops found.")
+    else:
+        loop = selected["open_loop"]
+        print("Selected recommended open loop:")
+        print(f"selected_open_loop_id={loop['open_loop_id']}")
+        print(f"title={loop['title']}")
+        if selected.get("question"):
+            print(f"question={selected['question']}")
+        print(f"priority={loop['priority']}")
+        print(f"next_action={loop.get('next_action') or ''}")
+        print(
+            "daily_iterations="
+            f"{selected['effective_daily_iteration_count']}/{selected['daily_iteration_limit']}"
+        )
+        print(f"selection_reason={selected['selection_reason']}")
+        if selected.get("source_artifact_id"):
+            print(f"source_artifact_id={selected['source_artifact_id']}")
+        if selected.get("source_research_title"):
+            print(f"source_research_title={selected['source_research_title']}")
+        if selected.get("source_research_date"):
+            print(f"source_research_date={selected['source_research_date']}")
+        if selected.get("source_research_path"):
+            print(f"source_research_path={selected['source_research_path']}")
+
+    print("Eligible candidates:")
+    if result.get("eligible"):
+        for index, evaluation in enumerate(result["eligible"][:detail_limit], start=1):
+            loop = evaluation["open_loop"]
+            print(
+                f"eligible {index} open_loop_id={loop['open_loop_id']} "
+                f"priority={loop['priority']} "
+                f"daily_iterations={evaluation['effective_daily_iteration_count']}/"
+                f"{evaluation['daily_iteration_limit']} "
+                f"title={loop['title']}"
+            )
+    else:
+        print("  none")
+
+    print("Skipped by reason:")
+    skipped_counts = result.get("skipped_count_by_reason") or {}
+    if skipped_counts:
+        for reason_code, count in skipped_counts.items():
+            print(f"skipped_reason {reason_code}={count}")
+    else:
+        print("  none")
+
+
+def cmd_research_open_loop_next(args):
+    """Preview the next eligible manual bounded research open loop."""
+    if not args.dry_run:
+        print("research-open-loop-next currently supports --dry-run only")
+        sys.exit(1)
+    result = plan_next_bounded_research_open_loop()
+    _print_bounded_research_open_loop_plan(result, limit=args.limit)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -1164,6 +1237,14 @@ def main():
     )
     p.add_argument("--artifact-id", required=True, help="Registered research artifact ID")
 
+    # research-open-loop-next
+    p = sub.add_parser(
+        "research-open-loop-next",
+        help="Preview the next eligible bounded research open loop",
+    )
+    p.add_argument("--dry-run", action="store_true", help="Preview without writing")
+    p.add_argument("--limit", type=int, default=5, help="Max eligible candidate rows to print")
+
     # behavioral-guidance-review-conversation
     p = sub.add_parser(
         "behavioral-guidance-review-conversation",
@@ -1267,6 +1348,7 @@ def main():
         "research-run": cmd_research_run,
         "research-open-loops-preview": cmd_research_open_loops_preview,
         "research-open-loops-create": cmd_research_open_loops_create,
+        "research-open-loop-next": cmd_research_open_loop_next,
     }
 
     commands[args.command](args)

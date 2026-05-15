@@ -496,6 +496,115 @@ def test_research_open_loops_preview_admin_errors_are_clear(temp_admin, capsys, 
     assert "Research open-loop preview failed: Research artifact not found: missing" in output
 
 
+def test_research_open_loop_next_admin_prints_selected_and_skipped_summary(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_plan():
+        return {
+            "current_local_date": "2026-05-15",
+            "total_count": 2,
+            "eligible_count": 1,
+            "skipped_count": 1,
+            "global_daily_cap": {
+                "enforced": False,
+                "reason": "global daily research cap is deferred in planner v1",
+            },
+            "selected": {
+                "open_loop": {
+                    "open_loop_id": "loop-1",
+                    "title": "What remains unresolved?",
+                    "priority": "high",
+                    "next_action": "Investigate the unresolved question",
+                },
+                "question": "What remains unresolved?",
+                "effective_daily_iteration_count": 0,
+                "daily_iteration_limit": 1,
+                "selection_reason": "highest_ranked_eligible_loop",
+                "source_artifact_id": "artifact-1",
+                "source_research_title": "Prior Research",
+                "source_research_date": "2026-05-14",
+                "source_research_path": "research/prior.md",
+            },
+            "eligible": [
+                {
+                    "open_loop": {
+                        "open_loop_id": "loop-1",
+                        "title": "What remains unresolved?",
+                        "priority": "high",
+                    },
+                    "effective_daily_iteration_count": 0,
+                    "daily_iteration_limit": 1,
+                }
+            ],
+            "skipped": [],
+            "skipped_count_by_reason": {
+                "ready_for_synthesis": 1,
+            },
+        }
+
+    monkeypatch.setattr(admin_mod, "plan_next_bounded_research_open_loop", fake_plan)
+
+    admin_mod.cmd_research_open_loop_next(SimpleNamespace(dry_run=True, limit=5))
+
+    output = capsys.readouterr().out
+    assert "Bounded research open-loop planner dry run" in output
+    assert "selected_open_loop_id=loop-1" in output
+    assert "question=What remains unresolved?" in output
+    assert "daily_iterations=0/1" in output
+    assert "eligible_count=1" in output
+    assert "skipped_reason ready_for_synthesis=1" in output
+
+
+def test_research_open_loop_next_admin_prints_no_eligible_message(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_plan():
+        return {
+            "current_local_date": "2026-05-15",
+            "total_count": 1,
+            "eligible_count": 0,
+            "skipped_count": 1,
+            "global_daily_cap": {
+                "enforced": False,
+                "reason": "global daily research cap is deferred in planner v1",
+            },
+            "selected": None,
+            "eligible": [],
+            "skipped": [],
+            "skipped_count_by_reason": {
+                "daily_limit_reached": 1,
+            },
+        }
+
+    monkeypatch.setattr(admin_mod, "plan_next_bounded_research_open_loop", fake_plan)
+
+    admin_mod.cmd_research_open_loop_next(SimpleNamespace(dry_run=True, limit=5))
+
+    output = capsys.readouterr().out
+    assert "No eligible bounded research open loops found." in output
+    assert "eligible_count=0" in output
+    assert "skipped_reason daily_limit_reached=1" in output
+
+
+def test_research_open_loop_next_without_dry_run_fails_cleanly(temp_admin, capsys):
+    _db_mod, admin_mod = temp_admin
+
+    with pytest.raises(SystemExit) as exc:
+        admin_mod.cmd_research_open_loop_next(SimpleNamespace(dry_run=False, limit=5))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert "research-open-loop-next currently supports --dry-run only" in output
+
+
 def test_reflection_journal_day_admin_passes_include_memory(temp_admin, capsys, monkeypatch):
     _db_mod, admin_mod = temp_admin
 
