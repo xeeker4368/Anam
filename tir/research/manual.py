@@ -271,7 +271,7 @@ Return Markdown body sections only, using exactly these headings:
 ## Suggested Review Items
 ## Working Notes
 
-Frame findings as provisional working notes. For Sources, state that this is a model-only draft and no external sources were collected."""
+Frame findings as provisional working notes. It is valid to report no useful findings, no open questions, no suggested follow-ups, or no suggested review items when that is the honest result. For Sources, state that this is a model-only draft and no external sources were collected."""
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
@@ -323,7 +323,7 @@ Return Markdown body sections only, using exactly these headings:
 ## Suggested Review Items
 ## Working Notes
 
-Frame findings as provisional working notes. Distinguish what the prior note said from updated findings. For Sources, state that this is a model-only draft plus prior provisional research note and no external sources were collected."""
+Frame findings as provisional working notes. Distinguish what the prior note said from updated findings. It is valid to report no useful updated findings, no new open questions, no suggested follow-ups, or no suggested review items when that is the honest result. For Sources, state that this is a model-only draft plus prior provisional research note and no external sources were collected."""
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},

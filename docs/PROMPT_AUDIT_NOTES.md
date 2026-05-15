@@ -63,3 +63,11 @@ This file records human review decisions for entries found in `docs/PROMPT_INVEN
 - `OPERATIONAL_GUIDANCE.md` — runtime operational guidance
   - Decision: compressed
   - Reason: Reduced runtime prescription and response-style shaping while preserving source/tool/action safety, live-source boundaries, tool honesty, failure honesty, and uncertainty handling.
+
+- `tir/reflection/journal.py` — journal prompt low-signal allowance
+  - Decision: loosened
+  - Reason: Quiet days and low-signal sections are explicitly valid, reducing pressure to invent significance while preserving journal structure.
+
+- `tir/research/manual.py` — manual research prompt low-signal allowance
+  - Decision: loosened
+  - Reason: Research notes and continuations may honestly report no useful findings, no open questions, no follow-ups, or no review items while preserving provenance and required artifact structure.

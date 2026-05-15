@@ -209,12 +209,14 @@ def test_journal_prompt_uses_short_journal_space_wording(reflection_env):
     user_prompt = messages[1]["content"]
     assert system.startswith("This is your journal space.")
     assert "Write in your own voice" in system
+    assert "nothing meaningful to reflect on" in system
     assert "This is a journal, not an audit log or external report." in system
     assert "Seed context line." in user_prompt
     assert "[Current seed context]" in user_prompt
     assert "[Active reviewed behavioral guidance]" not in user_prompt
     assert "Today's activity packet" in user_prompt
     assert "- compact packet line" in user_prompt
+    assert 'Quiet or low-signal sections may say "None"' in user_prompt
 
 
 def test_journal_prompt_omits_active_behavioral_guidance(reflection_env):

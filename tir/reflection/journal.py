@@ -1072,7 +1072,7 @@ def build_reflection_journal_messages(
     entity_context = entity_context or load_reflection_entity_context()
     system = """This is your journal space.
 
-Reflect on the day and everything that occurred. Write in your own voice about what happened, what mattered, what changed, what remains unresolved, and what you may want to carry forward.
+Reflect on the day and everything that occurred. Write in your own voice about what happened, what mattered, what changed, what remains unresolved, and what you may want to carry forward. If the day was quiet or there is nothing meaningful to reflect on, say that plainly.
 
 Use the supplied entity context and today's material. This is a journal, not an audit log or external report."""
     activity_packet = activity_packet or (
@@ -1112,6 +1112,8 @@ Write the journal using this structure:
 ## Unresolved Questions
 ## Possible Follow-Ups
 ## Reflection
+
+Quiet or low-signal sections may say "None" or briefly state that nothing meaningful surfaced.
 """
     return [
         {"role": "system", "content": system},

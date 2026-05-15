@@ -103,6 +103,39 @@ def _init_research_db(tmp_path, monkeypatch):
     return db_mod, artifacts_mod
 
 
+def test_manual_research_prompt_allows_no_useful_findings():
+    messages = manual.build_manual_research_messages(
+        title="Quiet Research",
+        question="Is there anything useful here?",
+        scope="Check whether the prompt forces findings.",
+    )
+    prompt_text = "\n\n".join(message["content"] for message in messages)
+
+    assert "no useful findings" in prompt_text
+    assert "no open questions" in prompt_text
+    assert "no suggested follow-ups" in prompt_text
+    assert "no suggested review items" in prompt_text
+
+
+def test_manual_research_continuation_prompt_allows_no_new_findings():
+    messages = manual.build_manual_research_continuation_messages(
+        title="Quiet Continuation",
+        question="Did anything change?",
+        scope="Continue prior provisional research.",
+        continuation={
+            "continued_from": "prior note",
+            "registered": False,
+            "content": "# Research Note — Prior\n\n## Findings\n\n- Nothing firm.\n",
+        },
+    )
+    prompt_text = "\n\n".join(message["content"] for message in messages)
+
+    assert "no useful updated findings" in prompt_text
+    assert "no new open questions" in prompt_text
+    assert "no suggested follow-ups" in prompt_text
+    assert "no suggested review items" in prompt_text
+
+
 def _create_research_artifact(
     artifacts_mod,
     tmp_path,
