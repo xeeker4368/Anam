@@ -2,13 +2,13 @@
 
 ## Current Recommended Task
 
-Research Open-Loop / Review-Item Design v1.
+Research Open-Loop Runtime v1.
 
 ## Task Goal
 
-Design how manual research note `Open Questions`, `Possible Follow-Ups`, and `Suggested Review Items` sections may later create durable open-loop or review-item records through explicit operator action.
+Implement explicit, preview-first research open-loop creation from registered manual research artifacts.
 
-This is a design task. It should not add runtime code, database schema changes, web source collection, autonomous research, scheduler behavior, automatic record creation, retrieval ranking changes, or promotion of research into truth, behavioral guidance, self-understanding, or project decisions.
+Open loops should preserve unresolved research questions and follow-up topics without turning research into truth, behavioral guidance, self-understanding, project decisions, review items, or working theories.
 
 ## Current Checkpoint
 
@@ -31,50 +31,54 @@ Recent completed foundation and course-correction work:
 - Prompt inventory and prompt audit pass exist.
 - Database schema documentation exists.
 - Runtime configuration foundation exists with TOML/env overrides and Ollama model options.
-- Single-model global temperature calibration is complete:
-  - committed Anam-owned roles use `gemma4:26b`
-  - `model_options.default.temperature = 0.35`
-  - `think=false` is preserved
-  - `ANAM_MODEL_TEMPERATURE` env override exists
+- Single-model global temperature calibration is complete.
 - External Review Checkpoint v1 exists as documentation/review prep.
 - `SELF_UNDERSTANDING.md` has concept design only; no implementation exists.
 - Guidance scoping and guidance removal/revision mechanics have design docs only.
 - Manual Research Foundation is complete for the first bounded CLI path.
-- Research Continuation Runtime v1 is complete for the manual CLI path. `research-run` can continue from a registered research artifact with `--continue-artifact` or from a constrained Markdown file under `workspace/research/` with `--continue-file`. Continuation creates a new provisional research note, preserves lineage, frames the prior note as provisional context, and never overwrites or mutates the prior note.
+- Research Continuation Runtime v1 is complete for the manual CLI path.
+- Research Open-Loop Design v1 is complete in `docs/RESEARCH_OPEN_LOOP_DESIGN.md`.
 
-Research remains provisional and does not become truth, guidance, self-understanding, project decisions, open loops, or review items automatically.
+Research remains provisional and does not become truth, guidance, self-understanding, project decisions, open loops, review items, or working theories automatically.
 
-## Current Design Scope
+## Current Implementation Scope
 
-Research Open-Loop / Review-Item Design v1 should answer:
+Research Open-Loop Runtime v1 should likely implement:
 
-- How research note `Open Questions`, `Possible Follow-Ups`, and `Suggested Review Items` sections should be interpreted.
-- Whether future record creation should use explicit flags such as `--create-open-loops` and `--create-review-items`.
-- What dry-run preview should show before records are created.
-- How duplicate prevention should work.
-- What source metadata and lineage should be attached to any future records.
-- How to keep research suggestions provisional.
-- How to prevent research outputs from becoming behavioral guidance, project decisions, truth, or self-understanding.
-- How created records should remain traceable to the originating research note or continuation.
-- What should remain deferred.
+- candidate planning/parsing from registered research artifacts
+- dry-run preview for candidates
+- explicit creation command for approved candidates
+- source linkage to the originating research artifact
+- metadata from `docs/RESEARCH_OPEN_LOOP_DESIGN.md`
+- duplicate prevention for obvious duplicates
+- skipped-candidate reporting
+- no Chroma indexing of open loops by default
+
+Prefer standalone commands first so existing research artifacts can be processed without regenerating notes:
+
+```bash
+.pyanam/bin/python -m tir.admin research-open-loops-preview --artifact-id <id>
+.pyanam/bin/python -m tir.admin research-open-loops-create --artifact-id <id>
+```
+
+`research-run --preview-open-loops` and `research-run --write --register-artifact --create-open-loops` may follow if they remain small and preserve existing research-run behavior.
 
 ## Explicitly Deferred
 
-- Runtime implementation for open-loop/review-item creation.
-- DB schema changes.
+- Review-item creation.
+- Working-theory/synthesis records.
+- DB schema changes unless implementation proves existing `metadata_json` is insufficient.
+- Chroma indexing for open loops.
 - Web source collection.
 - Autonomous research loops.
 - Scheduler/background research.
-- Automatic open-loop creation.
+- Automatic open-loop creation without explicit operator action.
 - Automatic review-item creation.
-- Working-theory/proposition promotion.
 - Promotion to truth, behavioral guidance, self-understanding, or project decisions.
 - Value-density scoring.
 - Retrieval ranking changes.
 - Title/search research continuation.
 - Changes to `BEHAVIORAL_GUIDANCE.md`, `SELF_UNDERSTANDING.md`, `OPERATIONAL_GUIDANCE.md`, or `soul.md`.
-- Automatic ingestion of external review outputs as runtime memory authority.
-- Reintroducing behavioral guidance runtime loading.
 - Implementing household multi-user support.
 - Media/image artifact implementation.
 - Moltbook behavior changes.
@@ -88,35 +92,35 @@ Research Open-Loop / Review-Item Design v1 should answer:
 - The AI entity currently has no name.
 - The system must not assign a fixed personality.
 - Drift is not inherently bad.
-- Healthy emergent drift must be distinguished from source confusion, accidental authority, over-prescription, self-reinforcing memory, or brittle rules.
 - Research conclusions are provisional working notes.
-- Behavioral guidance runtime loading is dormant before go-live because it was judged too prescriptive for the emergence goal.
-- Pre-go-live household multi-user support is required but not implemented here: Lyle/admin user, wife/trusted household user, `source_user_id` preservation where applicable, and admin-only operations remaining admin-only.
+- Open loops are unresolved questions, not conclusions or instructions.
+- Behavioral guidance runtime loading must remain dormant.
 - Research artifacts need a clear purpose and consumption path.
-- Research suggestions may become candidate records only through explicit, reviewable operator action.
 - Future record creation must preserve source lineage to the originating research note or continuation.
 - The design must preserve the Anam/entity distinction.
 
 ## Files/Subsystems To Inspect First
 
-- `PROJECT_STATE.md`
-- `DECISIONS.md`
-- `ROADMAP.md`
-- `ACTIVE_TASK.md`
-- `CODING_ASSISTANT_RULES.md`
+- `docs/RESEARCH_OPEN_LOOP_DESIGN.md`
 - `docs/MANUAL_RESEARCH_CYCLE_DESIGN.md`
 - `docs/RESEARCH_CONTINUATION_DESIGN.md`
 - `tir/research/manual.py`
-- existing open-loop and review queue services/tests
+- `tir/open_loops/service.py`
+- `tir/admin.py`
+- `tests/test_manual_research.py`
+- `tests/test_open_loops.py`
+- `tests/test_admin.py`
 
 ## Success Criteria
 
-Research Open-Loop / Review-Item Design v1 should produce a concrete future implementation plan that:
+Research Open-Loop Runtime v1 should:
 
-- keeps research suggestions provisional
-- requires explicit operator flags before creating records
-- includes dry-run previews
-- prevents obvious duplicates
-- preserves source metadata and lineage
-- avoids behavioral guidance, project decision, self-understanding, or truth promotion
-- identifies what should remain deferred
+- preview candidates without writing
+- create records only through explicit operator action
+- require a stable source artifact for durable creation
+- preserve research source lineage
+- keep candidates provisional
+- avoid review-item creation
+- avoid Chroma indexing by default
+- avoid DB schema changes unless clearly necessary
+- keep research notes from becoming truth, guidance, self-understanding, or project decisions

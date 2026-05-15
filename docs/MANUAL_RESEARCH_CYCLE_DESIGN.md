@@ -4,7 +4,9 @@ Status: implemented through the first bounded CLI path. `research-run` can gener
 
 Research continuation now has a design document in `docs/RESEARCH_CONTINUATION_DESIGN.md` and a runtime implementation through `--continue-artifact` and constrained `--continue-file`.
 
-Still deferred: title/search continuation, open-loop/review-item creation, web source collection, working-theory promotion, autonomous research, scheduler behavior, value-density scoring, and any promotion to truth, behavioral guidance, self-understanding, or project decisions.
+Research open loops now have a design document in `docs/RESEARCH_OPEN_LOOP_DESIGN.md`. Runtime open-loop creation remains deferred.
+
+Still deferred: title/search continuation, open-loop runtime creation, review-item creation, web source collection, working-theory promotion, autonomous research, scheduler behavior, value-density scoring, and any promotion to truth, behavioral guidance, self-understanding, or project decisions.
 
 ## Purpose
 
@@ -178,13 +180,17 @@ Research must not directly mutate:
 
 ## Open Loops And Review Items
 
-Open-loop creation should be optional and explicit, likely through `--create-open-loops`.
+Research open-loop design lives in `docs/RESEARCH_OPEN_LOOP_DESIGN.md`.
+
+Open-loop creation should be optional, explicit, and preview-first, likely through `--preview-open-loops` and `--create-open-loops`.
+
+Durable open-loop creation should source-link to a written/registered research artifact.
 
 Review-item creation should be optional and explicit, likely through `--create-review-items`.
 
 Dry-run should print suggested open loops and review items without writing them.
 
-Open loops should represent unresolved questions with concrete next actions.
+Open loops should represent unresolved questions with concrete next actions. They are not conclusions, beliefs, instructions, project decisions, behavioral guidance, self-understanding, or working theories.
 
 Review items should represent conclusions, contradictions, or decisions that need admin attention.
 
@@ -238,9 +244,11 @@ Research can become hidden guidance if findings are injected into runtime prompt
 5. [x] Add research retrieval source framing.
 6. [x] Design research continuation from prior provisional research notes.
 7. [x] Implement manual research continuation from prior provisional research notes.
-8. [ ] Add optional suggested open-loop and review-item creation.
-9. [ ] Add bounded web source collection with explicit `--use-web`.
-10. [ ] Add future working-theory proposal path.
+8. [x] Design research open loops.
+9. [ ] Add optional suggested open-loop creation.
+10. [ ] Design review-item creation separately.
+11. [ ] Add bounded web source collection with explicit `--use-web`.
+12. [ ] Add future working-theory proposal path.
 
 ## Non-Goals For This Patch
 

@@ -459,8 +459,8 @@ Research track status:
 - [x] Manual research continuation implementation
 - [x] External Review Checkpoint v1
 - [x] Behavioral guidance runtime loading dormant before go-live
+- [x] Research open-loop design
 - [ ] Title/search continuation design
-- [ ] Research open-loop/review-item design
 - [ ] Research open-loop/review-item implementation
 - [ ] Web source collection design
 - [ ] Research promotion / working-theory rules design

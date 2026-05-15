@@ -4,7 +4,9 @@
 
 Implemented for the first manual runtime path. `research-run` supports `--continue-artifact` and constrained `--continue-file`; dry-run remains default; `--write` creates a new continuation note; `--write --register-artifact` registers/indexes the new continuation note.
 
-Still not implemented: title/search continuation, database schema changes, retrieval ranking changes, web search, scheduler, autonomous research, open-loop creation, review-item creation, or promotion paths.
+Research open loops now have a design document in `docs/RESEARCH_OPEN_LOOP_DESIGN.md`.
+
+Still not implemented: title/search continuation, database schema changes, retrieval ranking changes, web search, scheduler, autonomous research, open-loop runtime creation, review-item creation, or promotion paths.
 
 ## Purpose
 
@@ -184,7 +186,9 @@ Authority rules:
 
 ## Relationship To Open Loops And Review Items
 
-V1 design keeps open loops and review items as Markdown text only.
+Continuation runtime currently keeps open loops and review items as Markdown text only.
+
+Research open-loop design is documented in `docs/RESEARCH_OPEN_LOOP_DESIGN.md`. Runtime creation remains a separate future patch.
 
 Allowed:
 
@@ -201,6 +205,8 @@ Not allowed in v1:
 - treat open questions as first-class records without an explicit later patch
 
 Future flags such as `--create-open-loops` and `--create-review-items` should be designed separately and should include dry-run previews.
+
+Open-loop creation should remain distinct from review-item creation. Open loops preserve unresolved research questions; review items are for operator/admin attention.
 
 ## Difference From Fresh Research
 
@@ -239,8 +245,9 @@ Formal working-theory supersession and research-claim promotion should be a sepa
 6. [x] Add `--write` support creating a new note.
 7. [x] Add `--write --register-artifact` support for continuation notes.
 8. Later: disambiguated title/search continuation.
-9. Later: explicit open-loop/review-item creation flags.
-10. Later: working-theory promotion/supersession rules.
+9. Later: explicit open-loop creation flags.
+10. Later: separate review-item creation design and flags.
+11. Later: working-theory promotion/supersession rules.
 
 ## Implemented Test Coverage
 
