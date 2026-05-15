@@ -91,10 +91,11 @@ def run_agent_loop(
                 content = msg.get("content", "")
                 chunk_tool_calls = msg.get("tool_calls")
 
-                # Stream text tokens as they arrive
+                # Buffer text until the iteration is known to be a normal
+                # response. Some models can emit text before a tool call;
+                # that text must not become user-visible or final content.
                 if content:
                     accumulated_content.append(content)
-                    yield {"type": "token", "content": content}
 
                 # Accumulate tool calls (appear in their own chunk)
                 if chunk_tool_calls:
@@ -122,7 +123,7 @@ def run_agent_loop(
             # Add assistant message (with tool_calls) to conversation
             messages.append({
                 "role": "assistant",
-                "content": full_content,
+                "content": "",
                 "tool_calls": accumulated_tool_calls,
             })
 
@@ -131,6 +132,9 @@ def run_agent_loop(
                 "tool_calls": [],
                 "tool_results": [],
             }
+            if full_content:
+                trace_record["suppressed_content_chars"] = len(full_content)
+                trace_record["suppressed_content_preview"] = full_content[:200]
 
             for tc in accumulated_tool_calls:
                 func = tc.get("function", {})
@@ -192,7 +196,10 @@ def run_agent_loop(
             tool_trace.append(trace_record)
             continue
 
-        # --- Terminal iteration (text response, already streamed) ---
+        # --- Terminal iteration (text response) ---
+        for content in accumulated_content:
+            yield {"type": "token", "content": content}
+
         result = LoopResult(
             final_content=full_content,
             tool_trace=tool_trace,

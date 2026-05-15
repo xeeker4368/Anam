@@ -6,6 +6,7 @@ Tests validate loop control flow, event yielding, tool dispatch,
 error handling, and tool trace recording.
 """
 
+import copy
 import json
 import pytest
 from unittest.mock import patch, MagicMock
@@ -123,6 +124,30 @@ def _make_tool_call_chunks(tool_name: str, arguments) -> list[dict]:
             "done": True,
         },
     ]
+
+
+def _make_mixed_text_tool_call_chunks(
+    text: str,
+    tool_name: str,
+    arguments,
+) -> list[dict]:
+    """Simulate a model that emits text before deciding to call a tool."""
+    chunks = _make_text_chunks(text)[:-1]
+    chunks.append({
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"function": {"name": tool_name, "arguments": arguments}}
+            ],
+        },
+        "done": False,
+    })
+    chunks.append({
+        "message": {"role": "assistant", "content": ""},
+        "done": True,
+    })
+    return chunks
 
 
 def _build_test_registry():
@@ -291,6 +316,81 @@ class TestAgentLoopToolCalling:
         assert result.iterations == 2
         assert len(result.tool_trace) == 1
         assert result.tool_trace[0]["tool_calls"][0]["name"] == "echo"
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_followup_model_call_receives_rendered_tool_result(self, mock_stream):
+        """The post-tool model call receives assistant tool call and tool result."""
+        captured_messages = []
+
+        def fake_stream(**kwargs):
+            captured_messages.append(copy.deepcopy(kwargs["messages"]))
+            if len(captured_messages) == 1:
+                return iter(_make_tool_call_chunks("echo", {"text": "hello"}))
+            return iter(_make_text_chunks("The echo said hello"))
+
+        mock_stream.side_effect = fake_stream
+        registry = _build_test_registry()
+        messages = [{"role": "user", "content": "echo hello"}]
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=messages,
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        assert len(captured_messages) == 2
+        assert captured_messages[0] == [{"role": "user", "content": "echo hello"}]
+        assert captured_messages[1] == [
+            {"role": "user", "content": "echo hello"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"function": {"name": "echo", "arguments": {"text": "hello"}}}
+                ],
+            },
+            {"role": "tool", "tool_name": "echo", "content": "Echo: hello"},
+        ]
+        result = events[-1]["result"]
+        assert result.final_content == "The echo said hello "
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_text_emitted_before_tool_call_is_suppressed(self, mock_stream):
+        """Generic text from a tool-call iteration is not yielded as visible output."""
+        mock_stream.side_effect = [
+            iter(_make_mixed_text_tool_call_chunks(
+                "Hello Lyle how can I help you today",
+                "echo",
+                {"text": "moltbook result"},
+            )),
+            iter(_make_text_chunks("The tool result was moltbook result")),
+        ]
+        registry = _build_test_registry()
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=[{"role": "user", "content": "check Moltbook"}],
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        token_text = "".join(
+            event["content"]
+            for event in events
+            if event["type"] == "token"
+        )
+        assert "Hello Lyle" not in token_text
+        assert token_text == "The tool result was moltbook result "
+
+        result = events[-1]["result"]
+        assert result.final_content == "The tool result was moltbook result "
+        assert result.tool_trace[0]["suppressed_content_chars"] > 0
+        assert "Hello Lyle" in result.tool_trace[0]["suppressed_content_preview"]
 
     @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
     def test_tool_dispatch_failure(self, mock_stream):

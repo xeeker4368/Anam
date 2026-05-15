@@ -424,6 +424,96 @@ def test_stream_chat_tool_trace_is_emitted_and_persisted(
 @patch("tir.api.routes.retrieve")
 @patch("tir.api.routes._resolve_user")
 @patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_saves_final_tool_informed_moltbook_answer(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    app.state.registry = FakeRegistry(has_tools=True)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = []
+    user_text = "Can you check moltbook for me? See if there are any topics that interest you"
+    final_text = "Moltbook has a post about local model tool loops that looks relevant."
+    mock_save_message.side_effect = [
+        _fake_message("user", user_text, "msg-user"),
+        _fake_message("assistant", final_text, "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", user_text, "msg-user")]
+    tool_trace = [
+        {
+            "iteration": 0,
+            "tool_calls": [
+                {"name": "moltbook_feed", "arguments": {"sort": "new"}}
+            ],
+            "tool_results": [
+                {
+                    "tool_name": "moltbook_feed",
+                    "ok": True,
+                    "rendered": '{"posts": [{"title": "Local model tool loops"}]}',
+                }
+            ],
+        }
+    ]
+    mock_loop.return_value = iter([
+        {
+            "type": "tool_call",
+            "name": "moltbook_feed",
+            "arguments": {"sort": "new"},
+        },
+        {
+            "type": "tool_result",
+            "name": "moltbook_feed",
+            "ok": True,
+            "result": '{"posts": [{"title": "Local model tool loops"}]}',
+        },
+        {"type": "token", "content": final_text},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content=final_text,
+                tool_trace=tool_trace,
+                terminated_reason="complete",
+                iterations=2,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": user_text})
+    events = _stream_lines(response)
+
+    assert [event["type"] for event in events] == [
+        "debug",
+        "tool_call",
+        "tool_result",
+        "token",
+        "debug_update",
+        "done",
+    ]
+    assert events[3]["content"] == final_text
+    assistant_call = mock_save_message.call_args_list[-1]
+    assert assistant_call.args[3] == final_text
+    assert "Hello, Lyle" not in assistant_call.args[3]
+    persisted_trace = json.loads(assistant_call.kwargs["tool_trace"])
+    assert persisted_trace[0]["tool_calls"][0]["name"] == "moltbook_feed"
+    assert persisted_trace[0]["tool_results"][0]["ok"] is True
+    mock_checkpoint_conversation.assert_called_once_with("conv-1", "user-1")
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
 def test_stream_chat_skips_retrieval_for_direct_moltbook_state_prompt(
     mock_loop,
     mock_resolve_user,
