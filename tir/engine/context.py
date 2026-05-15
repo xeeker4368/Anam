@@ -251,10 +251,9 @@ def _format_retrieved_memories(chunks: list[dict]) -> str:
     """
     Format retrieved chunks for the system prompt.
 
-    Framed as the entity's own experiences. Each chunk formatted
-    by source_type. Per Principle 8: framing is behavior.
+    Framed as retrieved context. Each chunk is labeled by source_type.
     """
-    header = "These are your own experiences and memories."
+    header = "Retrieved context follows. Each item is labeled by source type."
     formatted_chunks = []
 
     for chunk in chunks:

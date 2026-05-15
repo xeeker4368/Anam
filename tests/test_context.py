@@ -55,15 +55,16 @@ def test_operational_guidance_is_labeled_and_ordered():
     assert "Real-time source-of-truth tools must be used" in prompt
     assert "DESIGN_RATIONALE" not in prompt
     assert "You have access to the following tools:" in prompt
-    assert "These are your own experiences and memories." in prompt
+    assert "Retrieved context follows. Each item is labeled by source type." in prompt
+    assert "These are your own experiences and memories." not in prompt
     assert "A remembered conversation chunk." in prompt
     assert "[Current Situation]" in prompt
     assert "Conversation with: Lyle" in prompt
 
     assert prompt.index("You are an AI.") < prompt.index("[Operational Guidance]")
     assert prompt.index("[Operational Guidance]") < prompt.index("You have access to the following tools:")
-    assert prompt.index("You have access to the following tools:") < prompt.index("These are your own experiences and memories.")
-    assert prompt.index("These are your own experiences and memories.") < prompt.index("[Current Situation]")
+    assert prompt.index("You have access to the following tools:") < prompt.index("Retrieved context follows. Each item is labeled by source type.")
+    assert prompt.index("Retrieved context follows. Each item is labeled by source type.") < prompt.index("[Current Situation]")
 
 
 def test_system_prompt_with_debug_preserves_existing_prompt_output():

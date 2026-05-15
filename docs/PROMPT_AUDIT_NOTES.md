@@ -55,3 +55,11 @@ This file records human review decisions for entries found in `docs/PROMPT_INVEN
 - `tir/engine/context.py` — behavioral guidance runtime label/loading
   - Decision: removed from runtime prompt construction
   - Reason: Behavioral guidance is dormant before go-live; runtime-loaded behavioral guidance was judged too prescriptive for the emergence goal.
+
+- `tir/engine/context.py` — retrieved context header
+  - Decision: loosened
+  - Reason: Replaced broad self-memory framing with neutral source framing while preserving per-source labels.
+
+- `OPERATIONAL_GUIDANCE.md` — runtime operational guidance
+  - Decision: compressed
+  - Reason: Reduced runtime prescription and response-style shaping while preserving source/tool/action safety, live-source boundaries, tool honesty, failure honesty, and uncertainty handling.

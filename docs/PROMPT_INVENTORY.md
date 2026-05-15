@@ -69,7 +69,7 @@ Mode: autonomous work session
 Time: {...}
 ```
 
-### 5. `tir/engine/context.py:268` — `_format_retrieved_memories`
+### 5. `tir/engine/context.py:267` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -83,7 +83,7 @@ Excerpt:
 {...}
 ```
 
-### 6. `tir/engine/context.py:272` — `_format_retrieved_memories`
+### 6. `tir/engine/context.py:271` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -97,7 +97,7 @@ Excerpt:
 {...}
 ```
 
-### 7. `tir/engine/context.py:284` — `_format_retrieved_memories`
+### 7. `tir/engine/context.py:283` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -111,7 +111,7 @@ Excerpt:
 {...}
 ```
 
-### 8. `tir/engine/context.py:288` — `_format_retrieved_memories`
+### 8. `tir/engine/context.py:287` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -125,7 +125,7 @@ Excerpt:
 {...}
 ```
 
-### 9. `tir/engine/context.py:292` — `_format_retrieved_memories`
+### 9. `tir/engine/context.py:291` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -139,7 +139,7 @@ Excerpt:
 {...}
 ```
 
-### 10. `tir/engine/context.py:298` — `_format_retrieved_memories`
+### 10. `tir/engine/context.py:297` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -153,7 +153,7 @@ Excerpt:
 {...}
 ```
 
-### 11. `tir/engine/context.py:307` — `_format_retrieved_memories`
+### 11. `tir/engine/context.py:306` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -167,7 +167,7 @@ Excerpt:
 {...}
 ```
 
-### 12. `tir/engine/context.py:311` — `_format_retrieved_memories`
+### 12. `tir/engine/context.py:310` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
