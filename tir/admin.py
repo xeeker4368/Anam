@@ -92,6 +92,11 @@ from tir.reflection.operational import (
     run_operational_reflection_day,
 )
 from tir.research.manual import ManualResearchError, run_manual_research
+from tir.research.open_loops import (
+    ResearchOpenLoopError,
+    create_research_open_loops,
+    preview_research_open_loops,
+)
 
 
 def cmd_init_db(args):
@@ -884,6 +889,60 @@ def cmd_research_run(args):
     print(result["document"], end="")
 
 
+def _print_research_open_loop_result(result: dict, *, include_created: bool = False) -> None:
+    artifact = result["artifact"]
+    print(f"source_artifact_id={artifact['artifact_id']}")
+    print(f"source_artifact_title={artifact['title']}")
+    print(f"source_path={result['source_path']}")
+    print(f"candidate_count={result['candidate_count']}")
+    if include_created:
+        print(f"created_count={result['created_count']}")
+    print(f"skipped_duplicate_count={result['skipped_duplicate_count']}")
+    if result["candidate_count"] == 0:
+        print("No research open-loop candidates found.")
+    for candidate in result.get("candidates", []):
+        marker = " skipped_duplicate=true" if candidate.get("skipped_duplicate") else ""
+        print(
+            "candidate "
+            f"section={candidate['source_section']} "
+            f"title={candidate['title']}{marker}"
+        )
+        print(f"  next_action={candidate['next_action']}")
+    if include_created:
+        for loop in result.get("created", []):
+            print(f"created {loop['open_loop_id']} title={loop['title']}")
+
+
+def cmd_research_open_loops_preview(args):
+    """Preview research open-loop candidates for a registered artifact."""
+    try:
+        result = preview_research_open_loops(args.artifact_id)
+    except ResearchOpenLoopError as exc:
+        print(f"Research open-loop preview failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Research open-loop preview failed: {exc}")
+        sys.exit(1)
+
+    print("Research open-loop preview complete")
+    _print_research_open_loop_result(result)
+
+
+def cmd_research_open_loops_create(args):
+    """Create research open loops for a registered artifact."""
+    try:
+        result = create_research_open_loops(args.artifact_id)
+    except ResearchOpenLoopError as exc:
+        print(f"Research open-loop creation failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Research open-loop creation failed: {exc}")
+        sys.exit(1)
+
+    print("Research open-loop creation complete")
+    _print_research_open_loop_result(result, include_created=True)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -1091,6 +1150,20 @@ def main():
         help="After --write, register and index the note as research memory",
     )
 
+    # research-open-loops-preview
+    p = sub.add_parser(
+        "research-open-loops-preview",
+        help="Preview research open loops from a registered research artifact",
+    )
+    p.add_argument("--artifact-id", required=True, help="Registered research artifact ID")
+
+    # research-open-loops-create
+    p = sub.add_parser(
+        "research-open-loops-create",
+        help="Create research open loops from a registered research artifact",
+    )
+    p.add_argument("--artifact-id", required=True, help="Registered research artifact ID")
+
     # behavioral-guidance-review-conversation
     p = sub.add_parser(
         "behavioral-guidance-review-conversation",
@@ -1192,6 +1265,8 @@ def main():
         "reflection-journal-register": cmd_reflection_journal_register,
         "operational-reflection-day": cmd_operational_reflection_day,
         "research-run": cmd_research_run,
+        "research-open-loops-preview": cmd_research_open_loops_preview,
+        "research-open-loops-create": cmd_research_open_loops_create,
     }
 
     commands[args.command](args)

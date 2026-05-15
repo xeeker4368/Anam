@@ -656,3 +656,51 @@
 2026-05-10 20:42:01,126 [tir.api.routes] INFO: Tír API started — 14 tools loaded
 2026-05-10 20:42:05,566 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 36 chunks
 2026-05-10 20:43:27,057 [tir.memory.chunking] INFO: Checkpointed conversation 74641c53 chunk 7 (4 messages)
+2026-05-15 15:28:56,136 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-15 15:28:56,136 [tir.tools.registry] INFO: Registered tool 'moltbook_find_author_posts' from skill 'moltbook'
+2026-05-15 15:28:56,143 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_feed' from skill 'moltbook'
+2026-05-15 15:28:56,143 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_search' from skill 'moltbook'
+2026-05-15 15:28:56,143 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_posts_by_author' from skill 'moltbook'
+2026-05-15 15:28:56,143 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_profile' from skill 'moltbook'
+2026-05-15 15:28:56,143 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_me' from skill 'moltbook'
+2026-05-15 15:28:56,144 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_read_post' from skill 'moltbook'
+2026-05-15 15:28:56,144 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_post_comments' from skill 'moltbook'
+2026-05-15 15:28:56,144 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt' from skill 'moltbook'
+2026-05-15 15:28:56,144 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_feed' from skill 'moltbook'
+2026-05-15 15:28:56,144 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_moderators' from skill 'moltbook'
+2026-05-15 15:28:56,258 [tir.tools.registry] INFO: Registered tool 'web_fetch' from skill 'web_search'
+2026-05-15 15:28:56,258 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-15 15:28:56,258 [tir.tools.registry] INFO: Skill registry loaded: 3 skills, 14 tools
+2026-05-15 15:28:56,258 [tir.api.routes] WARNING: ANAM_API_SECRET is not configured; API routes are unauthenticated.
+2026-05-15 15:28:56,258 [tir.api.routes] INFO: Tír API started — 14 tools loaded
+2026-05-15 15:28:58,958 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 36 chunks
+2026-05-15 15:29:14,297 [tir.api.routes] INFO: Started conversation 13ac1b2b for Lyle
+2026-05-15 15:29:39,943 [tir.memory.chunking] INFO: Checkpointed conversation 13ac1b2b chunk 0 (2 messages)
+2026-05-15 15:29:48,819 [tir.memory.chunking] INFO: Checkpointed conversation 13ac1b2b chunk 0 (4 messages)
+2026-05-15 15:30:37,389 [tir.memory.chunking] INFO: Checkpointed conversation 13ac1b2b chunk 0 (6 messages)
+2026-05-15 15:31:34,342 [tir.memory.chunking] INFO: Checkpointed conversation 13ac1b2b chunk 0 (8 messages)
+2026-05-15 15:32:04,059 [tir.memory.chunking] INFO: Checkpointed conversation 13ac1b2b chunk 0 (10 messages)
+2026-05-15 15:32:39,208 [tir.memory.chunking] INFO: Checkpointed conversation 13ac1b2b chunk 1 (2 messages)
+2026-05-15 15:33:43,830 [tir.memory.chunking] INFO: Checkpointed conversation 13ac1b2b chunk 1 (4 messages)
+2026-05-15 15:34:24,015 [tir.memory.chunking] INFO: Checkpointed conversation 13ac1b2b chunk 1 (6 messages)
+2026-05-15 15:59:55,194 [tir.tools.registry] INFO: Registered tool 'memory_search' from skill 'memory_search'
+2026-05-15 15:59:55,194 [tir.tools.registry] INFO: Registered tool 'moltbook_find_author_posts' from skill 'moltbook'
+2026-05-15 15:59:55,202 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_feed' from skill 'moltbook'
+2026-05-15 15:59:55,202 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_search' from skill 'moltbook'
+2026-05-15 15:59:55,202 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_posts_by_author' from skill 'moltbook'
+2026-05-15 15:59:55,202 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_profile' from skill 'moltbook'
+2026-05-15 15:59:55,202 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_me' from skill 'moltbook'
+2026-05-15 15:59:55,202 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_read_post' from skill 'moltbook'
+2026-05-15 15:59:55,202 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_post_comments' from skill 'moltbook'
+2026-05-15 15:59:55,202 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt' from skill 'moltbook'
+2026-05-15 15:59:55,202 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_feed' from skill 'moltbook'
+2026-05-15 15:59:55,202 [tir.tools.registry] INFO: Registered declarative HTTP tool 'moltbook_submolt_moderators' from skill 'moltbook'
+2026-05-15 15:59:55,313 [tir.tools.registry] INFO: Registered tool 'web_fetch' from skill 'web_search'
+2026-05-15 15:59:55,314 [tir.tools.registry] INFO: Registered tool 'web_search' from skill 'web_search'
+2026-05-15 15:59:55,314 [tir.tools.registry] INFO: Skill registry loaded: 3 skills, 14 tools
+2026-05-15 15:59:55,314 [tir.api.routes] WARNING: ANAM_API_SECRET is not configured; API routes are unauthenticated.
+2026-05-15 15:59:55,314 [tir.api.routes] INFO: Tír API started — 14 tools loaded
+2026-05-15 15:59:57,724 [tir.memory.chroma] INFO: ChromaDB collection 'tir_memory' ready, 38 chunks
+2026-05-15 16:00:01,866 [tir.api.routes] INFO: Started conversation 42ca4595 for Lyle
+2026-05-15 16:01:49,819 [tir.memory.chunking] INFO: Checkpointed conversation 42ca4595 chunk 0 (2 messages)
+2026-05-15 16:02:51,073 [tir.memory.chunking] INFO: Checkpointed conversation 42ca4595 chunk 0 (4 messages)

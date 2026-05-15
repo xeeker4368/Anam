@@ -394,6 +394,108 @@ def test_research_run_register_without_write_fails_cleanly(capsys):
     assert "research-run --register-artifact requires --write" in captured.err
 
 
+def test_research_open_loops_preview_admin_prints_candidates(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_preview(artifact_id):
+        assert artifact_id == "artifact-1"
+        return {
+            "artifact": {
+                "artifact_id": "artifact-1",
+                "title": "Research Note — Prior",
+            },
+            "source_path": "research/prior.md",
+            "candidate_count": 1,
+            "skipped_duplicate_count": 0,
+            "candidates": [
+                {
+                    "source_section": "Open Questions",
+                    "title": "What remains unresolved?",
+                    "next_action": "Investigate: What remains unresolved?",
+                    "skipped_duplicate": False,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(admin_mod, "preview_research_open_loops", fake_preview)
+
+    admin_mod.cmd_research_open_loops_preview(SimpleNamespace(artifact_id="artifact-1"))
+
+    output = capsys.readouterr().out
+    assert "Research open-loop preview complete" in output
+    assert "source_artifact_id=artifact-1" in output
+    assert "candidate_count=1" in output
+    assert "candidate section=Open Questions title=What remains unresolved?" in output
+
+
+def test_research_open_loops_create_admin_prints_created_and_skipped_counts(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_create(artifact_id):
+        assert artifact_id == "artifact-1"
+        return {
+            "artifact": {
+                "artifact_id": "artifact-1",
+                "title": "Research Note — Prior",
+            },
+            "source_path": "research/prior.md",
+            "candidate_count": 2,
+            "created_count": 1,
+            "skipped_duplicate_count": 1,
+            "candidates": [
+                {
+                    "source_section": "Open Questions",
+                    "title": "What remains unresolved?",
+                    "next_action": "Investigate: What remains unresolved?",
+                    "skipped_duplicate": False,
+                },
+                {
+                    "source_section": "Possible Follow-Ups",
+                    "title": "Compare prior notes.",
+                    "next_action": "Compare prior notes.",
+                    "skipped_duplicate": True,
+                },
+            ],
+            "created": [
+                {
+                    "open_loop_id": "loop-1",
+                    "title": "What remains unresolved?",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(admin_mod, "create_research_open_loops", fake_create)
+
+    admin_mod.cmd_research_open_loops_create(SimpleNamespace(artifact_id="artifact-1"))
+
+    output = capsys.readouterr().out
+    assert "Research open-loop creation complete" in output
+    assert "created_count=1" in output
+    assert "skipped_duplicate_count=1" in output
+    assert "candidate section=Possible Follow-Ups title=Compare prior notes. skipped_duplicate=true" in output
+    assert "created loop-1 title=What remains unresolved?" in output
+
+
+def test_research_open_loops_preview_admin_errors_are_clear(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_preview(_artifact_id):
+        raise admin_mod.ResearchOpenLoopError("Research artifact not found: missing")
+
+    monkeypatch.setattr(admin_mod, "preview_research_open_loops", fake_preview)
+
+    with pytest.raises(SystemExit) as exc:
+        admin_mod.cmd_research_open_loops_preview(SimpleNamespace(artifact_id="missing"))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert "Research open-loop preview failed: Research artifact not found: missing" in output
+
+
 def test_reflection_journal_day_admin_passes_include_memory(temp_admin, capsys, monkeypatch):
     _db_mod, admin_mod = temp_admin
 

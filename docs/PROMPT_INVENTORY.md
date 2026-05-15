@@ -187,7 +187,7 @@ No prompt-like strings found.
 
 ## Tool-use prompts
 
-### 1. `tir/api/routes.py:731` — `generate`
+### 1. `tir/api/routes.py:766` — `generate`
 
 - Name: `error_message`
 - Category: Tool-use prompts
@@ -651,7 +651,7 @@ Review bounded operational/system activity and return only a strict JSON object.
 
 ## Other prompt-like strings
 
-### 1. `tir/api/routes.py:727` — `generate`
+### 1. `tir/api/routes.py:762` — `generate`
 
 - Name: `empty_message`
 - Category: Other prompt-like strings
@@ -664,7 +664,7 @@ Excerpt:
 I received your message but couldn't generate a response.
 ```
 
-### 2. `tir/api/routes.py:735` — `generate`
+### 2. `tir/api/routes.py:770` — `generate`
 
 - Name: `error_message`
 - Category: Other prompt-like strings
