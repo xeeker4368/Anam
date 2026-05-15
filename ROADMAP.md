@@ -460,8 +460,11 @@ Research track status:
 - [x] External Review Checkpoint v1
 - [x] Behavioral guidance runtime loading dormant before go-live
 - [x] Research open-loop design
+- [x] Research open-loop runtime creation
+- [x] Bounded / Scheduled Research Design v1
+- [ ] Manual bounded open-loop research planner
 - [ ] Title/search continuation design
-- [ ] Research open-loop/review-item implementation
+- [ ] Research review-item design
 - [ ] Web source collection design
 - [ ] Research promotion / working-theory rules design
 - [ ] Autonomous research scheduling/budgets
@@ -607,37 +610,38 @@ Suggested concepts:
 
 # Suggested Near-Term Build Order
 
-1. Research open-loop/review-item design
-2. Research open-loop/review-item implementation
-3. Web source collection design
-4. Web source collection implementation
-5. Research promotion / working-theory rules design
-6. Minimal household multi-user design
-7. Minimal household multi-user implementation
-8. Media and generation foundation
-9. Image generation artifacts
-10. Image/screenshot artifact understanding
-11. Moltbook read-only verification
-12. Canary/drift observation design
-13. Canary/drift observation implementation
-14. UI polish / non-dev presentation
-15. Go-live reset/hardening plan
-16. Backup/restore smoke before live
-17. Limited Live v1 smoke test
-18. Code and sandbox foundations
-19. Event/tool trace foundation hardening
-20. Review pass foundation for conversations and artifacts
-21. Identity events
-22. Behavioral observations
-23. Context assembler upgrade
-24. Nightly journal
-25. iMessage send-only notifications
-26. Moltbook draft-only progression after read-only confidence
-27. Autonomous research scheduling/budgets
-28. Autonomous web research budgets
-29. Voice output/input
-30. Sight/image review
+1. Manual bounded open-loop research planner
+2. Manual bounded open-loop research runtime
+3. Research review-item design
+4. Web source collection design
+5. Web source collection implementation
+6. Research promotion / working-theory rules design
+7. Minimal household multi-user design
+8. Minimal household multi-user implementation
+9. Media and generation foundation
+10. Image generation artifacts
+11. Image/screenshot artifact understanding
+12. Moltbook read-only verification
+13. Canary/drift observation design
+14. Canary/drift observation implementation
+15. UI polish / non-dev presentation
+16. Go-live reset/hardening plan
+17. Backup/restore smoke before live
+18. Limited Live v1 smoke test
+19. Code and sandbox foundations
+20. Event/tool trace foundation hardening
+21. Review pass foundation for conversations and artifacts
+22. Identity events
+23. Behavioral observations
+24. Context assembler upgrade
+25. Nightly journal
+26. iMessage send-only notifications
+27. Moltbook draft-only progression after read-only confidence
+28. Autonomous research scheduling/budgets
+29. Autonomous web research budgets
+30. Voice output/input
+31. Sight/image review
 
 `SELF_UNDERSTANDING.md` now has a concept design in `docs/SELF_UNDERSTANDING_DESIGN.md`. It is not implemented, not loaded into runtime context, and has no schema, service, UI, model tool, or apply workflow in the current checkpoint.
-31. Add staged self-modification
-32. Add diagnostics/evaluation harness throughout
+32. Add staged self-modification
+33. Add diagnostics/evaluation harness throughout

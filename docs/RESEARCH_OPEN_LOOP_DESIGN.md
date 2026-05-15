@@ -2,7 +2,9 @@
 
 ## Status
 
-Design only. No runtime code, database schema, retrieval behavior, research behavior, journal behavior, prompts, UI, or model configuration is changed by this document.
+Implemented for the first standalone manual runtime path. `research-open-loops-preview --artifact-id <id>` previews deterministic candidates from registered research artifacts, and `research-open-loops-create --artifact-id <id>` creates idempotent `open_loops` records.
+
+No database schema, retrieval behavior, research generation behavior, journal behavior, prompts, UI, or model configuration is changed by this document.
 
 ## Purpose
 
@@ -260,6 +262,10 @@ Each future origin should preserve source metadata and use explicit creation rul
 
 Open loops are the queue substrate for later bounded research.
 
+A bounded/scheduled research design now lives in `docs/BOUNDED_SCHEDULED_RESEARCH_DESIGN.md`.
+
+The next implementation step should be manual bounded research against one selected open loop, not a background scheduler.
+
 A future scheduler should:
 
 - select only eligible open research loops
@@ -313,13 +319,15 @@ Working theories need separate design for evidence, confidence, contradiction ha
 
 ## Implementation Phases
 
-1. Design doc only.
-2. Add research open-loop candidate planner/parser with dry-run preview.
-3. Add standalone preview command for registered research artifacts.
-4. Add standalone create command for registered research artifacts.
-5. Add `research-run --preview-open-loops`.
-6. Add `research-run --write --register-artifact --create-open-loops`.
-7. Add duplicate prevention and skipped-candidate reporting.
-8. Add iteration metadata and local-day daily limit handling.
-9. Later: scheduler uses open loops.
-10. Later: synthesis/working theory path.
+1. [x] Design doc only.
+2. [x] Add research open-loop candidate planner/parser with dry-run preview.
+3. [x] Add standalone preview command for registered research artifacts.
+4. [x] Add standalone create command for registered research artifacts.
+5. Later: add `research-run --preview-open-loops`.
+6. Later: add `research-run --write --register-artifact --create-open-loops`.
+7. [x] Add duplicate prevention and skipped-candidate reporting for same artifact/question.
+8. [x] Add initial iteration metadata and local-day daily limit fields.
+9. [x] Add bounded/scheduled research design.
+10. Later: manual bounded open-loop research planner.
+11. Later: scheduler uses open loops.
+12. Later: synthesis/working theory path.

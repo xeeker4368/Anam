@@ -4,9 +4,11 @@ Status: implemented through the first bounded CLI path. `research-run` can gener
 
 Research continuation now has a design document in `docs/RESEARCH_CONTINUATION_DESIGN.md` and a runtime implementation through `--continue-artifact` and constrained `--continue-file`.
 
-Research open loops now have a design document in `docs/RESEARCH_OPEN_LOOP_DESIGN.md`. Runtime open-loop creation remains deferred.
+Research open loops now have a design document in `docs/RESEARCH_OPEN_LOOP_DESIGN.md` and a first standalone runtime path for previewing/creating open-loop records from registered research artifacts.
 
-Still deferred: title/search continuation, open-loop runtime creation, review-item creation, web source collection, working-theory promotion, autonomous research, scheduler behavior, value-density scoring, and any promotion to truth, behavioral guidance, self-understanding, or project decisions.
+Bounded/scheduled research now has a design document in `docs/BOUNDED_SCHEDULED_RESEARCH_DESIGN.md`.
+
+Still deferred: title/search continuation, review-item creation, web source collection, working-theory promotion, Moltbook/live-source research collection, autonomous research, scheduler behavior, value-density scoring, and any promotion to truth, behavioral guidance, self-understanding, or project decisions.
 
 ## Purpose
 
