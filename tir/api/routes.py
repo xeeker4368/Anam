@@ -361,7 +361,9 @@ def stream_chat(req: ChatRequest):
                 end = time.perf_counter()
             return round((end - start) * 1000, 2)
 
-        conversation_id = req.conversation_id
+        supplied_conversation_id = req.conversation_id
+        conversation_id = supplied_conversation_id
+        conversation_started_reason = "reused"
         user_id = user["id"]
         user_name = user["name"]
 
@@ -371,15 +373,18 @@ def stream_chat(req: ChatRequest):
         # --- Resolve or create conversation ---
         if conversation_id is None:
             conversation_id = start_conversation(user_id)
+            conversation_started_reason = "new_request"
             logger.info(f"Started conversation {conversation_id[:8]} for {user_name}")
         else:
             conv = supplied_conversation
             if conv is None:
                 conversation_id = start_conversation(user_id)
+                conversation_started_reason = "missing_supplied_conversation"
                 logger.warning(f"Conversation not found, started new: {conversation_id[:8]}")
             elif conv.get("ended_at"):
                 previous_id = conversation_id
                 conversation_id = start_conversation(user_id)
+                conversation_started_reason = "ended_supplied_conversation"
                 logger.info(
                     "Conversation %s was ended; started new conversation %s for %s",
                     previous_id[:8],
@@ -451,6 +456,9 @@ def stream_chat(req: ChatRequest):
         # --- Conversation history ---
         phase_start = time.perf_counter()
         all_messages = get_conversation_messages(conversation_id)
+        history_db_message_count = len(all_messages)
+        history_user_message_count = sum(1 for m in all_messages if m["role"] == "user")
+        history_assistant_message_count = sum(1 for m in all_messages if m["role"] == "assistant")
         model_messages = [
             {"role": m["role"], "content": m["content"]}
             for m in all_messages
@@ -467,6 +475,20 @@ def stream_chat(req: ChatRequest):
             ),
             len(model_messages),
         )
+        previous_assistant = next(
+            (
+                message
+                for message in reversed(all_messages[:current_user_index])
+                if message.get("role") == "assistant"
+            ),
+            None,
+        )
+        previous_assistant_chars = (
+            len(previous_assistant.get("content") or "")
+            if previous_assistant
+            else 0
+        )
+        history_injected_system_message_count = 0
         recent_artifact_context = None
         recent_artifact_context_meta = {
             "included": False,
@@ -497,6 +519,7 @@ def stream_chat(req: ChatRequest):
                 {"role": "system", "content": journal_primary_context},
             )
             current_user_index += 1
+            history_injected_system_message_count += 1
 
         if artifact_intent:
             recent_artifact_context, recent_artifact_context_meta = (
@@ -511,6 +534,7 @@ def stream_chat(req: ChatRequest):
                     {"role": "system", "content": recent_artifact_context},
                 )
                 current_user_index += 1
+                history_injected_system_message_count += 1
 
         moltbook_selection_context = build_moltbook_selection_context(all_messages)
         selection_context_chars = len(moltbook_selection_context or "")
@@ -519,6 +543,7 @@ def stream_chat(req: ChatRequest):
                 current_user_index,
                 {"role": "system", "content": moltbook_selection_context},
             )
+            history_injected_system_message_count += 1
         timings["history_load_ms"] = elapsed_ms(phase_start)
         journal_primary_context_chars = len(journal_primary_context or "")
         primary_context_chars = journal_primary_context_chars
@@ -558,6 +583,9 @@ def stream_chat(req: ChatRequest):
         debug_data = {
             "type": "debug",
             "conversation_id": conversation_id,
+            "supplied_conversation_id": supplied_conversation_id,
+            "effective_conversation_id": conversation_id,
+            "conversation_started_reason": conversation_started_reason,
             "user_message_id": user_msg["id"],
             "retrieval_skipped": retrieval_skipped,
             "retrieval_policy": retrieval_policy,
@@ -588,6 +616,13 @@ def stream_chat(req: ChatRequest):
             "context_debug": context_debug,
             "journal_primary_context": journal_primary_context_meta,
             "recent_artifact_context": recent_artifact_context_meta,
+            "history_db_message_count": history_db_message_count,
+            "history_user_message_count": history_user_message_count,
+            "history_assistant_message_count": history_assistant_message_count,
+            "history_injected_system_message_count": history_injected_system_message_count,
+            "model_message_count": len(model_messages),
+            "previous_assistant_included": previous_assistant is not None,
+            "previous_assistant_chars": previous_assistant_chars,
             "history_message_count": len(model_messages),
             "timings": timings,
         }

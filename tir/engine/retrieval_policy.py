@@ -73,6 +73,29 @@ _CONTEXT_INSPECTION_PATTERNS = (
     r"\bshow\s+me\s+your\s+system\s+prompt\b",
 )
 
+_IMMEDIATE_CONVERSATION_REFERENCE_PATTERNS = (
+    r"\bprevious\s+(?:response|answer|reply)\b",
+    r"\blast\s+(?:response|answer|reply)\b",
+    r"\blast\s+thing\s+you\s+said\b",
+    r"\bwhat\s+did\s+you\s+just\s+say\b",
+    r"\blast\s+sentence\s+of\s+your\s+previous\s+(?:response|answer|reply)\b",
+    r"\bquote\s+your\s+previous\s+(?:response|answer|reply)\b",
+    r"\brestate\s+your\s+previous\s+(?:response|answer|reply)\b",
+    r"\bsay\s+the\s+same\s+thing\s+plainly\b",
+)
+
+_LONG_TERM_REFERENCE_TERMS = (
+    "last conversation",
+    "previous conversation",
+    "earlier conversation",
+    "last week",
+    "last month",
+    "yesterday",
+    "journal",
+    "do you remember",
+    "remember when",
+)
+
 
 def classify_retrieval_policy(user_text: str) -> dict:
     """Classify whether normal memory retrieval should run for a turn."""
@@ -84,6 +107,9 @@ def classify_retrieval_policy(user_text: str) -> dict:
 
     if _is_context_inspection_query(lowered):
         return {"mode": SKIP_MEMORY, "reason": "context_inspection"}
+
+    if _is_immediate_conversation_reference_query(lowered):
+        return {"mode": SKIP_MEMORY, "reason": "immediate_conversation_reference"}
 
     if _is_direct_moltbook_state_query(lowered):
         return {"mode": SKIP_MEMORY, "reason": "direct_moltbook_state"}
@@ -102,6 +128,16 @@ def _is_context_inspection_query(lowered: str) -> bool:
     return any(
         re.search(pattern, lowered)
         for pattern in _CONTEXT_INSPECTION_PATTERNS
+    )
+
+
+def _is_immediate_conversation_reference_query(lowered: str) -> bool:
+    """Detect requests about the current turn history, not long-term memory."""
+    if any(term in lowered for term in _LONG_TERM_REFERENCE_TERMS):
+        return False
+    return any(
+        re.search(pattern, lowered)
+        for pattern in _IMMEDIATE_CONVERSATION_REFERENCE_PATTERNS
     )
 
 

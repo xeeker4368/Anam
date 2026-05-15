@@ -150,6 +150,16 @@ def test_stream_chat_no_tool_path_preserves_basic_events(
     assert events[0]["prompt_budget_warning"] is None
     assert events[0]["prompt_breakdown"]["system_prompt_chars"] == events[0]["system_prompt_length"]
     assert events[0]["prompt_breakdown"]["conversation_history_chars"] == len("Hello")
+    assert events[0]["supplied_conversation_id"] is None
+    assert events[0]["effective_conversation_id"] == "conv-1"
+    assert events[0]["conversation_started_reason"] == "new_request"
+    assert events[0]["history_db_message_count"] == 1
+    assert events[0]["history_user_message_count"] == 1
+    assert events[0]["history_assistant_message_count"] == 0
+    assert events[0]["history_injected_system_message_count"] == 0
+    assert events[0]["model_message_count"] == 1
+    assert events[0]["previous_assistant_included"] is False
+    assert events[0]["previous_assistant_chars"] == 0
     assert events[0]["prompt_breakdown"]["selection_context_chars"] == 0
     assert events[0]["prompt_breakdown"]["artifact_context_chars"] == 0
     assert events[0]["prompt_breakdown"]["recent_artifact_context_chars"] == 0
@@ -170,6 +180,102 @@ def test_stream_chat_no_tool_path_preserves_basic_events(
     assert events[-1]["conversation_id"] == "conv-1"
     assistant_call = mock_save_message.call_args_list[-1]
     assert assistant_call.kwargs["tool_trace"] is None
+    mock_checkpoint_conversation.assert_called_once_with("conv-1", "user-1")
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.get_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_includes_previous_assistant_response_for_immediate_history_question(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_get_conversation,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    app.state.registry = FakeRegistry(has_tools=False)
+    current_text = "What was the last sentence of your previous response? Quote it exactly."
+    prior_assistant_text = "The final sentence was: preserve source clarity."
+    mock_resolve_user.return_value = _fake_user()
+    mock_get_conversation.return_value = {
+        "id": "conv-1",
+        "user_id": "user-1",
+        "ended_at": None,
+    }
+    mock_retrieve.return_value = [
+        {
+            "chunk_id": "old-last-response",
+            "text": "An old unrelated last response answer.",
+            "source_type": "conversation",
+        }
+    ]
+    current_user = _fake_message("user", current_text, "msg-current")
+    mock_save_message.side_effect = [
+        current_user,
+        _fake_message("assistant", "preserve source clarity.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [
+        _fake_message("user", "Give me a source-boundary summary.", "msg-prior-user"),
+        _fake_message("assistant", prior_assistant_text, "msg-prior-assistant"),
+        current_user,
+    ]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "preserve source clarity."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="preserve source clarity.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat/stream",
+        json={"text": current_text, "conversation_id": "conv-1"},
+    )
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    assert events[0]["retrieval_skipped"] is True
+    assert events[0]["retrieval_policy"] == {
+        "mode": "skip_memory",
+        "reason": "immediate_conversation_reference",
+    }
+    assert events[0]["chunks_retrieved"] == 0
+    assert events[0]["supplied_conversation_id"] == "conv-1"
+    assert events[0]["effective_conversation_id"] == "conv-1"
+    assert events[0]["conversation_started_reason"] == "reused"
+    assert events[0]["history_db_message_count"] == 3
+    assert events[0]["history_user_message_count"] == 2
+    assert events[0]["history_assistant_message_count"] == 1
+    assert events[0]["history_injected_system_message_count"] == 0
+    assert events[0]["model_message_count"] == 3
+    assert events[0]["history_message_count"] == 3
+    assert events[0]["previous_assistant_included"] is True
+    assert events[0]["previous_assistant_chars"] == len(prior_assistant_text)
+    mock_retrieve.assert_not_called()
+    mock_start_conversation.assert_not_called()
+
+    model_messages = mock_loop.call_args.kwargs["messages"]
+    assert model_messages == [
+        {"role": "user", "content": "Give me a source-boundary summary."},
+        {"role": "assistant", "content": prior_assistant_text},
+        {"role": "user", "content": current_text},
+    ]
     mock_checkpoint_conversation.assert_called_once_with("conv-1", "user-1")
 
 
@@ -1095,9 +1201,70 @@ def test_stream_chat_ended_conversation_starts_new_conversation(
 
     assert response.status_code == 200
     assert events[0]["conversation_id"] == "new-conv"
+    assert events[0]["supplied_conversation_id"] == "old-conv"
+    assert events[0]["effective_conversation_id"] == "new-conv"
+    assert events[0]["conversation_started_reason"] == "ended_supplied_conversation"
     assert events[-1]["conversation_id"] == "new-conv"
     assert mock_save_message.call_args_list[0].args[0] == "new-conv"
     assert mock_save_message.call_args_list[1].args[0] == "new-conv"
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.get_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_missing_conversation_reports_replacement_reason(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_get_conversation,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    app.state.registry = FakeRegistry(has_tools=False)
+    mock_resolve_user.return_value = _fake_user()
+    mock_get_conversation.return_value = None
+    mock_start_conversation.return_value = "new-conv"
+    mock_retrieve.return_value = []
+    mock_save_message.side_effect = [
+        _fake_message("user", "Continue", "msg-user"),
+        _fake_message("assistant", "New conversation", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", "Continue", "msg-user")]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "New conversation"},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="New conversation",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat/stream",
+        json={"text": "Continue", "conversation_id": "missing-conv"},
+    )
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    assert events[0]["conversation_id"] == "new-conv"
+    assert events[0]["supplied_conversation_id"] == "missing-conv"
+    assert events[0]["effective_conversation_id"] == "new-conv"
+    assert events[0]["conversation_started_reason"] == "missing_supplied_conversation"
+    assert events[-1]["conversation_id"] == "new-conv"
 
 
 @patch("tir.api.routes.save_message")

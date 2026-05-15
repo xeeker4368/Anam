@@ -243,7 +243,7 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
                 tool_events: [],
                 raw_events: [data],
               })
-              if (data.conversation_id && !conversationId) {
+              if (data.conversation_id && data.conversation_id !== conversationId) {
                 onConversationCreated(data.conversation_id)
               }
             } else if (data.type === 'debug_update') {

@@ -98,6 +98,41 @@ def test_context_inspection_prompt_skips_memory():
         }
 
 
+def test_immediate_previous_response_prompts_skip_memory():
+    prompts = [
+        "What was the last sentence of your previous response? Quote it exactly.",
+        "Quote your previous response.",
+        "Restate your previous answer.",
+        "What was your last response?",
+        "What was the last thing you said?",
+        "What did you just say?",
+        "Say the same thing plainly.",
+    ]
+
+    for prompt in prompts:
+        policy = classify_retrieval_policy(prompt)
+        assert policy == {
+            "mode": "skip_memory",
+            "reason": "immediate_conversation_reference",
+        }
+
+
+def test_long_term_previous_conversation_prompts_keep_normal_retrieval():
+    prompts = [
+        "What did you say in our last conversation?",
+        "What did we discuss last week?",
+        "Do you remember when we talked about retrieval?",
+        "What did you say in the May 8 journal?",
+    ]
+
+    for prompt in prompts:
+        policy = classify_retrieval_policy(prompt)
+        assert policy == {
+            "mode": "normal",
+            "reason": "normal",
+        }
+
+
 def test_bare_system_prompt_discussion_keeps_normal_retrieval():
     policy = classify_retrieval_policy("system prompt is a great idea, can we add one?")
 
