@@ -1,6 +1,6 @@
 # Behavioral Guidance Removal / Revision Design
 
-Status: concept design only. No code, schema, runtime loader, proposal service, UI, or guidance-file behavior is implemented by this document.
+Status: concept design only. Behavioral guidance runtime loading is dormant before go-live. No code, schema, runtime loader, proposal service, UI, or guidance-file behavior is implemented by this document.
 
 ## Purpose
 
@@ -14,7 +14,7 @@ Behavioral guidance should not be silently deleted or rewritten. Approved remova
 - Admins approve, reject, archive, or reopen proposals.
 - Applying approved guidance is explicit and admin-controlled.
 - History should be preserved.
-- Runtime should load only active guidance.
+- If behavioral guidance is reintroduced later, runtime should load only active guidance.
 - Retired or superseded guidance should remain reviewable but should not load as active runtime guidance.
 - Raw source records, proposals, reasons, and application history should remain preserved.
 
@@ -132,7 +132,7 @@ If the target entry is missing, already retired, duplicated, or text has changed
 
 ## Runtime Loader Implications
 
-Runtime must load only active guidance.
+If behavioral guidance is reintroduced later, runtime must load only active guidance.
 
 Future loader behavior can either:
 

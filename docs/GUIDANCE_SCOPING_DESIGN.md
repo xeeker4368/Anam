@@ -1,10 +1,10 @@
 # Guidance Scoping Design
 
-Status: concept design only. No schema, runtime filtering, proposal service, UI, or guidance-file behavior is implemented by this document.
+Status: concept design only. Behavioral guidance runtime loading is dormant before go-live. No schema, runtime filtering, proposal service, UI, or guidance-file behavior is implemented by this document.
 
 ## Purpose
 
-Active behavioral guidance currently loads every turn. That is acceptable while guidance is small, but future guidance may not be universal.
+Earlier pre-live builds loaded active behavioral guidance every turn. That approach was judged too prescriptive for the emergence goal before go-live. If behavioral guidance is reintroduced later, future guidance may not be universal.
 
 Guidance learned from one user, channel, context, or project phase should not silently become a global behavioral rule. Guidance scoping is the future mechanism for deciding when an applied guidance entry is relevant.
 
