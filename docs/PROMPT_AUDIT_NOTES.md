@@ -71,3 +71,11 @@ This file records human review decisions for entries found in `docs/PROMPT_INVEN
 - `tir/research/manual.py` — manual research prompt low-signal allowance
   - Decision: loosened
   - Reason: Research notes and continuations may honestly report no useful findings, no open questions, no follow-ups, or no review items while preserving provenance and required artifact structure.
+
+- `skills/active/memory_search` — memory search tool framing
+  - Decision: loosened
+  - Reason: Replaced "your own memories" wording with indexed prior-record framing while preserving deliberate recall semantics.
+
+- `tir/tools/registry.py` — real-time tool freshness marker
+  - Decision: loosened
+  - Reason: Replaced "memory can provide context" with "prior records can provide context" to keep live-source boundaries without over-framing all retrieved material as self-memory.

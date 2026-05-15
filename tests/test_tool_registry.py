@@ -61,7 +61,7 @@ def test_tool_descriptions_include_realtime_source_of_truth_marker():
     descriptions = registry.list_tool_descriptions()
 
     assert (
-        "- current_status [real-time; source-of-truth; memory can provide "
+        "- current_status [real-time; source-of-truth; prior records can provide "
         "context; use live tool results for current state]: Read current status."
     ) in descriptions
     assert "- memory_search: Search memories." in descriptions

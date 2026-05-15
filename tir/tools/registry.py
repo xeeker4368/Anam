@@ -58,7 +58,7 @@ def tool(
     Usage:
         @tool(
             name="memory_search",
-            description="Search your own memories",
+            description="Search indexed prior records",
             args_schema={...},
         )
         def memory_search(query: str, _context=None) -> str:
@@ -229,7 +229,7 @@ def _freshness_marker(tool_def: ToolDefinition) -> str:
     if freshness.get("source_of_truth"):
         parts.append("source-of-truth")
     if freshness.get("memory_may_inform_but_not_replace"):
-        parts.append("memory can provide context; use live tool results for current state")
+        parts.append("prior records can provide context; use live tool results for current state")
 
     return f" [{'; '.join(parts)}]"
 

@@ -13,6 +13,9 @@ def test_memory_search_skill_loads_from_active_directory():
     tools = registry.list_tools()
 
     assert any(tool["function"]["name"] == "memory_search" for tool in tools)
+    memory_tool = next(tool for tool in tools if tool["function"]["name"] == "memory_search")
+    assert "indexed prior records and memories" in memory_tool["function"]["description"]
+    assert "your own memories" not in memory_tool["function"]["description"]
 
 
 def test_empty_skills_directory_loads_zero_tools(tmp_path):
@@ -56,4 +59,4 @@ def test_memory_search_formats_results(mock_retrieve):
 def test_memory_search_empty_results(mock_retrieve):
     mock_retrieve.return_value = []
 
-    assert memory_search("nothing") == "No memories found for that query."
+    assert memory_search("nothing") == "No indexed prior records found for that query."

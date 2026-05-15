@@ -272,7 +272,7 @@ Rules:
 Excerpt:
 
 ```text
-memory can provide context; use live tool results for current state
+prior records can provide context; use live tool results for current state
 ```
 
 ## Retrieval / memory framing

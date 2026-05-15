@@ -132,7 +132,7 @@ tools:
         "memory_may_inform_but_not_replace": True,
     }
     assert (
-        "- example_status [real-time; source-of-truth; memory can provide "
+        "- example_status [real-time; source-of-truth; prior records can provide "
         "context; use live tool results for current state]: Get public service status."
     ) in registry.list_tool_descriptions()
 
