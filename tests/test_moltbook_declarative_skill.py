@@ -51,6 +51,101 @@ def test_moltbook_declarative_skill_loads_with_existing_active_tools():
 
 
 @patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_feed_applies_default_limit_and_bearer_auth(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_feed", {"sort": "new"})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/posts",
+        params={"sort": "new", "limit": "10"},
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+    assert "moltbook-secret-token" not in str(result["value"])
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_feed_explicit_limit_overrides_default(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_feed", {"sort": "new", "limit": 5})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/posts",
+        params={"sort": "new", "limit": "5"},
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_feed_allows_explicit_max_limit(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    mock_get.return_value = _response()
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_feed", {"sort": "new", "limit": 20})
+
+    assert result["ok"] is True
+    assert result["value"]["ok"] is True
+    mock_get.assert_called_once_with(
+        "https://www.moltbook.com/api/v1/posts",
+        params={"sort": "new", "limit": "20"},
+        headers={"Authorization": "Bearer moltbook-secret-token"},
+        timeout=10.0,
+        stream=True,
+        allow_redirects=False,
+    )
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_moltbook_feed_rejects_limit_above_max(
+    mock_get,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOLTBOOK_TOKEN", "moltbook-secret-token")
+    registry = _registry()
+
+    result = registry.dispatch("moltbook_feed", {"sort": "new", "limit": 21})
+
+    assert result["ok"] is False
+    assert "Invalid arguments for 'moltbook_feed'" in result["error"]
+    assert "21 is greater than the maximum of 20" in result["error"]
+    mock_get.assert_not_called()
+
+
+def test_moltbook_feed_schema_declares_optional_default_limit():
+    registry = _registry()
+    schema = registry._tools["moltbook_feed"].args_schema
+
+    assert schema["required"] == ["sort"]
+    assert schema["properties"]["limit"]["default"] == 10
+    assert schema["properties"]["limit"]["maximum"] == 20
+
+
+@patch("tir.tools.http_declarative.requests.get")
 def test_moltbook_feed_maps_sort_limit_and_bearer_auth(
     mock_get,
     monkeypatch,
