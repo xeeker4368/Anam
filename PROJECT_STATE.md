@@ -293,6 +293,11 @@ Current completed foundation includes:
 - AI-generated behavioral guidance proposal review paths
 - approved addition guidance apply-to-file workflow tested pre-live; apply is now dormant before go-live
 - `BEHAVIORAL_GUIDANCE.md` runtime loading tested pre-live and now dormant before go-live
+- retrieved context source framing loosened to neutral labeled-source wording
+- `OPERATIONAL_GUIDANCE.md` compressed to source/tool/action safety
+- journal and research prompts loosened so quiet or low-signal outputs are valid
+- tool descriptions/source framing loosened away from broad self-memory wording
+- `soul.md` reviewed for minimality before go-live; no edit was recommended
 - reflection journal write/register/index/retrieval paths
 - operational reflection review pass
 - prompt inventory/audit notes and database schema documentation

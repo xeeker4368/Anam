@@ -116,6 +116,15 @@ The AI-generated behavioral guidance proposal path was built and tested pre-live
 
 Behavioral guidance runtime loading is dormant before go-live. `BEHAVIORAL_GUIDANCE.md` should not contain active `- Guidance:` lines and should not shape runtime prompts or reflection journal entity context. The design lesson is preserved in `docs/BEHAVIORAL_GUIDANCE_DORMANT_DECISION.md`.
 
+Low-risk pre-go-live course correction is complete:
+
+- [x] Behavioral guidance runtime loading dormant before go-live
+- [x] Neutral retrieved-context source framing
+- [x] `OPERATIONAL_GUIDANCE.md` compressed to source/tool/action safety
+- [x] Journal and research prompt looseness for quiet/low-signal outputs
+- [x] Tool description/source framing cleanup
+- [x] `soul.md` minimality review with no edit recommended
+
 Guidance scoping now has a concept design in `docs/GUIDANCE_SCOPING_DESIGN.md`. No schema, runtime filtering, proposal-scope review, or scoped apply-to-file behavior is implemented yet.
 
 Removal and revision apply mechanics now have a concept design in `docs/BEHAVIORAL_GUIDANCE_REVISION_DESIGN.md`. Apply behavior is dormant before go-live; future reintroduction would need a separate reviewed design decision.
@@ -598,31 +607,37 @@ Suggested concepts:
 
 # Suggested Near-Term Build Order
 
-1. Source Boundary / Pre-Live Cleanup v1
-2. Media and generation foundation
-3. Image generation artifacts
-4. Generated document artifacts
-5. Artifact gallery/manager
-6. Screen-first avatar exploration
-7. Code and sandbox foundations
-8. Event/tool trace foundation hardening
-9. Review pass foundation for conversations and artifacts
-10. Identity events
-11. Behavioral observations
-12. Working theories and open questions
-13. Context assembler upgrade
-14. Nightly journal
-15. iMessage send-only notifications
-16. Moltbook draft-only progression after read-only confidence
-17. Research Continuation Design v1
-18. Research open-loop/review-item design
-19. Web source collection design
-20. Research promotion / working-theory rules design
-21. Autonomous research scheduling/budgets
-22. Autonomous web research budgets
-23. Voice output/input
-24. Sight/image review
+1. Research open-loop/review-item design
+2. Research open-loop/review-item implementation
+3. Web source collection design
+4. Web source collection implementation
+5. Research promotion / working-theory rules design
+6. Minimal household multi-user design
+7. Minimal household multi-user implementation
+8. Media and generation foundation
+9. Image generation artifacts
+10. Image/screenshot artifact understanding
+11. Moltbook read-only verification
+12. Canary/drift observation design
+13. Canary/drift observation implementation
+14. UI polish / non-dev presentation
+15. Go-live reset/hardening plan
+16. Backup/restore smoke before live
+17. Limited Live v1 smoke test
+18. Code and sandbox foundations
+19. Event/tool trace foundation hardening
+20. Review pass foundation for conversations and artifacts
+21. Identity events
+22. Behavioral observations
+23. Context assembler upgrade
+24. Nightly journal
+25. iMessage send-only notifications
+26. Moltbook draft-only progression after read-only confidence
+27. Autonomous research scheduling/budgets
+28. Autonomous web research budgets
+29. Voice output/input
+30. Sight/image review
 
 `SELF_UNDERSTANDING.md` now has a concept design in `docs/SELF_UNDERSTANDING_DESIGN.md`. It is not implemented, not loaded into runtime context, and has no schema, service, UI, model tool, or apply workflow in the current checkpoint.
-25. Add staged self-modification
-26. Add diagnostics/evaluation harness throughout
+31. Add staged self-modification
+32. Add diagnostics/evaluation harness throughout
