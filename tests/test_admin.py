@@ -428,6 +428,32 @@ def test_research_open_loops_preview_admin_prints_candidates(temp_admin, capsys,
     assert "candidate section=Open Questions title=What remains unresolved?" in output
 
 
+def test_research_open_loops_preview_admin_prints_zero_candidates(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_preview(artifact_id):
+        assert artifact_id == "artifact-quiet"
+        return {
+            "artifact": {
+                "artifact_id": "artifact-quiet",
+                "title": "Research Note — Quiet",
+            },
+            "source_path": "research/quiet.md",
+            "candidate_count": 0,
+            "skipped_duplicate_count": 0,
+            "candidates": [],
+        }
+
+    monkeypatch.setattr(admin_mod, "preview_research_open_loops", fake_preview)
+
+    admin_mod.cmd_research_open_loops_preview(SimpleNamespace(artifact_id="artifact-quiet"))
+
+    output = capsys.readouterr().out
+    assert "Research open-loop preview complete" in output
+    assert "candidate_count=0" in output
+    assert "No research open-loop candidates found." in output
+
+
 def test_research_open_loops_create_admin_prints_created_and_skipped_counts(
     temp_admin,
     capsys,

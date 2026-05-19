@@ -24,16 +24,33 @@ RESEARCH_OPEN_LOOP_SECTIONS = (
 )
 LOW_SIGNAL_ENTRIES = {
     "none",
+    "none identified",
     "no open questions",
     "no new open questions",
     "no suggested followups",
+    "no suggested follow ups",
     "no followups",
     "no follow ups",
+    "no useful followups",
+    "no useful follow ups",
     "nothing useful",
     "nothing meaningful",
+    "nothing identified",
+    "not applicable",
     "n/a",
     "na",
+    "n a",
 }
+LOW_SIGNAL_PREFIXES = (
+    "no open questions",
+    "no new open questions",
+    "no followups",
+    "no follow ups",
+    "no suggested followups",
+    "no suggested follow ups",
+    "no useful followups",
+    "no useful follow ups",
+)
 
 
 class ResearchOpenLoopError(ValueError):
@@ -143,6 +160,8 @@ def _is_low_signal(text: str) -> bool:
     if not normalized:
         return True
     if normalized in LOW_SIGNAL_ENTRIES:
+        return True
+    if any(normalized.startswith(prefix) for prefix in LOW_SIGNAL_PREFIXES):
         return True
     return normalized.startswith("no useful") or normalized.startswith("nothing to")
 

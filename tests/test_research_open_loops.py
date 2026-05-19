@@ -53,6 +53,49 @@ No suggested follow-ups.
 """
 
 
+RESEARCH_RUN_STYLE_NO_OP_NOTE = """# Research Note — Quiet
+
+- Research mode: manual_research_v1
+- Provisional: true
+
+## Purpose
+
+Check whether anything remains open.
+
+## Summary
+
+No useful findings were identified.
+
+## Findings
+
+- No useful findings were identified.
+
+## Uncertainty
+
+- No external sources were checked.
+
+## Sources
+
+- Model-only draft; no external sources collected.
+
+## Open Questions
+
+No open questions were identified.
+
+## Possible Follow-Ups
+
+No suggested follow-ups were identified.
+
+## Suggested Review Items
+
+No suggested review items were identified.
+
+## Working Notes
+
+- Keep this provisional.
+"""
+
+
 @pytest.fixture()
 def research_loop_env(tmp_path, monkeypatch):
     workspace_root = tmp_path / "workspace"
@@ -298,6 +341,109 @@ def test_no_open_questions_reports_zero_candidates_and_creates_nothing(research_
     assert preview["candidate_count"] == 0
     assert created["created_count"] == 0
     assert research_loop_env["open_loops"].list_open_loops() == []
+
+
+def test_generated_no_open_questions_text_is_low_signal(research_loop_env):
+    artifact = _create_research_artifact(
+        research_loop_env,
+        content="""# Research Note — Quiet
+
+## Open Questions
+
+No open questions were identified.
+""",
+    )
+
+    result = research_open_loops.preview_research_open_loops(
+        artifact["artifact_id"],
+        workspace_root=research_loop_env["workspace_root"],
+    )
+
+    assert result["candidate_count"] == 0
+    assert result["candidates"] == []
+
+
+def test_generated_no_followups_text_is_low_signal(research_loop_env):
+    artifact = _create_research_artifact(
+        research_loop_env,
+        content="""# Research Note — Quiet
+
+## Possible Follow-Ups
+
+No suggested follow-ups were identified.
+""",
+    )
+
+    result = research_open_loops.preview_research_open_loops(
+        artifact["artifact_id"],
+        workspace_root=research_loop_env["workspace_root"],
+    )
+
+    assert result["candidate_count"] == 0
+    assert result["candidates"] == []
+
+
+def test_research_run_style_no_op_note_produces_zero_candidates(research_loop_env):
+    artifact = _create_research_artifact(
+        research_loop_env,
+        content=RESEARCH_RUN_STYLE_NO_OP_NOTE,
+    )
+
+    result = research_open_loops.preview_research_open_loops(
+        artifact["artifact_id"],
+        workspace_root=research_loop_env["workspace_root"],
+    )
+
+    assert result["candidate_count"] == 0
+    assert result["candidates"] == []
+
+
+def test_real_questions_and_followups_still_produce_candidates(research_loop_env):
+    artifact = _create_research_artifact(
+        research_loop_env,
+        content="""# Research Note — Active
+
+## Open Questions
+
+Should the retry policy change if the prior note identified no open questions?
+
+## Possible Follow-Ups
+
+Compare retry behavior against latest failures, even if no suggested follow-ups were identified earlier.
+""",
+    )
+
+    result = research_open_loops.preview_research_open_loops(
+        artifact["artifact_id"],
+        workspace_root=research_loop_env["workspace_root"],
+    )
+
+    assert result["candidate_count"] == 2
+    titles = [candidate["title"] for candidate in result["candidates"]]
+    assert "Should the retry policy change if the prior note identified no open questions?" in titles
+    assert "Compare retry behavior against latest failures, even if no suggested follow-ups were identified earlier." in titles
+
+
+def test_suggested_review_items_only_note_is_still_ignored(research_loop_env):
+    artifact = _create_research_artifact(
+        research_loop_env,
+        content="""# Research Note — Review Only
+
+## Suggested Review Items
+
+No suggested review items were identified.
+
+- Review the retry policy later.
+""",
+    )
+
+    result = research_open_loops.preview_research_open_loops(
+        artifact["artifact_id"],
+        workspace_root=research_loop_env["workspace_root"],
+    )
+
+    assert result["candidate_count"] == 0
+    assert result["candidates"] == []
 
 
 def test_no_chroma_indexing_or_review_items_are_created(research_loop_env):
