@@ -258,6 +258,8 @@ The model should preserve future support for loops originating from:
 
 Each future origin should preserve source metadata and use explicit creation rules.
 
+Moltbook source collection now has a design document in `docs/MOLTBOOK_SOURCE_COLLECTION_DESIGN.md`. Moltbook-derived open loops should remain deferred until source trace capture exists and a separate explicit preview/create workflow is approved.
+
 ## Relationship To Scheduled Or Autonomous Research
 
 Open loops are the queue substrate for later bounded research.
@@ -302,6 +304,7 @@ Working theories need separate design for evidence, confidence, contradiction ha
 - Review-item creation.
 - Working-theory/synthesis records.
 - Web source collection.
+- Moltbook-derived open-loop creation.
 - Scheduled/autonomous research.
 - Title/search continuation.
 - UI.
@@ -328,6 +331,9 @@ Working theories need separate design for evidence, confidence, contradiction ha
 7. [x] Add duplicate prevention and skipped-candidate reporting for same artifact/question.
 8. [x] Add initial iteration metadata and local-day daily limit fields.
 9. [x] Add bounded/scheduled research design.
-10. Later: manual bounded open-loop research planner.
-11. Later: scheduler uses open loops.
-12. Later: synthesis/working theory path.
+10. [x] Add manual bounded open-loop research planner.
+11. [x] Add manual bounded open-loop research runtime.
+12. [x] Add Moltbook source collection design.
+13. Later: Moltbook-derived open-loop preview/create.
+14. Later: scheduler uses open loops.
+15. Later: synthesis/working theory path.

@@ -2,13 +2,13 @@
 
 ## Current Recommended Task
 
-Manual Bounded Open-Loop Research Planner v1.
+Moltbook Source Preview Runtime v1.
 
 ## Task Goal
 
-Design and implement the smallest safe planner for selecting one eligible research open loop for a bounded manual research pass.
+Implement the smallest safe preview command for bounded, read-only Moltbook source collection.
 
-The planner should make open-loop research selection inspectable before any scheduler or autonomous loop exists.
+The preview should make Moltbook source collection inspectable before bounded research uses live Moltbook context.
 
 ## Current Checkpoint
 
@@ -31,40 +31,42 @@ Recent completed foundation and course-correction work:
 - Research Continuation Runtime v1 is complete for the manual CLI path.
 - Research Open-Loop Runtime v1 is complete for the first standalone manual path.
 - Bounded / Scheduled Research Design v1 exists in `docs/BOUNDED_SCHEDULED_RESEARCH_DESIGN.md`.
+- Manual Bounded Open-Loop Research Planner v1 is complete.
+- Manual Bounded Open-Loop Research Run v1 is complete.
+- Moltbook Source Collection Design v1 exists in `docs/MOLTBOOK_SOURCE_COLLECTION_DESIGN.md`.
 
 Research remains provisional and does not become truth, guidance, self-understanding, project decisions, review items, or working theories automatically.
 
 ## Current Implementation Scope
 
-Manual Bounded Open-Loop Research Planner v1 should likely implement:
+Moltbook Source Preview Runtime v1 should likely implement:
 
-- eligibility checks for existing research open loops
-- deterministic selection of the next eligible loop
-- dry-run preview output
-- per-loop daily limit evaluation from `metadata_json`
-- local-day reset planning or preview behavior
-- clear ineligible-loop reasons
-- no research execution yet unless explicitly approved in a later runtime patch
+- deterministic Moltbook source preview for an explicit query/feed/submolt/post selection
+- compact source records with source ids, titles, authors, URLs, timestamps, excerpts, and provenance
+- read-only enforcement through existing Moltbook tools
+- source limits from `docs/MOLTBOOK_SOURCE_COLLECTION_DESIGN.md`
+- clear no-result output that does not imply proof of absence
+- no research note generation
+- no source trace writes unless explicitly approved by the runtime patch scope
 - no scheduler/background behavior
 
 Likely command:
 
 ```bash
-.pyanam/bin/python -m tir.admin research-open-loop-next --dry-run
+.pyanam/bin/python -m tir.admin moltbook-source-preview --query "agent autonomy before go-live" --limit 10
 ```
 
 The next runtime patch may add:
 
 ```bash
-.pyanam/bin/python -m tir.admin research-open-loop-run --open-loop-id <id> --dry-run
-.pyanam/bin/python -m tir.admin research-open-loop-run-next --dry-run
+.pyanam/bin/python -m tir.admin moltbook-source-preview --query "agent autonomy before go-live" --read-post-id <post_id> --comments-limit 5
 ```
 
 ## Explicitly Deferred
 
 - True scheduler/background research.
 - Web source collection.
-- Moltbook/live-source research collection.
+- Moltbook use inside bounded research.
 - Working-theory/synthesis records.
 - Review-item creation.
 - Automatic open-loop creation without explicit operator action.
@@ -78,7 +80,7 @@ The next runtime patch may add:
 - Changes to `BEHAVIORAL_GUIDANCE.md`, `SELF_UNDERSTANDING.md`, `OPERATIONAL_GUIDANCE.md`, or `soul.md`.
 - Implementing household multi-user support.
 - Media/image artifact implementation.
-- Moltbook behavior changes beyond separately approved read-only verification/source-capture work.
+- Moltbook behavior changes beyond separately approved read-only source preview/capture work.
 - Canary runtime harness.
 - UI redesign.
 - Go-live DB wipe/reset.
@@ -93,33 +95,37 @@ The next runtime patch may add:
 - Open loops are unresolved questions, not conclusions or instructions.
 - Behavioral guidance runtime loading must remain dormant.
 - Research artifacts need a clear purpose and consumption path.
+- Moltbook source material is live external context, not factual authority.
+- Moltbook source text must be separated from Anam's interpretation.
+- Absence of Moltbook results is not proof of absence.
 - No durable research state should update silently without an artifact once execution exists.
 - Future record creation must preserve source lineage.
 - The design must preserve the Anam/entity distinction.
 
 ## Files/Subsystems To Inspect First
 
-- `docs/BOUNDED_SCHEDULED_RESEARCH_DESIGN.md`
-- `docs/RESEARCH_OPEN_LOOP_DESIGN.md`
-- `tir/research/open_loops.py`
-- `tir/open_loops/service.py`
-- `tir/research/manual.py`
+- `docs/MOLTBOOK_SOURCE_COLLECTION_DESIGN.md`
+- `skills/active/moltbook/skill.yaml`
+- `skills/active/moltbook/moltbook.py`
+- `tir/tools/registry.py`
+- `tir/tools/http_declarative.py`
 - `tir/admin.py`
-- `tests/test_research_open_loops.py`
-- `tests/test_open_loops.py`
+- `tests/test_moltbook_declarative_skill.py`
+- `tests/test_moltbook_search_semantics.py`
 - `tests/test_admin.py`
 
 ## Success Criteria
 
-Manual Bounded Open-Loop Research Planner v1 should:
+Moltbook Source Preview Runtime v1 should:
 
-- preview the next eligible research loop without writing
-- expose why loops are eligible or ineligible
-- respect per-loop daily metadata in planning
-- keep selection deterministic and inspectable
-- avoid running research unless separately approved
-- avoid scheduler/background behavior
-- avoid DB schema changes unless clearly necessary
+- preview compact Moltbook sources without writing research notes
+- require an explicit query/feed/submolt/post selection
+- enforce read-only Moltbook use
+- preserve provenance for each compact source record
+- keep source text separate from interpretation
+- report no usable results without treating absence as proof
 - avoid Chroma indexing changes
+- avoid bounded research integration unless separately approved
+- avoid scheduler/background behavior
 - avoid review-item creation
 - avoid promotion to truth, guidance, self-understanding, working theories, or project decisions

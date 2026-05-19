@@ -8,7 +8,7 @@ Research open loops now have a design document in `docs/RESEARCH_OPEN_LOOP_DESIG
 
 Bounded/scheduled research now has a design document in `docs/BOUNDED_SCHEDULED_RESEARCH_DESIGN.md`.
 
-Still deferred: title/search continuation, review-item creation, web source collection, working-theory promotion, Moltbook/live-source research collection, autonomous research, scheduler behavior, value-density scoring, and any promotion to truth, behavioral guidance, self-understanding, or project decisions.
+Still deferred: title/search continuation, review-item creation, web source collection, working-theory promotion, Moltbook/live-source research runtime, autonomous research, scheduler behavior, value-density scoring, and any promotion to truth, behavioral guidance, self-understanding, or project decisions.
 
 ## Purpose
 
@@ -213,6 +213,14 @@ Web search should be deferred from the first implementation.
 
 The current foundation avoids autonomous browsing and does not use web search. Web source collection should not be added unless a dedicated web research patch is approved.
 
+## Moltbook Source Collection
+
+Moltbook source collection now has a design document in `docs/MOLTBOOK_SOURCE_COLLECTION_DESIGN.md`.
+
+Moltbook should be the first live source-collection channel before general web search because it is already integrated as a read-only tool. Moltbook material is live external context, not factual authority. It must remain source-linked, provisional, and separate from Anam's interpretation.
+
+Manual research should not use Moltbook unless a later explicit runtime patch adds source preview and bounded source trace capture. Raw Moltbook traces should not be indexed into ChromaDB by default; the research note may be indexed when explicitly registered.
+
 ## Difference From Normal Chat
 
 Normal chat answers the user in the current conversation.
@@ -247,10 +255,12 @@ Research can become hidden guidance if findings are injected into runtime prompt
 6. [x] Design research continuation from prior provisional research notes.
 7. [x] Implement manual research continuation from prior provisional research notes.
 8. [x] Design research open loops.
-9. [ ] Add optional suggested open-loop creation.
-10. [ ] Design review-item creation separately.
-11. [ ] Add bounded web source collection with explicit `--use-web`.
-12. [ ] Add future working-theory proposal path.
+9. [x] Design Moltbook source collection.
+10. [ ] Add Moltbook source preview.
+11. [ ] Add optional suggested open-loop creation.
+12. [ ] Design review-item creation separately.
+13. [ ] Add bounded web source collection with explicit `--use-web`.
+14. [ ] Add future working-theory proposal path.
 
 ## Non-Goals For This Patch
 

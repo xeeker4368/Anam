@@ -185,7 +185,9 @@ The intended live research loop should later support Moltbook and web source col
 - tool trace storage
 - source framing for retrieved/continued research
 
-Do not use web search or Moltbook in the first bounded research implementation. Adding live sources before source/citation capture exists would make research harder to inspect and easier to over-trust.
+Moltbook source collection now has a design document in `docs/MOLTBOOK_SOURCE_COLLECTION_DESIGN.md`. Do not use Moltbook in bounded research until the explicit Moltbook source preview/runtime path exists. Adding live sources before source trace capture is implemented would make research harder to inspect and easier to over-trust.
+
+Do not use web search in bounded research until a separate web source collection design and runtime patch are approved.
 
 ## Output Artifact Requirements
 
@@ -362,7 +364,8 @@ Bounded/scheduled research must not:
 - create working theories without a separate design
 - create review items automatically
 - treat research notes as hard truth
-- use web or Moltbook before source/citation capture is designed
+- use web before source/citation capture is designed
+- use Moltbook before explicit source preview and trace capture are implemented
 - update memory authority silently
 - loop indefinitely
 
@@ -379,9 +382,11 @@ Bounded/scheduled research must not:
 9. Add optional explicit open-loop creation from the produced artifact.
 10. Add global cap configuration and accounting if storage is clean.
 11. Later: scheduled/manual batch runner.
-12. Later: web source collection.
-13. Later: Moltbook source collection.
-14. Later: working theory/synthesis path.
+12. [x] Design Moltbook source collection.
+13. Add Moltbook source preview.
+14. Later: bounded Moltbook source collection with explicit `--use-moltbook`.
+15. Later: web source collection.
+16. Later: working theory/synthesis path.
 
 ## Risks
 
