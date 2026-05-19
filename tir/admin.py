@@ -39,6 +39,8 @@ Commands:
     research-run     Generate a manual provisional research note
     research-open-loop-next
                     Preview the next eligible bounded research open loop
+    research-open-loop-run
+                    Run one bounded research iteration for an open loop
 """
 
 import argparse
@@ -99,7 +101,11 @@ from tir.research.open_loops import (
     create_research_open_loops,
     preview_research_open_loops,
 )
-from tir.research.bounded import plan_next_bounded_research_open_loop
+from tir.research.bounded import (
+    BoundedResearchError,
+    plan_next_bounded_research_open_loop,
+    run_bounded_research_open_loop,
+)
 
 
 def cmd_init_db(args):
@@ -1016,6 +1022,60 @@ def cmd_research_open_loop_next(args):
     _print_bounded_research_open_loop_plan(result, limit=args.limit)
 
 
+def cmd_research_open_loop_run(args):
+    """Run one bounded research iteration for a specific open loop."""
+    try:
+        result = run_bounded_research_open_loop(
+            open_loop_id=args.open_loop_id,
+            write=args.write,
+            register_artifact=args.register_artifact,
+            model=args.model,
+        )
+    except BoundedResearchError as exc:
+        print(f"Bounded research open-loop run failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Bounded research open-loop run failed: {exc}")
+        sys.exit(1)
+
+    print("Bounded research open-loop run complete")
+    print(f"mode={result['mode']}")
+    print(f"open_loop_id={args.open_loop_id}")
+    print(f"title={result['title']}")
+    print(f"research_version={result['research_version']}")
+    print(f"target_path={result['relative_path']}")
+    source_context = result.get("source_context") or {}
+    if source_context.get("artifact_id"):
+        print(f"source_artifact_id={source_context['artifact_id']}")
+    if source_context.get("path"):
+        print(f"source_research_path={source_context['path']}")
+    if result.get("write_result"):
+        print(f"written_path={result['write_result']['path']}")
+        print(f"written_bytes={result['write_result']['bytes']}")
+    if result.get("artifact_result"):
+        artifact_result = result["artifact_result"]
+        artifact = artifact_result["artifact"]
+        indexing = artifact_result["indexing"]
+        print(f"artifact_id={artifact['artifact_id']}")
+        print(f"artifact_type={artifact['artifact_type']}")
+        print(f"indexing_status={indexing['status']}")
+        print(f"indexing_chunks_written={indexing.get('chunks_written', 0)}")
+    if result.get("open_loop_update"):
+        update = result["open_loop_update"]
+        metadata = update["metadata"]
+        print("open_loop_metadata_updated=true")
+        print(f"daily_iterations={metadata['daily_iteration_count']}/{metadata['daily_iteration_limit']}")
+        print(f"daily_iteration_local_date={metadata['daily_iteration_local_date']}")
+        print(f"last_researched_at={metadata['last_researched_at']}")
+        print(f"last_research_path={metadata['last_research_path']}")
+        if metadata.get("last_research_artifact_id"):
+            print(f"last_research_artifact_id={metadata['last_research_artifact_id']}")
+    else:
+        print("open_loop_metadata_updated=false")
+    print("research_note:")
+    print(result["document"], end="")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -1245,6 +1305,22 @@ def main():
     p.add_argument("--dry-run", action="store_true", help="Preview without writing")
     p.add_argument("--limit", type=int, default=5, help="Max eligible candidate rows to print")
 
+    # research-open-loop-run
+    p = sub.add_parser(
+        "research-open-loop-run",
+        help="Run one bounded research iteration for a specific open loop",
+    )
+    p.add_argument("--open-loop-id", required=True, help="Open loop ID to research")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="Generate without writing")
+    mode.add_argument("--write", action="store_true", help="Write note to workspace/research")
+    p.add_argument(
+        "--register-artifact",
+        action="store_true",
+        help="After --write, register and index the note as research memory",
+    )
+    p.add_argument("--model", default=None, help="Optional Ollama model override")
+
     # behavioral-guidance-review-conversation
     p = sub.add_parser(
         "behavioral-guidance-review-conversation",
@@ -1313,6 +1389,8 @@ def main():
 
     if args.command == "research-run" and args.register_artifact and not args.write:
         parser.error("research-run --register-artifact requires --write")
+    if args.command == "research-open-loop-run" and args.register_artifact and not args.write:
+        parser.error("research-open-loop-run --register-artifact requires --write")
 
     # Ensure databases exist for DB-facing commands. Backup/restore must not
     # create or mutate runtime state before their own safety checks run.
@@ -1349,6 +1427,7 @@ def main():
         "research-open-loops-preview": cmd_research_open_loops_preview,
         "research-open-loops-create": cmd_research_open_loops_create,
         "research-open-loop-next": cmd_research_open_loop_next,
+        "research-open-loop-run": cmd_research_open_loop_run,
     }
 
     commands[args.command](args)

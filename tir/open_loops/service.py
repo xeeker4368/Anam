@@ -268,3 +268,21 @@ def update_open_loop_status(open_loop_id: str, status: str) -> dict | None:
         conn.commit()
 
     return get_open_loop(open_loop_id)
+
+
+def update_open_loop_metadata(open_loop_id: str, metadata: dict | None) -> dict | None:
+    """Replace an open loop's metadata JSON and updated_at timestamp."""
+    metadata_json = _metadata_to_json(metadata)
+    updated_at = _now()
+
+    db_mod = _db()
+    with db_mod.get_connection() as conn:
+        conn.execute(
+            """UPDATE main.open_loops
+               SET metadata_json = ?, updated_at = ?
+               WHERE open_loop_id = ?""",
+            (metadata_json, updated_at, open_loop_id),
+        )
+        conn.commit()
+
+    return get_open_loop(open_loop_id)

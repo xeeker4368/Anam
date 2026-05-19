@@ -605,6 +605,156 @@ def test_research_open_loop_next_without_dry_run_fails_cleanly(temp_admin, capsy
     assert "research-open-loop-next currently supports --dry-run only" in output
 
 
+def test_research_open_loop_run_admin_prints_dry_run_summary(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**kwargs):
+        assert kwargs["open_loop_id"] == "loop-1"
+        assert kwargs["write"] is False
+        assert kwargs["register_artifact"] is False
+        return {
+            "mode": "dry-run",
+            "research_version": "manual_research_open_loop_iteration_v1",
+            "title": "What remains unresolved",
+            "relative_path": "research/2026-05-15-what-remains-unresolved.md",
+            "source_context": {
+                "artifact_id": "artifact-1",
+                "path": "research/prior.md",
+            },
+            "document": "# Research Note - What remains unresolved\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_bounded_research_open_loop", fake_run)
+
+    admin_mod.cmd_research_open_loop_run(
+        SimpleNamespace(
+            open_loop_id="loop-1",
+            dry_run=True,
+            write=False,
+            register_artifact=False,
+            model=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Bounded research open-loop run complete" in output
+    assert "mode=dry-run" in output
+    assert "open_loop_id=loop-1" in output
+    assert "research_version=manual_research_open_loop_iteration_v1" in output
+    assert "open_loop_metadata_updated=false" in output
+    assert "# Research Note - What remains unresolved" in output
+
+
+def test_research_open_loop_run_admin_prints_write_register_summary(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**kwargs):
+        assert kwargs["write"] is True
+        assert kwargs["register_artifact"] is True
+        return {
+            "mode": "write",
+            "research_version": "manual_research_open_loop_iteration_v1",
+            "title": "What remains unresolved",
+            "relative_path": "research/2026-05-15-what-remains-unresolved.md",
+            "source_context": {},
+            "write_result": {
+                "path": "research/2026-05-15-what-remains-unresolved.md",
+                "bytes": 123,
+            },
+            "artifact_result": {
+                "artifact": {
+                    "artifact_id": "artifact-1",
+                    "artifact_type": "research_note",
+                },
+                "indexing": {
+                    "status": "indexed",
+                    "chunks_written": 1,
+                },
+            },
+            "open_loop_update": {
+                "metadata": {
+                    "daily_iteration_count": 1,
+                    "daily_iteration_limit": 1,
+                    "daily_iteration_local_date": "2026-05-15",
+                    "last_researched_at": "2026-05-15T12:00:00+00:00",
+                    "last_research_path": "research/2026-05-15-what-remains-unresolved.md",
+                    "last_research_artifact_id": "artifact-1",
+                }
+            },
+            "document": "# Research Note - What remains unresolved\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_bounded_research_open_loop", fake_run)
+
+    admin_mod.cmd_research_open_loop_run(
+        SimpleNamespace(
+            open_loop_id="loop-1",
+            dry_run=False,
+            write=True,
+            register_artifact=True,
+            model=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "mode=write" in output
+    assert "written_path=research/2026-05-15-what-remains-unresolved.md" in output
+    assert "artifact_id=artifact-1" in output
+    assert "indexing_status=indexed" in output
+    assert "open_loop_metadata_updated=true" in output
+    assert "daily_iterations=1/1" in output
+    assert "last_research_artifact_id=artifact-1" in output
+
+
+def test_research_open_loop_run_admin_errors_are_clear(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**_kwargs):
+        raise admin_mod.BoundedResearchError("Open loop is not eligible: daily_limit_reached")
+
+    monkeypatch.setattr(admin_mod, "run_bounded_research_open_loop", fake_run)
+
+    with pytest.raises(SystemExit) as exc:
+        admin_mod.cmd_research_open_loop_run(
+            SimpleNamespace(
+                open_loop_id="loop-1",
+                dry_run=True,
+                write=False,
+                register_artifact=False,
+                model=None,
+            )
+        )
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert "Bounded research open-loop run failed: Open loop is not eligible" in output
+
+
+def test_research_open_loop_run_register_without_write_fails_cleanly(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "research-open-loop-run",
+            "--open-loop-id",
+            "loop-1",
+            "--register-artifact",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "research-open-loop-run --register-artifact requires --write" in captured.err
+
+
 def test_reflection_journal_day_admin_passes_include_memory(temp_admin, capsys, monkeypatch):
     _db_mod, admin_mod = temp_admin
 

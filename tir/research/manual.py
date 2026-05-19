@@ -532,6 +532,7 @@ def manual_research_metadata(result: dict) -> dict:
         )
         if continuation.get("artifact_id"):
             metadata["continuation_of_artifact_id"] = continuation["artifact_id"]
+    metadata.update(result.get("artifact_metadata") or {})
     return metadata
 
 

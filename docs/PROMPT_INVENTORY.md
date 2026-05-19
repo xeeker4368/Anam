@@ -292,7 +292,20 @@ This file is a governance/runtime file and cannot be ingested as normal artifact
 
 ## Artifact / source framing
 
-### 1. `tir/research/manual.py:252` — `build_manual_research_messages`
+### 1. `tir/research/bounded.py:428` — `build_bounded_research_messages`
+
+- Name: `system`
+- Category: Artifact / source framing
+- Risk flags: `do not`
+- Audit note: `needs discussion`
+
+Excerpt:
+
+```text
+Produce one structured provisional bounded research note for a single existing research open loop. Use only the supplied open-loop details and prior provisional research context. Do not claim external sources were collected. Do not create behavioral guidance, self-understanding, project decisions, working theories, review items, open-loop records, or runtime instructions.
+```
+
+### 2. `tir/research/manual.py:252` — `build_manual_research_messages`
 
 - Name: `system`
 - Category: Artifact / source framing
@@ -305,7 +318,7 @@ Excerpt:
 Produce a structured provisional research note. Use only the supplied question and scope. Do not claim external sources were collected. Do not create behavioral guidance, self-understanding, project decisions, review items, open loops, or runtime instructions.
 ```
 
-### 2. `tir/research/manual.py:290` — `build_manual_research_continuation_messages`
+### 3. `tir/research/manual.py:290` — `build_manual_research_continuation_messages`
 
 - Name: `system`
 - Category: Artifact / source framing

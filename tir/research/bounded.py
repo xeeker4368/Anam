@@ -8,16 +8,48 @@ collect sources, or schedule autonomous work.
 import json
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
+from pathlib import Path
+
+from tir.artifacts.service import get_artifact
+from tir.config import CHAT_MODEL, OLLAMA_HOST, WORKSPACE_DIR
+from tir.engine.ollama import chat_completion_text
+from tir.open_loops.service import update_open_loop_metadata
+from tir.research.manual import (
+    ManualResearchError,
+    derive_research_title,
+    register_manual_research_artifact,
+    research_relative_path,
+    write_manual_research_note,
+)
+from tir.workspace.service import resolve_workspace_path
 
 
 SUPPORTED_LOOP_TYPES = {"unresolved_question", "interrupted_research"}
 DEFAULT_DAILY_ITERATION_LIMIT = 1
+BOUNDED_RESEARCH_VERSION = "manual_research_open_loop_iteration_v1"
+BOUNDED_RESEARCH_MODE = "manual_open_loop_v1"
 PRIORITY_RANK = {
     "high": 0,
     "normal": 1,
     "low": 2,
 }
+BOUNDED_RESEARCH_BODY_HEADINGS = (
+    "## Purpose",
+    "## Open Loop Being Researched",
+    "## Prior Research Considered",
+    "## Updated Findings",
+    "## Uncertainty",
+    "## Sources",
+    "## New Open Questions",
+    "## Possible Follow-Ups",
+    "## Suggested Review Items",
+    "## Working Notes",
+)
+
+
+class BoundedResearchError(ValueError):
+    """Raised when a bounded research open-loop run cannot proceed."""
 
 
 @dataclass(frozen=True)
@@ -65,6 +97,10 @@ def _current_local_date() -> str:
     return date.today().isoformat()
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _coerce_positive_int(value, default: int) -> int:
     try:
         coerced = int(value)
@@ -110,6 +146,16 @@ def _load_open_loop_rows(*, max_loops: int = 1000) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def _load_open_loop_row(open_loop_id: str) -> dict | None:
+    db_mod = _db()
+    with db_mod.get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM main.open_loops WHERE open_loop_id = ?",
+            (open_loop_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def _row_to_loop(row: dict) -> tuple[dict, dict | None, str | None]:
     metadata_json = row.get("metadata_json")
     metadata = None
@@ -152,6 +198,29 @@ def _daily_state(metadata: dict, current_local_date: str) -> tuple[int, int]:
         return 0, limit
     count = _coerce_non_negative_int(metadata.get("daily_iteration_count"), 0)
     return count, limit
+
+
+def _require_eligible_open_loop(
+    open_loop_id: str,
+    *,
+    current_local_date: str | None = None,
+) -> BoundedOpenLoopEvaluation:
+    row = _load_open_loop_row(open_loop_id)
+    if row is None:
+        raise BoundedResearchError(f"Open loop not found: {open_loop_id}")
+    loop, metadata, metadata_error = _row_to_loop(row)
+    evaluation = evaluate_open_loop_for_bounded_research(
+        loop,
+        metadata=metadata,
+        metadata_error=metadata_error,
+        current_local_date=current_local_date,
+    )
+    if not evaluation.eligible:
+        raise BoundedResearchError(
+            "Open loop is not eligible for bounded research: "
+            f"{evaluation.reason_code} ({evaluation.reason})"
+        )
+    return evaluation
 
 
 def evaluate_open_loop_for_bounded_research(
@@ -279,3 +348,379 @@ def plan_next_bounded_research_open_loop(
             "reason": "global daily research cap is deferred in planner v1",
         },
     }
+
+
+def _research_date(created_at: str) -> str:
+    return datetime.fromisoformat(created_at).date().isoformat()
+
+
+def _source_artifact_id(loop: dict, metadata: dict) -> str | None:
+    value = metadata.get("source_artifact_id") or loop.get("related_artifact_id")
+    return value if _has_text(value) else None
+
+
+def load_bounded_research_source_context(
+    loop: dict,
+    metadata: dict,
+    *,
+    workspace_root: Path = WORKSPACE_DIR,
+) -> dict:
+    """Load prior source research content for a bounded run, if available."""
+    artifact_id = _source_artifact_id(loop, metadata)
+    context = {
+        "artifact_id": artifact_id,
+        "artifact": None,
+        "available": False,
+        "active": False,
+        "path": metadata.get("source_research_path"),
+        "title": metadata.get("source_research_title"),
+        "research_date": metadata.get("source_research_date"),
+        "content": None,
+        "note": "No source research artifact id is available.",
+    }
+    if not artifact_id:
+        return context
+
+    artifact = get_artifact(artifact_id)
+    if artifact is None:
+        context["note"] = f"Source research artifact not found: {artifact_id}"
+        return context
+    context["artifact"] = artifact
+    context["available"] = True
+    artifact_metadata = artifact.get("metadata") or {}
+    context["path"] = artifact.get("path") or context["path"]
+    context["title"] = artifact_metadata.get("research_title") or artifact.get("title") or context["title"]
+    context["research_date"] = (
+        artifact_metadata.get("research_date")
+        or artifact.get("created_at")
+        or context["research_date"]
+    )
+    if artifact.get("status") != "active":
+        context["note"] = f"Source research artifact is not active: {artifact_id}"
+        return context
+    context["active"] = True
+
+    path = artifact.get("path")
+    if not path:
+        context["note"] = f"Source research artifact has no path: {artifact_id}"
+        return context
+    target = resolve_workspace_path(path, Path(workspace_root))
+    if not target.exists() or not target.is_file():
+        context["note"] = f"Source research artifact file not found: {path}"
+        return context
+    context["content"] = target.read_text(encoding="utf-8")
+    context["note"] = "Source research artifact content loaded."
+    return context
+
+
+def build_bounded_research_messages(
+    *,
+    title: str,
+    question: str,
+    scope: str,
+    evaluation: BoundedOpenLoopEvaluation,
+    source_context: dict,
+) -> list[dict]:
+    """Build model messages for one bounded open-loop research iteration."""
+    loop = evaluation.loop
+    metadata = evaluation.metadata or {}
+    system = (
+        "Produce one structured provisional bounded research note for a single "
+        "existing research open loop. Use only the supplied open-loop details "
+        "and prior provisional research context. Do not claim external sources "
+        "were collected. Do not create behavioral guidance, self-understanding, "
+        "project decisions, working theories, review items, open-loop records, "
+        "or runtime instructions."
+    )
+    prior_content = source_context.get("content") or "No active prior research content was loaded."
+    user = f"""Title: {title}
+Question: {question}
+Scope: {scope}
+
+Open loop ID: {loop['open_loop_id']}
+Open loop title: {loop['title']}
+Open loop priority: {loop['priority']}
+Open loop next_action: {loop.get('next_action') or 'None'}
+Open loop metadata question: {metadata.get('question') or 'None'}
+Source artifact ID: {source_context.get('artifact_id') or 'None'}
+Source research title: {source_context.get('title') or 'None'}
+Source research date: {source_context.get('research_date') or 'None'}
+Source research path: {source_context.get('path') or 'None'}
+Source context note: {source_context.get('note') or 'None'}
+
+[Prior provisional research context]
+
+The prior research context is working research context, not truth, project decision, behavioral guidance, self-understanding, or a working theory. Use it to continue the investigation, identify what still holds, what is uncertain, and what may need revision.
+
+{prior_content}
+
+Return Markdown body sections only, using exactly these headings:
+
+## Purpose
+## Open Loop Being Researched
+## Prior Research Considered
+## Updated Findings
+## Uncertainty
+## Sources
+## New Open Questions
+## Possible Follow-Ups
+## Suggested Review Items
+## Working Notes
+
+Frame findings as provisional working notes. It is valid to report no useful findings, no new open questions, no follow-ups, or no review items when that is the honest result. For Sources, state that this is a model-only bounded research pass plus prior provisional research context when available, and that no external sources were collected."""
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+
+def _validate_bounded_research_body(body: str) -> str:
+    normalized = (body or "").strip()
+    if not normalized:
+        raise BoundedResearchError("Model returned an empty bounded research note")
+    missing = [heading for heading in BOUNDED_RESEARCH_BODY_HEADINGS if heading not in normalized]
+    if missing:
+        raise BoundedResearchError(
+            "Model bounded research note is missing required heading: " + missing[0]
+        )
+    return normalized
+
+
+def build_bounded_research_document(
+    *,
+    title: str,
+    question: str,
+    scope: str,
+    created_at: str,
+    body: str,
+    evaluation: BoundedOpenLoopEvaluation,
+    source_context: dict,
+) -> str:
+    """Wrap a bounded research model body in deterministic note metadata."""
+    loop = evaluation.loop
+    source_artifact = source_context.get("artifact_id") or "None"
+    header = f"""# Research Note - {title}
+
+- Question: {question}
+- Scope: {scope}
+- Created: {created_at}
+- Research version: {BOUNDED_RESEARCH_VERSION}
+- Open loop ID: {loop['open_loop_id']}
+- Source open loop: {loop['title']}
+- Source artifact: {source_artifact}
+- Sources used: Model-only bounded research pass plus prior provisional research context when available; no external sources collected.
+- Provisional: true
+
+"""
+    return header + _validate_bounded_research_body(body).rstrip() + "\n"
+
+
+def _bounded_research_scope(evaluation: BoundedOpenLoopEvaluation, source_context: dict) -> str:
+    loop = evaluation.loop
+    metadata = evaluation.metadata or {}
+    return (
+        "Run one model-only bounded research pass against this existing research "
+        f"open loop. Next action: {loop.get('next_action') or 'None'}. "
+        f"Source artifact: {source_context.get('artifact_id') or 'None'}. "
+        "Use prior provisional research context only; do not collect external sources."
+    )
+
+
+def _bounded_artifact_metadata(
+    *,
+    result: dict,
+    evaluation: BoundedOpenLoopEvaluation,
+    source_context: dict,
+    open_loop_iteration: int,
+) -> dict:
+    loop = evaluation.loop
+    metadata = evaluation.metadata or {}
+    artifact_metadata = {
+        "artifact_type": "research_note",
+        "origin": "manual_research",
+        "source_type": "research",
+        "source_role": "research_reference",
+        "research_question": result["question"],
+        "research_title": result["title"],
+        "research_date": _research_date(result["created_at"]),
+        "created_by": "admin_cli",
+        "research_version": BOUNDED_RESEARCH_VERSION,
+        "provisional": True,
+        "open_loop_id": loop["open_loop_id"],
+        "open_loop_title": loop["title"],
+        "open_loop_iteration": open_loop_iteration,
+        "bounded_research_mode": BOUNDED_RESEARCH_MODE,
+        "global_daily_cap_class": "research",
+        "source_open_loop_generation_method": metadata.get("generation_method"),
+    }
+    if source_context.get("artifact_id"):
+        artifact_metadata["source_research_artifact_id"] = source_context["artifact_id"]
+    return artifact_metadata
+
+
+def generate_bounded_research_open_loop_note(
+    *,
+    evaluation: BoundedOpenLoopEvaluation,
+    source_context: dict,
+    model: str | None = None,
+    ollama_host: str = OLLAMA_HOST,
+) -> dict:
+    """Generate a dry-run bounded research note for one eligible open loop."""
+    question = _loop_question(evaluation.loop, evaluation.metadata)
+    if not question:
+        raise BoundedResearchError("Open loop has no research question")
+    title = derive_research_title(question)
+    scope = _bounded_research_scope(evaluation, source_context)
+    created_at = _now()
+    messages = build_bounded_research_messages(
+        title=title,
+        question=question,
+        scope=scope,
+        evaluation=evaluation,
+        source_context=source_context,
+    )
+    raw = chat_completion_text(
+        messages,
+        model=model or CHAT_MODEL,
+        ollama_host=ollama_host,
+        role="default",
+    )
+    document = build_bounded_research_document(
+        title=title,
+        question=question,
+        scope=scope,
+        created_at=created_at,
+        body=raw,
+        evaluation=evaluation,
+        source_context=source_context,
+    )
+    open_loop_iteration = evaluation.effective_daily_iteration_count + 1
+    result = {
+        "ok": True,
+        "mode": "dry-run",
+        "research_version": BOUNDED_RESEARCH_VERSION,
+        "title": title,
+        "question": question,
+        "scope": scope,
+        "created_at": created_at,
+        "relative_path": research_relative_path(created_at, title),
+        "document": document,
+        "open_loop": evaluation.to_dict(),
+        "source_context": {
+            key: value
+            for key, value in source_context.items()
+            if key not in {"artifact", "content"}
+        },
+        "artifact_metadata": {},
+    }
+    result["artifact_metadata"] = _bounded_artifact_metadata(
+        result=result,
+        evaluation=evaluation,
+        source_context=source_context,
+        open_loop_iteration=open_loop_iteration,
+    )
+    return result
+
+
+def _completion_metadata(
+    *,
+    evaluation: BoundedOpenLoopEvaluation,
+    result: dict,
+    completed_at: str,
+    current_local_date: str,
+) -> dict:
+    metadata = dict(evaluation.metadata or {})
+    metadata["daily_iteration_limit"] = evaluation.daily_iteration_limit
+    metadata["daily_iteration_count"] = evaluation.effective_daily_iteration_count + 1
+    metadata["daily_iteration_local_date"] = current_local_date
+    metadata["last_researched_at"] = completed_at
+    metadata["last_research_path"] = result["relative_path"]
+    metadata["last_research_result"] = "completed"
+    artifact_result = result.get("artifact_result")
+    if artifact_result:
+        metadata["last_research_artifact_id"] = artifact_result["artifact"]["artifact_id"]
+    return metadata
+
+
+def _mark_open_loop_completed(
+    *,
+    open_loop_id: str,
+    result: dict,
+    current_local_date: str,
+) -> dict:
+    evaluation = _require_eligible_open_loop(
+        open_loop_id,
+        current_local_date=current_local_date,
+    )
+    completed_at = _now()
+    metadata = _completion_metadata(
+        evaluation=evaluation,
+        result=result,
+        completed_at=completed_at,
+        current_local_date=current_local_date,
+    )
+    updated = update_open_loop_metadata(open_loop_id, metadata)
+    return {
+        "open_loop": updated,
+        "completed_at": completed_at,
+        "metadata": metadata,
+    }
+
+
+def run_bounded_research_open_loop(
+    *,
+    open_loop_id: str,
+    write: bool = False,
+    register_artifact: bool = False,
+    model: str | None = None,
+    workspace_root: Path = WORKSPACE_DIR,
+    current_local_date: str | None = None,
+) -> dict:
+    """Run one bounded research iteration against a specific open loop."""
+    if register_artifact and not write:
+        raise BoundedResearchError("--register-artifact requires --write")
+
+    current_local_date = current_local_date or _current_local_date()
+    evaluation = _require_eligible_open_loop(
+        open_loop_id,
+        current_local_date=current_local_date,
+    )
+    source_context = load_bounded_research_source_context(
+        evaluation.loop,
+        evaluation.metadata or {},
+        workspace_root=workspace_root,
+    )
+    result = generate_bounded_research_open_loop_note(
+        evaluation=evaluation,
+        source_context=source_context,
+        model=model,
+    )
+    result["mode"] = "write" if write else "dry-run"
+    result["register_artifact_requested"] = register_artifact
+
+    if not write:
+        return result
+
+    # Revalidate immediately before writing in case another run used the loop.
+    _require_eligible_open_loop(open_loop_id, current_local_date=current_local_date)
+    try:
+        result["write_result"] = write_manual_research_note(
+            result,
+            workspace_root=workspace_root,
+        )
+        if register_artifact:
+            result["artifact_result"] = register_manual_research_artifact(
+                result,
+                workspace_root=workspace_root,
+            )
+    except ManualResearchError as exc:
+        raise BoundedResearchError(str(exc)) from exc
+
+    # Revalidate again before marking the loop completed. If this fails, the
+    # durable note remains but the loop is not silently advanced.
+    result["open_loop_update"] = _mark_open_loop_completed(
+        open_loop_id=open_loop_id,
+        result=result,
+        current_local_date=current_local_date,
+    )
+    return result

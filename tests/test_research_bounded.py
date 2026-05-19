@@ -20,15 +20,18 @@ def bounded_env(tmp_path, monkeypatch):
     monkeypatch.setattr("tir.config.WORKING_DB", tmp_path / "data" / "prod" / "working.db")
 
     import tir.memory.db as db_mod
+    import tir.artifacts.service as artifacts_mod
     import tir.open_loops.service as open_loop_mod
     import tir.research.bounded as bounded_mod
 
     importlib.reload(db_mod)
+    importlib.reload(artifacts_mod)
     importlib.reload(open_loop_mod)
     importlib.reload(bounded_mod)
     db_mod.init_databases()
     return {
         "db": db_mod,
+        "artifacts": artifacts_mod,
         "open_loops": open_loop_mod,
         "bounded": bounded_mod,
         "workspace_root": workspace_root,
@@ -328,3 +331,307 @@ def test_plan_result_is_json_serializable(bounded_env):
     plan = _plan(bounded_env)
 
     json.dumps(plan)
+
+
+BOUNDED_BODY = """## Purpose
+
+Continue the open-loop research question.
+
+## Open Loop Being Researched
+
+- The loop asks what remains unresolved.
+
+## Prior Research Considered
+
+- Prior research was treated as provisional context.
+
+## Updated Findings
+
+- No useful findings beyond the prior context.
+
+## Uncertainty
+
+- No external sources were collected.
+
+## Sources
+
+- Model-only bounded research pass plus prior provisional research context; no external sources collected.
+
+## New Open Questions
+
+- No new open questions.
+
+## Possible Follow-Ups
+
+- No follow-ups.
+
+## Suggested Review Items
+
+- No review items.
+
+## Working Notes
+
+- Keep the result provisional.
+"""
+
+
+def _patch_bounded_generation(env, monkeypatch, body=BOUNDED_BODY):
+    monkeypatch.setattr(
+        env["bounded"],
+        "_now",
+        lambda: "2026-05-15T12:00:00+00:00",
+    )
+    monkeypatch.setattr(
+        env["bounded"],
+        "chat_completion_text",
+        lambda *args, **kwargs: body,
+    )
+
+
+def _create_source_artifact(env, *, artifact_id="artifact-1"):
+    path = "research/prior.md"
+    target = env["workspace_root"] / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "# Research Note - Prior\n\n## Findings\n\n- Prior provisional context.\n",
+        encoding="utf-8",
+    )
+    return env["artifacts"].create_artifact(
+        artifact_id=artifact_id,
+        artifact_type="research_note",
+        title="Research Note - Prior Research",
+        path=path,
+        status="active",
+        source="manual_research",
+        metadata={
+            "source_type": "research",
+            "source_role": "research_reference",
+            "origin": "manual_research",
+            "research_title": "Prior Research",
+            "research_date": "2026-05-14",
+            "research_version": "manual_research_v1",
+            "provisional": True,
+        },
+        workspace_root=env["workspace_root"],
+    )
+
+
+def test_bounded_run_dry_run_validates_eligible_loop_and_writes_nothing(bounded_env, monkeypatch):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(bounded_env)
+    before_metadata = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        write=False,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    assert result["mode"] == "dry-run"
+    assert result["research_version"] == "manual_research_open_loop_iteration_v1"
+    assert result["document"].startswith("# Research Note - ")
+    assert list((bounded_env["workspace_root"] / "research").glob("*.md")) == []
+    after_metadata = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert after_metadata == before_metadata
+
+
+def test_bounded_run_dry_run_rejects_ineligible_loop_with_clear_reason(bounded_env, monkeypatch):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(bounded_env, status="blocked")
+
+    with pytest.raises(
+        bounded_env["bounded"].BoundedResearchError,
+        match="unsupported_status",
+    ):
+        bounded_env["bounded"].run_bounded_research_open_loop(
+            open_loop_id=loop["open_loop_id"],
+            current_local_date=TODAY,
+            workspace_root=bounded_env["workspace_root"],
+        )
+
+
+def test_bounded_run_write_creates_one_markdown_note_without_registering(bounded_env, monkeypatch):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(bounded_env)
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        write=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    research_files = list((bounded_env["workspace_root"] / "research").glob("*.md"))
+    assert len(research_files) == 1
+    assert result["write_result"]["path"] == "research/2026-05-15-what-remains-unresolved.md"
+    assert "artifact_result" not in result
+    assert bounded_env["artifacts"].list_artifacts(workspace_root=bounded_env["workspace_root"]) == []
+    with bounded_env["db"].get_connection() as conn:
+        rows = conn.execute("SELECT * FROM main.chunks_fts").fetchall()
+    assert rows == []
+
+
+def test_bounded_run_write_register_creates_artifact_and_indexes(bounded_env, monkeypatch):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    _create_source_artifact(bounded_env)
+    loop = _create_loop(bounded_env)
+    monkeypatch.setattr("tir.memory.research_indexing.upsert_chunk", lambda **kwargs: None)
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        write=True,
+        register_artifact=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    artifact = result["artifact_result"]["artifact"]
+    metadata = artifact["metadata"]
+    assert artifact["artifact_type"] == "research_note"
+    assert result["artifact_result"]["indexing"]["status"] == "indexed"
+    assert result["artifact_result"]["indexing"]["chunks_written"] == 1
+    assert metadata["open_loop_id"] == loop["open_loop_id"]
+    assert metadata["research_version"] == "manual_research_open_loop_iteration_v1"
+    assert metadata["provisional"] is True
+    assert metadata["bounded_research_mode"] == "manual_open_loop_v1"
+    assert metadata["source_research_artifact_id"] == "artifact-1"
+
+
+def test_bounded_run_write_updates_open_loop_metadata_after_success(bounded_env, monkeypatch):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(
+        bounded_env,
+        metadata=_metadata(daily_iteration_limit=2, daily_iteration_count=1, daily_iteration_local_date=TODAY),
+    )
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        write=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    updated = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])
+    metadata = updated["metadata"]
+    assert result["open_loop_update"]["metadata"]["daily_iteration_count"] == 2
+    assert metadata["daily_iteration_count"] == 2
+    assert metadata["daily_iteration_local_date"] == TODAY
+    assert metadata["last_researched_at"] == "2026-05-15T12:00:00+00:00"
+    assert metadata["last_research_path"] == result["relative_path"]
+    assert metadata["last_research_result"] == "completed"
+    assert "last_research_artifact_id" not in metadata
+
+
+def test_bounded_run_write_register_updates_metadata_after_registration(bounded_env, monkeypatch):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(bounded_env)
+    monkeypatch.setattr("tir.memory.research_indexing.upsert_chunk", lambda **kwargs: None)
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        write=True,
+        register_artifact=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    metadata = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert metadata["last_research_artifact_id"] == result["artifact_result"]["artifact"]["artifact_id"]
+    assert metadata["daily_iteration_count"] == 1
+
+
+def test_bounded_run_stale_daily_date_resets_before_increment(bounded_env, monkeypatch):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(
+        bounded_env,
+        metadata=_metadata(daily_iteration_count=5, daily_iteration_local_date=YESTERDAY),
+    )
+
+    bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        write=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    metadata = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert metadata["daily_iteration_count"] == 1
+    assert metadata["daily_iteration_local_date"] == TODAY
+
+
+def test_bounded_run_rejects_loop_at_daily_limit(bounded_env, monkeypatch):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(
+        bounded_env,
+        metadata=_metadata(daily_iteration_count=1, daily_iteration_local_date=TODAY),
+    )
+
+    with pytest.raises(
+        bounded_env["bounded"].BoundedResearchError,
+        match="daily_limit_reached",
+    ):
+        bounded_env["bounded"].run_bounded_research_open_loop(
+            open_loop_id=loop["open_loop_id"],
+            write=True,
+            current_local_date=TODAY,
+            workspace_root=bounded_env["workspace_root"],
+        )
+
+
+def test_bounded_run_accepts_no_useful_findings_output(bounded_env, monkeypatch):
+    _patch_bounded_generation(bounded_env, monkeypatch, body=BOUNDED_BODY)
+    loop = _create_loop(bounded_env)
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    assert "No useful findings" in result["document"] or "No useful findings".lower() in result["document"].lower()
+    assert "No new open questions" in result["document"]
+
+
+def test_bounded_run_write_failure_does_not_mutate_metadata(bounded_env, monkeypatch):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(bounded_env)
+    before = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    target = bounded_env["workspace_root"] / "research" / "2026-05-15-what-remains-unresolved.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("existing", encoding="utf-8")
+
+    with pytest.raises(bounded_env["bounded"].BoundedResearchError, match="already exists"):
+        bounded_env["bounded"].run_bounded_research_open_loop(
+            open_loop_id=loop["open_loop_id"],
+            write=True,
+            current_local_date=TODAY,
+            workspace_root=bounded_env["workspace_root"],
+        )
+
+    after = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert after == before
+
+
+def test_bounded_run_registration_failure_does_not_mutate_metadata(bounded_env, monkeypatch):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(bounded_env)
+    before = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+
+    def fail_register(*args, **kwargs):
+        raise bounded_env["bounded"].ManualResearchError("Manual research indexing failed: boom")
+
+    monkeypatch.setattr(bounded_env["bounded"], "register_manual_research_artifact", fail_register)
+
+    with pytest.raises(bounded_env["bounded"].BoundedResearchError, match="indexing failed"):
+        bounded_env["bounded"].run_bounded_research_open_loop(
+            open_loop_id=loop["open_loop_id"],
+            write=True,
+            register_artifact=True,
+            current_local_date=TODAY,
+            workspace_root=bounded_env["workspace_root"],
+        )
+
+    assert (bounded_env["workspace_root"] / "research" / "2026-05-15-what-remains-unresolved.md").exists()
+    after = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert after == before
