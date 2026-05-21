@@ -48,6 +48,26 @@ def _post(**overrides):
     return post
 
 
+def _raw_feed_post(**overrides):
+    post = {
+        "id": "feed-raw-1",
+        "name": "Feed title fallback",
+        "body": "Feed body text " * 80,
+        "author": {"id": "feed-author-1", "name": "feed_author"},
+        "submolt": {"display_name": "Feed Agents"},
+        "created_at": "2026-05-21T11:00:00Z",
+        "url": "https://www.moltbook.com/p/feed-raw-1",
+        "upvotes": 5,
+        "downvotes": 0,
+        "score": 5,
+        "comment_count": 2,
+        "verification_status": "unknown",
+        "is_spam": False,
+    }
+    post.update(overrides)
+    return post
+
+
 def test_query_preview_compacts_post_records():
     registry = FakeRegistry({"results": [_post()]})
 
@@ -112,6 +132,36 @@ def test_feed_preview_compacts_post_records():
     assert trace["results"][0]["post_id"] == "feed-post"
 
 
+def test_feed_raw_post_objects_without_search_markers_compact():
+    registry = FakeRegistry({"posts": [_raw_feed_post()]})
+
+    trace = collect_moltbook_source_preview(feed=True, limit=3, registry=registry)
+
+    assert trace["feed"] is True
+    assert trace["limit"] == 3
+    assert trace["no_usable_results"] is False
+    assert trace["no_result_note"] is None
+    assert trace["omitted_count"] == 0
+    assert trace["omitted_reasons"] == []
+
+    result = trace["results"][0]
+    assert result["source_kind"] == "moltbook_post"
+    assert result["tool_name"] == "moltbook_feed"
+    assert result["post_id"] == "feed-raw-1"
+    assert result["title"] == "Feed title fallback"
+    assert result["author_id"] == "feed-author-1"
+    assert result["author_name"] == "feed_author"
+    assert result["submolt"] == "Feed Agents"
+    assert result["created_at"] == "2026-05-21T11:00:00Z"
+    assert result["url"] == "https://www.moltbook.com/p/feed-raw-1"
+    assert result["verification_status"] == "unknown"
+    assert result["is_spam"] is False
+    assert result["content_excerpt"].startswith("Feed body text")
+    assert len(result["content_excerpt"]) <= EXCERPT_LENGTH + 3
+    assert "content" not in result
+    assert "body" not in result
+
+
 def test_explicit_limit_works():
     registry = FakeRegistry({"results": []})
 
@@ -163,6 +213,41 @@ def test_include_spam_preserves_labeled_spam():
     assert trace["results"][0]["is_spam"] is True
 
 
+def test_spam_feed_posts_are_omitted_by_default():
+    registry = FakeRegistry(
+        {
+            "posts": [
+                _raw_feed_post(id="feed-spam", is_spam=True),
+                _raw_feed_post(id="feed-normal", is_spam=False),
+            ]
+        }
+    )
+
+    trace = collect_moltbook_source_preview(feed=True, registry=registry)
+
+    assert [item["post_id"] for item in trace["results"]] == ["feed-normal"]
+    assert trace["no_usable_results"] is False
+    assert trace["omitted_count"] == 1
+    assert trace["omitted_reasons"] == [
+        {"reason": "spam_omitted", "result_rank": 1, "post_id": "feed-spam"}
+    ]
+
+
+def test_include_spam_preserves_labeled_feed_spam():
+    registry = FakeRegistry({"posts": [_raw_feed_post(id="feed-spam", is_spam=True)]})
+
+    trace = collect_moltbook_source_preview(
+        feed=True,
+        include_spam=True,
+        registry=registry,
+    )
+
+    assert trace["omitted_count"] == 0
+    assert trace["no_usable_results"] is False
+    assert trace["results"][0]["post_id"] == "feed-spam"
+    assert trace["results"][0]["is_spam"] is True
+
+
 def test_verification_status_preserved_as_metadata_only():
     registry = FakeRegistry({"results": [_post(verification_status="verified")]})
 
@@ -205,6 +290,42 @@ def test_explicit_non_post_results_are_omitted():
     assert [item["reason"] for item in trace["omitted_reasons"]] == [
         "non_post_result",
         "non_post_result",
+    ]
+
+
+def test_feed_explicit_non_post_results_are_still_omitted():
+    registry = FakeRegistry(
+        {
+            "posts": [
+                {"type": "comment", "id": "comment-1", "body": "Not a v1 source."},
+                {"type": "agent", "id": "agent-1", "name": "profile-result"},
+                {"type": "mention", "id": "mention-1", "body": "Mention result."},
+            ]
+        }
+    )
+
+    trace = collect_moltbook_source_preview(feed=True, registry=registry)
+
+    assert trace["results"] == []
+    assert trace["no_usable_results"] is True
+    assert trace["omitted_count"] == 3
+    assert [item["reason"] for item in trace["omitted_reasons"]] == [
+        "non_post_result",
+        "non_post_result",
+        "non_post_result",
+    ]
+
+
+def test_no_usable_results_true_when_all_feed_posts_omitted_as_spam():
+    registry = FakeRegistry({"posts": [_raw_feed_post(id="feed-spam", is_spam=True)]})
+
+    trace = collect_moltbook_source_preview(feed=True, registry=registry)
+
+    assert trace["results"] == []
+    assert trace["no_usable_results"] is True
+    assert "not evidence that no relevant material exists" in trace["no_result_note"]
+    assert trace["omitted_reasons"] == [
+        {"reason": "spam_omitted", "result_rank": 1, "post_id": "feed-spam"}
     ]
 
 

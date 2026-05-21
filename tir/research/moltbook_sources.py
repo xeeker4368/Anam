@@ -114,10 +114,20 @@ def _result_type(item: dict) -> str:
     return "unknown"
 
 
-def _is_post_like(item: dict) -> bool:
+def _is_post_like(item: dict, *, feed: bool = False) -> bool:
     result_type = _result_type(item)
-    if result_type in {"comment", "comments", "agent", "profile", "submolt"}:
+    if result_type in {
+        "comment",
+        "comments",
+        "agent",
+        "profile",
+        "submolt",
+        "mention",
+        "mentions",
+    }:
         return False
+    if feed and result_type == "unknown":
+        return True
     return result_type in {"post", "posts"} or isinstance(item.get("post"), dict)
 
 
@@ -162,10 +172,14 @@ def _content_source(item: dict, post: dict):
         item.get("preview"),
         item.get("excerpt"),
         item.get("content"),
+        item.get("body"),
+        item.get("text"),
         post.get("content_preview"),
         post.get("preview"),
         post.get("excerpt"),
         post.get("content"),
+        post.get("body"),
+        post.get("text"),
     )
 
 
@@ -184,7 +198,16 @@ def _compact_post_record(
         "query": query,
         "result_rank": result_rank,
         "post_id": _first_value(item.get("id"), post.get("id"), item.get("post_id")),
-        "title": str(_first_value(item.get("title"), post.get("title"), "") or ""),
+        "title": str(
+            _first_value(
+                item.get("title"),
+                post.get("title"),
+                item.get("name"),
+                post.get("name"),
+                "",
+            )
+            or ""
+        ),
         "author_id": _author_id(item, post),
         "author_name": _author_name(item, post),
         "submolt": _submolt(item, post),
@@ -367,7 +390,7 @@ def collect_moltbook_source_preview(
         if not isinstance(item, dict):
             _add_omission(trace, reason="unsupported_result_shape", result_rank=index)
             continue
-        if not _is_post_like(item):
+        if not _is_post_like(item, feed=feed):
             _add_omission(trace, reason="non_post_result", result_rank=index)
             continue
         record = _compact_post_record(
