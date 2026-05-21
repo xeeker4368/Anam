@@ -1,4 +1,5 @@
 import importlib
+import json
 import types
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -779,6 +780,180 @@ def test_research_open_loop_run_register_without_write_fails_cleanly(capsys):
     assert exc.value.code == 2
     captured = capsys.readouterr()
     assert "research-open-loop-run --register-artifact requires --write" in captured.err
+
+
+def test_moltbook_source_preview_admin_prints_compact_json(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_preview(**kwargs):
+        assert kwargs == {
+            "query": "agents",
+            "feed": False,
+            "limit": 10,
+            "sort": "new",
+            "include_spam": False,
+            "write_trace": False,
+        }
+        return {
+            "collection_version": "moltbook_source_collection_v1",
+            "mode": "preview",
+            "query": "agents",
+            "feed": False,
+            "limit": 10,
+            "results": [{"post_id": "post-1", "content_excerpt": "excerpt"}],
+            "no_external_write_confirmed": True,
+            "verification_status_is_metadata_only": True,
+        }
+
+    monkeypatch.setattr(admin_mod, "collect_moltbook_source_preview", fake_preview)
+
+    admin_mod.cmd_moltbook_source_preview(
+        SimpleNamespace(
+            query="agents",
+            feed=False,
+            limit=10,
+            sort="new",
+            include_spam=False,
+            write_trace=False,
+        )
+    )
+
+    output = capsys.readouterr().out
+    trace = json.loads(output)
+    assert trace["collection_version"] == "moltbook_source_collection_v1"
+    assert trace["results"][0]["post_id"] == "post-1"
+    assert "content_excerpt" in output
+
+
+def test_moltbook_source_preview_admin_passes_feed_and_write_trace(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_preview(**kwargs):
+        assert kwargs == {
+            "query": None,
+            "feed": True,
+            "limit": 5,
+            "sort": "top",
+            "include_spam": True,
+            "write_trace": True,
+        }
+        return {
+            "collection_version": "moltbook_source_collection_v1",
+            "mode": "preview",
+            "query": None,
+            "feed": True,
+            "limit": 5,
+            "sort": "top",
+            "trace_path": "research/source-traces/2026-05-21-feed-top.moltbook-sources.json",
+            "results": [],
+            "no_external_write_confirmed": True,
+            "verification_status_is_metadata_only": True,
+        }
+
+    monkeypatch.setattr(admin_mod, "collect_moltbook_source_preview", fake_preview)
+
+    admin_mod.cmd_moltbook_source_preview(
+        SimpleNamespace(
+            query=None,
+            feed=True,
+            limit=5,
+            sort="top",
+            include_spam=True,
+            write_trace=True,
+        )
+    )
+
+    output = capsys.readouterr().out
+    trace = json.loads(output)
+    assert trace["feed"] is True
+    assert trace["trace_path"].endswith(".moltbook-sources.json")
+
+
+def test_moltbook_source_preview_admin_errors_are_clear(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_preview(**_kwargs):
+        raise admin_mod.MoltbookSourcePreviewError("--limit must be at most 20")
+
+    monkeypatch.setattr(admin_mod, "collect_moltbook_source_preview", fake_preview)
+
+    with pytest.raises(SystemExit) as exc:
+        admin_mod.cmd_moltbook_source_preview(
+            SimpleNamespace(
+                query="agents",
+                feed=False,
+                limit=21,
+                sort="new",
+                include_spam=False,
+                write_trace=False,
+            )
+        )
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert "Moltbook source preview failed: --limit must be at most 20" in output
+
+
+def test_moltbook_source_preview_requires_exactly_one_source(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "moltbook-source-preview",
+            "--query",
+            "agents",
+            "--feed",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "not allowed with argument --query" in captured.err
+
+
+def test_moltbook_source_preview_main_does_not_init_databases(capsys, monkeypatch):
+    import tir.admin as admin_mod
+
+    def fail_init():
+        raise AssertionError("moltbook-source-preview should not initialize databases")
+
+    def fake_preview(**_kwargs):
+        return {
+            "collection_version": "moltbook_source_collection_v1",
+            "mode": "preview",
+            "query": "agents",
+            "feed": False,
+            "limit": 10,
+            "results": [],
+            "no_external_write_confirmed": True,
+            "verification_status_is_metadata_only": True,
+        }
+
+    monkeypatch.setattr(admin_mod, "init_databases", fail_init)
+    monkeypatch.setattr(admin_mod, "collect_moltbook_source_preview", fake_preview)
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "moltbook-source-preview",
+            "--query",
+            "agents",
+        ],
+    ):
+        admin_mod.main()
+
+    output = capsys.readouterr().out
+    trace = json.loads(output)
+    assert trace["query"] == "agents"
 
 
 def test_reflection_journal_day_admin_passes_include_memory(temp_admin, capsys, monkeypatch):

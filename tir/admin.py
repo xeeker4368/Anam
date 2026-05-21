@@ -41,6 +41,8 @@ Commands:
                     Preview the next eligible bounded research open loop
     research-open-loop-run
                     Run one bounded research iteration for an open loop
+    moltbook-source-preview
+                    Preview compact read-only Moltbook source traces
 """
 
 import argparse
@@ -105,6 +107,10 @@ from tir.research.bounded import (
     BoundedResearchError,
     plan_next_bounded_research_open_loop,
     run_bounded_research_open_loop,
+)
+from tir.research.moltbook_sources import (
+    MoltbookSourcePreviewError,
+    collect_moltbook_source_preview,
 )
 
 
@@ -1076,6 +1082,27 @@ def cmd_research_open_loop_run(args):
     print(result["document"], end="")
 
 
+def cmd_moltbook_source_preview(args):
+    """Preview compact read-only Moltbook source traces."""
+    try:
+        trace = collect_moltbook_source_preview(
+            query=args.query,
+            feed=args.feed,
+            limit=args.limit,
+            sort=args.sort,
+            include_spam=args.include_spam,
+            write_trace=args.write_trace,
+        )
+    except MoltbookSourcePreviewError as exc:
+        print(f"Moltbook source preview failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Moltbook source preview failed: {exc}")
+        sys.exit(1)
+
+    print(json.dumps(trace, indent=2, sort_keys=True))
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Tír Admin CLI",
@@ -1321,6 +1348,32 @@ def main():
     )
     p.add_argument("--model", default=None, help="Optional Ollama model override")
 
+    # moltbook-source-preview
+    p = sub.add_parser(
+        "moltbook-source-preview",
+        help="Preview compact read-only Moltbook source traces",
+    )
+    source = p.add_mutually_exclusive_group(required=True)
+    source.add_argument("--query", default=None, help="Moltbook search query")
+    source.add_argument("--feed", action="store_true", help="Read the global Moltbook feed")
+    p.add_argument("--limit", type=int, default=10, help="Max posts to preview, capped at 20")
+    p.add_argument(
+        "--sort",
+        choices=["hot", "new", "top", "rising"],
+        default="new",
+        help="Feed sort order",
+    )
+    p.add_argument(
+        "--include-spam",
+        action="store_true",
+        help="Include results labeled as spam instead of omitting them",
+    )
+    p.add_argument(
+        "--write-trace",
+        action="store_true",
+        help="Write compact trace JSON under workspace/research/source-traces",
+    )
+
     # behavioral-guidance-review-conversation
     p = sub.add_parser(
         "behavioral-guidance-review-conversation",
@@ -1394,7 +1447,13 @@ def main():
 
     # Ensure databases exist for DB-facing commands. Backup/restore must not
     # create or mutate runtime state before their own safety checks run.
-    if args.command not in {"init-db", "backup", "restore", "research-run"} or (
+    if args.command not in {
+        "init-db",
+        "backup",
+        "restore",
+        "research-run",
+        "moltbook-source-preview",
+    } or (
         args.command == "research-run" and args.register_artifact
     ):
         init_databases()
@@ -1428,6 +1487,7 @@ def main():
         "research-open-loops-create": cmd_research_open_loops_create,
         "research-open-loop-next": cmd_research_open_loop_next,
         "research-open-loop-run": cmd_research_open_loop_run,
+        "moltbook-source-preview": cmd_moltbook_source_preview,
     }
 
     commands[args.command](args)
