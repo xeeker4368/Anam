@@ -11,6 +11,10 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from tir.artifacts.governance_blocklist import (
+    SOURCE_TRACE_REJECTION_MESSAGE,
+    is_source_trace_path,
+)
 from tir.config import WORKSPACE_DIR
 from tir.open_loops.service import (
     create_open_loop as create_open_loop_record,
@@ -87,9 +91,14 @@ def _metadata_to_json(metadata: dict | None) -> str | None:
 def _normalize_workspace_path(
     path: str | Path | None,
     workspace_root: Path,
+    *,
+    reject_source_trace: bool = False,
 ) -> str | None:
     if path is None:
         return None
+
+    if reject_source_trace and is_source_trace_path(path):
+        raise ArtifactValidationError(SOURCE_TRACE_REJECTION_MESSAGE)
 
     resolved = resolve_workspace_path(path, workspace_root)
     return resolved.relative_to(Path(workspace_root).resolve()).as_posix()
@@ -147,7 +156,11 @@ def create_artifact(
 
     artifact_id = artifact_id or str(uuid.uuid4())
     now = _now()
-    normalized_path = _normalize_workspace_path(path, workspace_root)
+    normalized_path = _normalize_workspace_path(
+        path,
+        workspace_root,
+        reject_source_trace=True,
+    )
     metadata_json = _metadata_to_json(metadata)
 
     db_mod = _db()
@@ -205,7 +218,11 @@ def create_artifact_file(
     _validate_status(status)
     _validate_title(title)
     _metadata_to_json(metadata)
-    normalized_path = _normalize_workspace_path(relative_path, workspace_root)
+    normalized_path = _normalize_workspace_path(
+        relative_path,
+        workspace_root,
+        reject_source_trace=True,
+    )
 
     file_result = write_workspace_file(normalized_path, content, root=workspace_root)
     artifact = create_artifact(
@@ -261,7 +278,11 @@ def create_artifact_file_with_open_loop(
     _validate_artifact_type(artifact_type)
     _validate_status(status)
     _metadata_to_json(metadata)
-    _normalize_workspace_path(relative_path, workspace_root)
+    _normalize_workspace_path(
+        relative_path,
+        workspace_root,
+        reject_source_trace=True,
+    )
 
     requested_open_loop_title = (
         open_loop_title

@@ -292,7 +292,20 @@ This file is a governance/runtime file and cannot be ingested as normal artifact
 
 ## Artifact / source framing
 
-### 1. `tir/research/bounded.py:40`
+### 1. `tir/artifacts/governance_blocklist.py:23`
+
+- Name: `SOURCE_TRACE_REJECTION_MESSAGE`
+- Category: Artifact / source framing
+- Risk flags: none
+- Audit note: `needs discussion`
+
+Excerpt:
+
+```text
+Source traces are provenance/audit files and are not ingestible artifacts.
+```
+
+### 2. `tir/research/bounded.py:40`
 
 - Name: `MOLTBOOK_SOURCE_CONTEXT_VERSION`
 - Category: Artifact / source framing
@@ -305,7 +318,7 @@ Excerpt:
 bounded_research_moltbook_source_context_v1
 ```
 
-### 2. `tir/research/manual.py:375` — `build_manual_research_messages`
+### 3. `tir/research/manual.py:375` — `build_manual_research_messages`
 
 - Name: `system`
 - Category: Artifact / source framing
@@ -318,7 +331,7 @@ Excerpt:
 Produce a structured provisional research note. Use only the supplied question and scope. Do not claim external sources were collected. Do not create behavioral guidance, self-understanding, project decisions, review items, open loops, or runtime instructions.
 ```
 
-### 3. `tir/research/manual.py:413` — `build_manual_research_continuation_messages`
+### 4. `tir/research/manual.py:413` — `build_manual_research_continuation_messages`
 
 - Name: `system`
 - Category: Artifact / source framing

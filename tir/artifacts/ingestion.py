@@ -14,7 +14,9 @@ from tir.artifacts.service import (
 )
 from tir.artifacts.governance_blocklist import (
     GOVERNANCE_FILE_REJECTION_MESSAGE,
+    SOURCE_TRACE_REJECTION_MESSAGE,
     is_governance_file_name,
+    is_source_trace_path,
 )
 from tir.config import WORKSPACE_DIR
 from tir.artifacts.source_roles import (
@@ -144,6 +146,8 @@ def ingest_artifact_file(
     """Save, register, and index an uploaded or generated artifact file."""
     if is_governance_file_name(filename):
         raise ArtifactIngestionError(GOVERNANCE_FILE_REJECTION_MESSAGE)
+    if is_source_trace_path(filename):
+        raise ArtifactIngestionError(SOURCE_TRACE_REJECTION_MESSAGE)
 
     if not isinstance(content, bytes):
         raise ArtifactIngestionError("content must be bytes")

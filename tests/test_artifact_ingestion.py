@@ -4,7 +4,10 @@ from unittest.mock import patch
 
 import pytest
 
-from tir.artifacts.governance_blocklist import GOVERNANCE_FILE_REJECTION_MESSAGE
+from tir.artifacts.governance_blocklist import (
+    GOVERNANCE_FILE_REJECTION_MESSAGE,
+    SOURCE_TRACE_REJECTION_MESSAGE,
+)
 from tir.artifacts.ingestion import ArtifactIngestionError, ingest_artifact_file
 from tir.engine.context import build_system_prompt
 from tir.workspace.service import ensure_workspace
@@ -88,6 +91,31 @@ def test_ingest_rejects_governance_runtime_filenames(temp_ingestion_env, filenam
             ingest_artifact_file(
                 filename=filename,
                 content=b"governance content",
+                workspace_root=temp_ingestion_env["workspace_root"],
+            )
+
+    assert _artifact_count(temp_ingestion_env["working_db"]) == 0
+    assert _fts_rows(temp_ingestion_env["working_db"]) == []
+    assert not any(path.is_file() for path in temp_ingestion_env["workspace_root"].rglob("*"))
+    upsert_chunk.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "2026-05-22-feed-new.moltbook-sources.json",
+        "2026-05-22-query.web-sources.json",
+        "vision-capture.source-trace.json",
+        "research/source-traces/2026-05-22-feed-new.moltbook-sources.json",
+        "research\\source-traces\\2026-05-22-query.web-sources.json",
+    ],
+)
+def test_ingest_rejects_source_trace_files_before_indexing(temp_ingestion_env, filename):
+    with patch("tir.memory.artifact_indexing.upsert_chunk") as upsert_chunk:
+        with pytest.raises(ArtifactIngestionError, match=SOURCE_TRACE_REJECTION_MESSAGE):
+            ingest_artifact_file(
+                filename=filename,
+                content=b'{"collection_version": "moltbook_source_collection_v1"}',
                 workspace_root=temp_ingestion_env["workspace_root"],
             )
 

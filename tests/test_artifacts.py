@@ -155,6 +155,66 @@ def test_path_validation_rejects_symlink_escape(temp_stores, tmp_path):
         )
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "research/source-traces/2026-05-22-feed-new.moltbook-sources.json",
+        "research/source-traces/2026-05-22-query.web-sources.json",
+        "uploads/2026-05-22-capture.source-trace.json",
+    ],
+)
+def test_artifact_service_rejects_source_trace_artifact_paths(temp_stores, path):
+    workspace_root = temp_stores["workspace_root"]
+
+    with pytest.raises(
+        artifact_service.ArtifactValidationError,
+        match="Source traces are provenance/audit files",
+    ):
+        artifact_service.create_artifact(
+            artifact_type="generic",
+            title="Source Trace",
+            path=path,
+            workspace_root=workspace_root,
+        )
+
+    assert artifact_service.list_artifacts(workspace_root=workspace_root) == []
+
+
+def test_create_artifact_file_rejects_source_trace_paths_before_writing(temp_stores):
+    workspace_root = temp_stores["workspace_root"]
+    relative_path = "research/source-traces/2026-05-22-feed-new.moltbook-sources.json"
+
+    with pytest.raises(
+        artifact_service.ArtifactValidationError,
+        match="Source traces are provenance/audit files",
+    ):
+        artifact_service.create_artifact_file(
+            relative_path=relative_path,
+            content='{"collection_version": "moltbook_source_collection_v1"}',
+            artifact_type="generic",
+            title="Source Trace",
+            workspace_root=workspace_root,
+        )
+
+    assert not (workspace_root / relative_path).exists()
+    assert artifact_service.list_artifacts(workspace_root=workspace_root) == []
+
+
+def test_research_note_artifact_paths_remain_allowed(temp_stores):
+    workspace_root = temp_stores["workspace_root"]
+
+    artifact = artifact_service.create_artifact(
+        artifact_type="research_note",
+        title="Ordinary Research Note",
+        path="research/2026-05-22-ordinary-note.md",
+        status="active",
+        workspace_root=workspace_root,
+    )
+
+    assert artifact["path"] == "research/2026-05-22-ordinary-note.md"
+    assert artifact_service.list_artifacts(workspace_root=workspace_root) == [artifact]
+
+
 def test_artifacts_table_is_working_db_only(temp_stores):
     archive_conn = sqlite3.connect(temp_stores["archive_db"])
     working_conn = sqlite3.connect(temp_stores["working_db"])
