@@ -2,7 +2,7 @@
 Tír Retrieval Pipeline
 
 Hybrid retrieval: vector search (ChromaDB) + lexical search (FTS5 BM25),
-fused via Reciprocal Rank Fusion (RRF), weighted by source trust.
+fused via Reciprocal Rank Fusion (RRF).
 
 One function serves both automatic retrieval (context construction calls
 it with the user's message) and explicit memory_search (the entity calls
@@ -17,7 +17,6 @@ import re
 
 from tir.config import (
     DISTANCE_THRESHOLD,
-    TRUST_WEIGHTS,
     RRF_K,
     RETRIEVAL_RESULTS,
 )
@@ -282,8 +281,8 @@ def retrieve(
         max_results: Maximum final ranked results to return (default 20).
         distance_threshold: Cosine distance above which vector candidates
             are dropped before fusion (default 0.8).
-        trust_weights: Mapping of source_trust → score multiplier.
-            Defaults to config values.
+        trust_weights: Deprecated compatibility argument. source_trust is
+            metadata-only and no longer applies a ranking multiplier.
         rrf_k: RRF fusion constant (default 60).
         top_k_per_signal: Candidates per signal before fusion (default 30).
         artifact_intent: If True, modestly prefer artifact_document chunks
@@ -306,9 +305,6 @@ def retrieve(
     """
     if not query or not query.strip():
         return []
-
-    if trust_weights is None:
-        trust_weights = TRUST_WEIGHTS
 
     # --- Vector search (ChromaDB) ---
     try:
@@ -357,13 +353,11 @@ def retrieve(
     # --- RRF fusion ---
     fused = _fuse_rrf(vector_filtered, bm25_raw, k=rrf_k)
 
-    # --- Trust weighting ---
+    # --- Baseline final score ---
+    # source_trust stays in metadata/debug output but does not invisibly
+    # down-rank source-derived continuity artifacts.
     for chunk in fused:
-        source_trust = chunk["metadata"].get("source_trust", "firsthand")
-        weight = trust_weights.get(source_trust, 1.0)
-        if weight == 1.0 and source_trust not in trust_weights:
-            logger.warning(f"Unknown source_trust '{source_trust}', using weight 1.0")
-        chunk["adjusted_score"] = chunk["rrf_score"] * weight
+        chunk["adjusted_score"] = chunk["rrf_score"]
 
     if artifact_intent:
         _apply_artifact_boosts(fused, query)

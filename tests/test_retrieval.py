@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from tir.engine.context_debug import build_context_debug
 from tir.memory.retrieval import retrieve
 
 
@@ -46,6 +47,68 @@ def _artifact_chunk(
         },
         "distance": 0.2,
     }
+
+
+def _research_chunk(chunk_id="research-note", *, distance=0.1):
+    return {
+        "chunk_id": chunk_id,
+        "text": "Manual research note: Source Trust Audit\n\nRetrieval trust audit findings.",
+        "metadata": {
+            "source_type": "research",
+            "source_trust": "thirdhand",
+            "artifact_id": "research-artifact-1",
+            "title": "Research Note - Source Trust Audit",
+            "path": "research/2026-05-22-source-trust-audit.md",
+            "created_at": "2026-05-22T10:00:00+00:00",
+        },
+        "distance": distance,
+    }
+
+
+def test_source_trust_is_metadata_only_not_ranking_multiplier():
+    with patch(
+        "tir.memory.retrieval.query_similar",
+        return_value=[_conversation_chunk("firsthand"), _artifact_chunk("thirdhand")],
+    ), patch("tir.memory.retrieval.search_bm25", return_value=[]):
+        results = retrieve("source trust", max_results=2)
+
+    assert [result["chunk_id"] for result in results] == ["firsthand", "thirdhand"]
+    assert results[0]["metadata"]["source_trust"] == "firsthand"
+    assert results[1]["metadata"]["source_trust"] == "thirdhand"
+    assert results[0]["adjusted_score"] == results[0]["rrf_score"]
+    assert results[1]["adjusted_score"] == results[1]["rrf_score"]
+    assert results[1]["adjusted_score"] == 1.0 / 62
+
+
+def test_research_note_chunks_are_not_downweighted_by_source_trust():
+    with patch(
+        "tir.memory.retrieval.query_similar",
+        return_value=[_research_chunk(), _conversation_chunk()],
+    ), patch("tir.memory.retrieval.search_bm25", return_value=[]):
+        results = retrieve("retrieval trust audit", max_results=2)
+
+    assert results[0]["chunk_id"] == "research-note"
+    assert results[0]["metadata"]["source_type"] == "research"
+    assert results[0]["metadata"]["source_trust"] == "thirdhand"
+    assert results[0]["adjusted_score"] == results[0]["rrf_score"]
+    assert results[0]["adjusted_score"] == 1.0 / 61
+
+
+def test_source_trust_remains_visible_in_context_debug_metadata():
+    retrieved_chunks = [_research_chunk()]
+
+    debug = build_context_debug(
+        prompt_breakdown={"system_prompt_chars": 100},
+        retrieval_skipped=False,
+        retrieval_policy={"mode": "normal"},
+        query="retrieval trust audit",
+        retrieved_chunks=retrieved_chunks,
+        retrieval_budget={"max_chars": 1000, "used_chars": 100},
+    )
+
+    included = debug["retrieval"]["included_chunks"][0]
+    assert included["metadata"]["source_trust"] == "thirdhand"
+    assert included["source_type"] == "research"
 
 
 def test_artifact_intent_exact_filename_ranks_artifact_above_conversation_mention():
