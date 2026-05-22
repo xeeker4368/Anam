@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { apiFetch, readErrorMessage } from '../api'
 
 function Chat({
@@ -16,6 +16,40 @@ function Chat({
   const debugRef = useRef(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const mountedRef = useRef(false)
+  const streamAbortRef = useRef(null)
+  const streamReaderRef = useRef(null)
+  const streamIdRef = useRef(0)
+  const messageIdCounterRef = useRef(0)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      streamAbortRef.current?.abort()
+      streamReaderRef.current?.cancel().catch(() => {})
+      streamReaderRef.current = null
+    }
+  }, [])
+
+  function nextMessageId(prefix) {
+    messageIdCounterRef.current += 1
+    return `${prefix}-${Date.now()}-${messageIdCounterRef.current}`
+  }
+
+  const messageIdFromServer = useCallback((message, index) => {
+    return message.id || message.message_id || `${message.timestamp || 'message'}-${index}`
+  }, [])
+
+  function isAbortError(error) {
+    return error?.name === 'AbortError'
+  }
+
+  function updateMessageById(messageId, updater) {
+    setMessages(prev => prev.map(message => (
+      message.id === messageId ? updater(message) : message
+    )))
+  }
 
   function elapsedMs(start, end = performance.now()) {
     return Math.round((end - start) * 100) / 100
@@ -127,6 +161,29 @@ function Chat({
     publishDebug(next)
   }
 
+  const fetchMessages = useCallback(async (convId) => {
+    try {
+      const resp = await apiFetch(`/api/conversations/${convId}/messages`)
+      if (!resp.ok) {
+        throw new Error(await readErrorMessage(resp, 'Failed to fetch messages'))
+      }
+
+      const data = await resp.json()
+      if (!Array.isArray(data)) {
+        throw new Error('Messages response was not a list')
+      }
+
+      setMessages(data.map((m, index) => ({
+        id: messageIdFromServer(m, index),
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp,
+      })))
+    } catch (e) {
+      console.warn('Failed to fetch messages:', e)
+    }
+  }, [messageIdFromServer])
+
   // Load existing messages when conversationId changes
   // Skip if we're mid-stream — streaming manages its own message state
   useEffect(() => {
@@ -135,7 +192,7 @@ function Chat({
     } else if (!conversationId) {
       setMessages([])
     }
-  }, [conversationId])
+  }, [conversationId, fetchMessages])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -149,49 +206,49 @@ function Chat({
     }
   }, [isStreaming])
 
-  async function fetchMessages(convId) {
-    try {
-      const resp = await apiFetch(`/api/conversations/${convId}/messages`)
-      if (!resp.ok) {
-        throw new Error(await readErrorMessage(resp, 'Failed to fetch messages'))
-      }
-
-      const data = await resp.json()
-      if (!Array.isArray(data)) {
-        throw new Error('Messages response was not a list')
-      }
-
-      setMessages(data.map(m => ({
-        role: m.role,
-        content: m.content,
-        timestamp: m.timestamp,
-      })))
-    } catch (e) {
-      console.warn('Failed to fetch messages:', e)
-    }
-  }
-
   async function sendMessage() {
     const text = input.trim()
-    if (!text || isStreaming) return
+    if (!text) return
+    if (isStreamingRef.current) {
+      streamAbortRef.current?.abort()
+      return
+    }
 
     setInput('')
     setIsStreaming(true)
     isStreamingRef.current = true
     debugRef.current = null
+    streamAbortRef.current?.abort()
+    const streamId = streamIdRef.current + 1
+    streamIdRef.current = streamId
+    const abortController = new AbortController()
+    streamAbortRef.current = abortController
     const requestStart = performance.now()
     let firstTokenSeen = false
+    let reader = null
+    let streamDone = false
+    const userMessageId = nextMessageId('user')
+    const assistantMessageId = nextMessageId('assistant')
 
     // Add user message to display immediately
-    setMessages(prev => [...prev, { role: 'user', content: text }])
+    setMessages(prev => [...prev, { id: userMessageId, role: 'user', content: text }])
 
     // Add empty assistant message that will be filled by streaming
-    setMessages(prev => [...prev, { role: 'assistant', content: '', streaming: true }])
+    setMessages(prev => [
+      ...prev,
+      {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        streaming: true,
+      },
+    ])
 
     try {
       const resp = await apiFetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
           text,
           conversation_id: conversationId,
@@ -207,27 +264,27 @@ function Chat({
           status: resp.status,
           message,
         })
-        setMessages(prev => {
-          const updated = [...prev]
-          const last = updated[updated.length - 1]
-          updated[updated.length - 1] = {
-            ...last,
-            content: message,
-            streaming: false,
-            error: true,
-          }
-          return updated
-        })
+        updateMessageById(assistantMessageId, last => ({
+          ...last,
+          content: message,
+          streaming: false,
+          error: true,
+        }))
         return
       }
 
-      const reader = resp.body.getReader()
+      reader = resp.body.getReader()
+      streamReaderRef.current = reader
       const decoder = new TextDecoder()
       let buffer = ''
 
       while (true) {
+        if (abortController.signal.aborted || streamIdRef.current !== streamId) break
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          streamDone = true
+          break
+        }
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -260,21 +317,17 @@ function Chat({
             } else if (data.type === 'tool_result') {
               recordToolResult(data)
             } else if (data.type === 'token') {
+              if (abortController.signal.aborted || streamIdRef.current !== streamId) break
               if (!firstTokenSeen) {
                 firstTokenSeen = true
                 mergeDebugTimings({
                   request_start_to_first_token_ms: elapsedMs(requestStart),
                 })
               }
-              setMessages(prev => {
-                const updated = [...prev]
-                const last = updated[updated.length - 1]
-                updated[updated.length - 1] = {
-                  ...last,
-                  content: last.content + data.content,
-                }
-                return updated
-              })
+              updateMessageById(assistantMessageId, last => ({
+                ...last,
+                content: last.content + data.content,
+              }))
             } else if (data.type === 'done') {
               const doneAt = performance.now()
               mergeDebugTimings({
@@ -282,25 +335,15 @@ function Chat({
                 frontend_stream_total_ms: elapsedMs(requestStart, doneAt),
               }, data)
               // Mark streaming complete
-              setMessages(prev => {
-                const updated = [...prev]
-                const last = updated[updated.length - 1]
-                updated[updated.length - 1] = { ...last, streaming: false }
-                return updated
-              })
+              updateMessageById(assistantMessageId, last => ({ ...last, streaming: false }))
             } else if (data.type === 'error') {
               appendRawEvent(data)
-              setMessages(prev => {
-                const updated = [...prev]
-                const last = updated[updated.length - 1]
-                updated[updated.length - 1] = {
-                  ...last,
-                  content: data.message,
-                  streaming: false,
-                  error: true,
-                }
-                return updated
-              })
+              updateMessageById(assistantMessageId, last => ({
+                ...last,
+                content: data.message,
+                streaming: false,
+                error: true,
+              }))
             } else {
               appendRawEvent(data)
             }
@@ -310,22 +353,46 @@ function Chat({
         }
       }
     } catch (e) {
+      if (isAbortError(e) || abortController.signal.aborted) {
+        return
+      }
       console.error('Stream failed:', e)
-      setMessages(prev => {
-        const updated = [...prev]
-        const last = updated[updated.length - 1]
-        updated[updated.length - 1] = {
-          ...last,
-          content: `Connection error: ${e.message}`,
-          streaming: false,
-          error: true,
-        }
-        return updated
-      })
+      updateMessageById(assistantMessageId, last => ({
+        ...last,
+        content: `Connection error: ${e.message}`,
+        streaming: false,
+        error: true,
+      }))
     } finally {
-      setIsStreaming(false)
-      isStreamingRef.current = false
-      onRefresh()
+      if (reader) {
+        try {
+          if (!streamDone) {
+            await reader.cancel()
+          }
+        } catch (e) {
+          if (!isAbortError(e)) {
+            console.warn('Failed to cancel stream reader:', e)
+          }
+        } finally {
+          try {
+            reader.releaseLock()
+          } catch {
+            // Reader may already be released after cancellation/error.
+          }
+          if (streamReaderRef.current === reader) {
+            streamReaderRef.current = null
+          }
+        }
+      }
+      if (streamAbortRef.current === abortController) {
+        streamAbortRef.current = null
+      }
+      if (mountedRef.current && streamIdRef.current === streamId) {
+        updateMessageById(assistantMessageId, last => ({ ...last, streaming: false }))
+        setIsStreaming(false)
+        isStreamingRef.current = false
+        onRefresh()
+      }
     }
   }
 
@@ -348,9 +415,9 @@ function Chat({
             <p>Start a conversation</p>
           </div>
         )}
-        {messages.map((msg, i) => (
+        {messages.map(msg => (
           <div
-            key={i}
+            key={msg.id}
             className={`message message-${msg.role} ${msg.error ? 'message-error' : ''}`}
           >
             <div className="message-role">
