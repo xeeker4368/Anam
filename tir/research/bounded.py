@@ -1030,3 +1030,65 @@ def run_bounded_research_open_loop(
         current_local_date=current_local_date,
     )
     return result
+
+
+def run_next_bounded_research_open_loop(
+    *,
+    write: bool = False,
+    register_artifact: bool = False,
+    model: str | None = None,
+    workspace_root: Path = WORKSPACE_DIR,
+    current_local_date: str | None = None,
+    use_moltbook: bool = False,
+    moltbook_query: str | None = None,
+    moltbook_feed: bool = False,
+    moltbook_limit: int | None = None,
+    moltbook_sort: str = "new",
+    moltbook_registry=None,
+) -> dict:
+    """Plan and run at most one eligible bounded research open loop."""
+    if register_artifact and not write:
+        raise BoundedResearchError("--register-artifact requires --write")
+
+    current_local_date = current_local_date or _current_local_date()
+    plan = plan_next_bounded_research_open_loop(current_local_date=current_local_date)
+    selected = plan.get("selected")
+    if selected is None:
+        return {
+            "ok": True,
+            "mode": "write" if write else "dry-run",
+            "research_version": BOUNDED_RESEARCH_VERSION,
+            "run_next": True,
+            "ran": False,
+            "selected": None,
+            "plan": plan,
+            "message": "No eligible bounded research open loops found.",
+        }
+
+    open_loop_id = selected["open_loop"]["open_loop_id"]
+    result = run_bounded_research_open_loop(
+        open_loop_id=open_loop_id,
+        write=write,
+        register_artifact=register_artifact,
+        model=model,
+        workspace_root=workspace_root,
+        current_local_date=current_local_date,
+        use_moltbook=use_moltbook,
+        moltbook_query=moltbook_query,
+        moltbook_feed=moltbook_feed,
+        moltbook_limit=moltbook_limit,
+        moltbook_sort=moltbook_sort,
+        moltbook_registry=moltbook_registry,
+    )
+    result["run_next"] = True
+    result["ran"] = True
+    result["selected"] = selected
+    result["plan"] = {
+        "current_local_date": plan["current_local_date"],
+        "eligible_count": plan["eligible_count"],
+        "skipped_count": plan["skipped_count"],
+        "total_count": plan["total_count"],
+        "skipped_count_by_reason": plan["skipped_count_by_reason"],
+        "global_daily_cap": plan["global_daily_cap"],
+    }
+    return result

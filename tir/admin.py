@@ -41,6 +41,8 @@ Commands:
                     Preview the next eligible bounded research open loop
     research-open-loop-run
                     Run one bounded research iteration for an open loop
+    research-open-loop-run-next
+                    Plan and run the next eligible bounded research open loop
     moltbook-source-preview
                     Preview compact read-only Moltbook source traces
 """
@@ -107,6 +109,7 @@ from tir.research.bounded import (
     BoundedResearchError,
     plan_next_bounded_research_open_loop,
     run_bounded_research_open_loop,
+    run_next_bounded_research_open_loop,
 )
 from tir.research.moltbook_sources import (
     MoltbookSourcePreviewError,
@@ -958,9 +961,14 @@ def cmd_research_open_loops_create(args):
     _print_research_open_loop_result(result, include_created=True)
 
 
-def _print_bounded_research_open_loop_plan(result: dict, *, limit: int = 5) -> None:
+def _print_bounded_research_open_loop_plan(
+    result: dict,
+    *,
+    limit: int = 5,
+    heading: str = "Bounded research open-loop planner dry run",
+) -> None:
     detail_limit = max(0, limit)
-    print("Bounded research open-loop planner dry run")
+    print(heading)
     print(f"current_local_date={result['current_local_date']}")
     print(f"total_open_loops_evaluated={result['total_count']}")
     print(f"eligible_count={result['eligible_count']}")
@@ -1028,30 +1036,25 @@ def cmd_research_open_loop_next(args):
     _print_bounded_research_open_loop_plan(result, limit=args.limit)
 
 
-def cmd_research_open_loop_run(args):
-    """Run one bounded research iteration for a specific open loop."""
-    try:
-        result = run_bounded_research_open_loop(
-            open_loop_id=args.open_loop_id,
-            write=args.write,
-            register_artifact=args.register_artifact,
-            model=args.model,
-            use_moltbook=getattr(args, "use_moltbook", False),
-            moltbook_query=getattr(args, "moltbook_query", None),
-            moltbook_feed=getattr(args, "moltbook_feed", False),
-            moltbook_limit=getattr(args, "moltbook_limit", None),
-            moltbook_sort=getattr(args, "moltbook_sort", None),
-        )
-    except BoundedResearchError as exc:
-        print(f"Bounded research open-loop run failed: {exc}")
-        sys.exit(1)
-    except Exception as exc:
-        print(f"Bounded research open-loop run failed: {exc}")
-        sys.exit(1)
+def _bounded_research_run_kwargs(args) -> dict:
+    return {
+        "write": args.write,
+        "register_artifact": args.register_artifact,
+        "model": args.model,
+        "use_moltbook": getattr(args, "use_moltbook", False),
+        "moltbook_query": getattr(args, "moltbook_query", None),
+        "moltbook_feed": getattr(args, "moltbook_feed", False),
+        "moltbook_limit": getattr(args, "moltbook_limit", None),
+        "moltbook_sort": getattr(args, "moltbook_sort", None),
+    }
 
+
+def _print_bounded_research_run_result(result: dict, *, open_loop_id: str) -> None:
     print("Bounded research open-loop run complete")
     print(f"mode={result['mode']}")
-    print(f"open_loop_id={args.open_loop_id}")
+    print(f"open_loop_id={open_loop_id}")
+    if result.get("run_next"):
+        print("run_next=true")
     print(f"title={result['title']}")
     print(f"research_version={result['research_version']}")
     print(f"target_path={result['relative_path']}")
@@ -1095,6 +1098,48 @@ def cmd_research_open_loop_run(args):
     print(result["document"], end="")
 
 
+def cmd_research_open_loop_run(args):
+    """Run one bounded research iteration for a specific open loop."""
+    try:
+        result = run_bounded_research_open_loop(
+            open_loop_id=args.open_loop_id,
+            **_bounded_research_run_kwargs(args),
+        )
+    except BoundedResearchError as exc:
+        print(f"Bounded research open-loop run failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Bounded research open-loop run failed: {exc}")
+        sys.exit(1)
+
+    _print_bounded_research_run_result(result, open_loop_id=args.open_loop_id)
+
+
+def cmd_research_open_loop_run_next(args):
+    """Plan and run the next eligible bounded research open loop."""
+    try:
+        result = run_next_bounded_research_open_loop(
+            **_bounded_research_run_kwargs(args),
+        )
+    except BoundedResearchError as exc:
+        print(f"Bounded research open-loop run-next failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Bounded research open-loop run-next failed: {exc}")
+        sys.exit(1)
+
+    if not result.get("ran"):
+        _print_bounded_research_open_loop_plan(
+            result["plan"],
+            limit=0,
+            heading="Bounded research open-loop run-next no-op",
+        )
+        return
+
+    selected = result["selected"]["open_loop"]
+    _print_bounded_research_run_result(result, open_loop_id=selected["open_loop_id"])
+
+
 def cmd_moltbook_source_preview(args):
     """Preview compact read-only Moltbook source traces."""
     try:
@@ -1114,6 +1159,44 @@ def cmd_moltbook_source_preview(args):
         sys.exit(1)
 
     print(json.dumps(trace, indent=2, sort_keys=True))
+
+
+def _add_bounded_research_run_options(parser, *, include_open_loop_id: bool) -> None:
+    if include_open_loop_id:
+        parser.add_argument("--open-loop-id", required=True, help="Open loop ID to research")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="Generate without writing")
+    mode.add_argument("--write", action="store_true", help="Write note to workspace/research")
+    parser.add_argument(
+        "--register-artifact",
+        action="store_true",
+        help="After --write, register and index the note as research memory",
+    )
+    parser.add_argument("--model", default=None, help="Optional Ollama model override")
+    parser.add_argument(
+        "--use-moltbook",
+        action="store_true",
+        help="Collect compact read-only Moltbook source context for this run",
+    )
+    moltbook_source = parser.add_mutually_exclusive_group()
+    moltbook_source.add_argument("--moltbook-query", default=None, help="Moltbook search query")
+    moltbook_source.add_argument(
+        "--moltbook-feed",
+        action="store_true",
+        help="Use the global Moltbook feed as source context",
+    )
+    parser.add_argument(
+        "--moltbook-limit",
+        type=int,
+        default=None,
+        help="Max Moltbook posts to preview, default 10, capped at 20",
+    )
+    parser.add_argument(
+        "--moltbook-sort",
+        choices=["hot", "new", "top", "rising"],
+        default=None,
+        help="Moltbook feed sort order, default new",
+    )
 
 
 def main():
@@ -1350,40 +1433,14 @@ def main():
         "research-open-loop-run",
         help="Run one bounded research iteration for a specific open loop",
     )
-    p.add_argument("--open-loop-id", required=True, help="Open loop ID to research")
-    mode = p.add_mutually_exclusive_group()
-    mode.add_argument("--dry-run", action="store_true", help="Generate without writing")
-    mode.add_argument("--write", action="store_true", help="Write note to workspace/research")
-    p.add_argument(
-        "--register-artifact",
-        action="store_true",
-        help="After --write, register and index the note as research memory",
+    _add_bounded_research_run_options(p, include_open_loop_id=True)
+
+    # research-open-loop-run-next
+    p = sub.add_parser(
+        "research-open-loop-run-next",
+        help="Plan and run the next eligible bounded research open loop",
     )
-    p.add_argument("--model", default=None, help="Optional Ollama model override")
-    p.add_argument(
-        "--use-moltbook",
-        action="store_true",
-        help="Collect compact read-only Moltbook source context for this run",
-    )
-    moltbook_source = p.add_mutually_exclusive_group()
-    moltbook_source.add_argument("--moltbook-query", default=None, help="Moltbook search query")
-    moltbook_source.add_argument(
-        "--moltbook-feed",
-        action="store_true",
-        help="Use the global Moltbook feed as source context",
-    )
-    p.add_argument(
-        "--moltbook-limit",
-        type=int,
-        default=None,
-        help="Max Moltbook posts to preview, default 10, capped at 20",
-    )
-    p.add_argument(
-        "--moltbook-sort",
-        choices=["hot", "new", "top", "rising"],
-        default=None,
-        help="Moltbook feed sort order, default new",
-    )
+    _add_bounded_research_run_options(p, include_open_loop_id=False)
 
     # moltbook-source-preview
     p = sub.add_parser(
@@ -1479,9 +1536,9 @@ def main():
 
     if args.command == "research-run" and args.register_artifact and not args.write:
         parser.error("research-run --register-artifact requires --write")
-    if args.command == "research-open-loop-run" and args.register_artifact and not args.write:
-        parser.error("research-open-loop-run --register-artifact requires --write")
-    if args.command == "research-open-loop-run":
+    if args.command in {"research-open-loop-run", "research-open-loop-run-next"}:
+        if args.register_artifact and not args.write:
+            parser.error(f"{args.command} --register-artifact requires --write")
         has_moltbook_flags = any(
             (
                 bool(args.moltbook_query),
@@ -1491,14 +1548,14 @@ def main():
             )
         )
         if has_moltbook_flags and not args.use_moltbook:
-            parser.error("research-open-loop-run Moltbook flags require --use-moltbook")
+            parser.error(f"{args.command} Moltbook flags require --use-moltbook")
         if args.use_moltbook and not (args.moltbook_query or args.moltbook_feed):
             parser.error(
-                "research-open-loop-run --use-moltbook requires --moltbook-query "
+                f"{args.command} --use-moltbook requires --moltbook-query "
                 "or --moltbook-feed"
             )
         if args.use_moltbook and args.moltbook_query and args.moltbook_sort is not None:
-            parser.error("research-open-loop-run --moltbook-sort requires --moltbook-feed")
+            parser.error(f"{args.command} --moltbook-sort requires --moltbook-feed")
 
     # Ensure databases exist for DB-facing commands. Backup/restore must not
     # create or mutate runtime state before their own safety checks run.
@@ -1542,6 +1599,7 @@ def main():
         "research-open-loops-create": cmd_research_open_loops_create,
         "research-open-loop-next": cmd_research_open_loop_next,
         "research-open-loop-run": cmd_research_open_loop_run,
+        "research-open-loop-run-next": cmd_research_open_loop_run_next,
         "moltbook-source-preview": cmd_moltbook_source_preview,
     }
 

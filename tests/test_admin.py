@@ -632,6 +632,237 @@ def test_research_open_loop_next_without_dry_run_fails_cleanly(temp_admin, capsy
     assert "research-open-loop-next currently supports --dry-run only" in output
 
 
+def test_research_open_loop_run_next_admin_runs_selected_loop(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run_next(**kwargs):
+        assert kwargs["write"] is False
+        assert kwargs["register_artifact"] is False
+        assert kwargs["use_moltbook"] is False
+        return {
+            "mode": "dry-run",
+            "research_version": "manual_research_open_loop_iteration_v1",
+            "run_next": True,
+            "ran": True,
+            "selected": {"open_loop": {"open_loop_id": "loop-1"}},
+            "title": "What remains unresolved",
+            "relative_path": "research/2026-05-15-what-remains-unresolved.md",
+            "source_context": {},
+            "document": "# Research Note - What remains unresolved\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_next_bounded_research_open_loop", fake_run_next)
+
+    admin_mod.cmd_research_open_loop_run_next(
+        SimpleNamespace(
+            dry_run=True,
+            write=False,
+            register_artifact=False,
+            model=None,
+            use_moltbook=False,
+            moltbook_query=None,
+            moltbook_feed=False,
+            moltbook_limit=None,
+            moltbook_sort=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Bounded research open-loop run complete" in output
+    assert "run_next=true" in output
+    assert "open_loop_id=loop-1" in output
+    assert "mode=dry-run" in output
+    assert "# Research Note - What remains unresolved" in output
+
+
+def test_research_open_loop_run_next_admin_no_eligible_is_clear_noop(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run_next(**_kwargs):
+        return {
+            "mode": "write",
+            "research_version": "manual_research_open_loop_iteration_v1",
+            "run_next": True,
+            "ran": False,
+            "selected": None,
+            "plan": {
+                "current_local_date": "2026-05-15",
+                "total_count": 1,
+                "eligible_count": 0,
+                "skipped_count": 1,
+                "global_daily_cap": {
+                    "enforced": False,
+                    "reason": "global daily research cap is deferred in planner v1",
+                },
+                "selected": None,
+                "eligible": [],
+                "skipped": [],
+                "skipped_count_by_reason": {"daily_limit_reached": 1},
+            },
+            "message": "No eligible bounded research open loops found.",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_next_bounded_research_open_loop", fake_run_next)
+
+    admin_mod.cmd_research_open_loop_run_next(
+        SimpleNamespace(
+            dry_run=False,
+            write=True,
+            register_artifact=False,
+            model=None,
+            use_moltbook=False,
+            moltbook_query=None,
+            moltbook_feed=False,
+            moltbook_limit=None,
+            moltbook_sort=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Bounded research open-loop run-next no-op" in output
+    assert "No eligible bounded research open loops found." in output
+    assert "eligible_count=0" in output
+    assert "skipped_reason daily_limit_reached=1" in output
+    assert "research_note:" not in output
+
+
+def test_research_open_loop_run_next_admin_passes_moltbook_options(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run_next(**kwargs):
+        assert kwargs["write"] is True
+        assert kwargs["register_artifact"] is True
+        assert kwargs["use_moltbook"] is True
+        assert kwargs["moltbook_feed"] is True
+        assert kwargs["moltbook_query"] is None
+        assert kwargs["moltbook_limit"] == 3
+        assert kwargs["moltbook_sort"] == "new"
+        return {
+            "mode": "write",
+            "research_version": "manual_research_open_loop_iteration_v1",
+            "run_next": True,
+            "ran": True,
+            "selected": {"open_loop": {"open_loop_id": "loop-1"}},
+            "title": "What remains unresolved",
+            "relative_path": "research/2026-05-15-what-remains-unresolved.md",
+            "source_context": {},
+            "moltbook_context": {
+                "trace_path": "research/source-traces/2026-05-21-feed-new.moltbook-sources.json",
+                "source_count": 3,
+                "collection_error": False,
+            },
+            "write_result": {
+                "path": "research/2026-05-15-what-remains-unresolved.md",
+                "bytes": 123,
+            },
+            "artifact_result": {
+                "artifact": {"artifact_id": "artifact-1", "artifact_type": "research_note"},
+                "indexing": {"status": "indexed", "chunks_written": 1},
+            },
+            "open_loop_update": {
+                "metadata": {
+                    "daily_iteration_count": 1,
+                    "daily_iteration_limit": 1,
+                    "daily_iteration_local_date": "2026-05-15",
+                    "last_researched_at": "2026-05-15T12:00:00+00:00",
+                    "last_research_path": "research/2026-05-15-what-remains-unresolved.md",
+                    "last_research_artifact_id": "artifact-1",
+                }
+            },
+            "document": "# Research Note - What remains unresolved\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_next_bounded_research_open_loop", fake_run_next)
+
+    admin_mod.cmd_research_open_loop_run_next(
+        SimpleNamespace(
+            dry_run=False,
+            write=True,
+            register_artifact=True,
+            model=None,
+            use_moltbook=True,
+            moltbook_query=None,
+            moltbook_feed=True,
+            moltbook_limit=3,
+            moltbook_sort="new",
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "open_loop_id=loop-1" in output
+    assert "moltbook_source_count=3" in output
+    assert "artifact_id=artifact-1" in output
+
+
+def test_research_open_loop_run_next_register_without_write_fails_cleanly(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "research-open-loop-run-next",
+            "--register-artifact",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "research-open-loop-run-next --register-artifact requires --write" in captured.err
+
+
+def test_research_open_loop_run_next_use_moltbook_requires_query_or_feed(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "research-open-loop-run-next",
+            "--use-moltbook",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "research-open-loop-run-next --use-moltbook requires --moltbook-query" in captured.err
+
+
+def test_research_open_loop_run_next_rejects_moltbook_flags_without_use(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "research-open-loop-run-next",
+            "--moltbook-feed",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "research-open-loop-run-next Moltbook flags require --use-moltbook" in captured.err
+
+
 def test_research_open_loop_run_admin_prints_dry_run_summary(temp_admin, capsys, monkeypatch):
     _db_mod, admin_mod = temp_admin
 

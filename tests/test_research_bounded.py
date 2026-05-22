@@ -537,6 +537,129 @@ def test_bounded_run_dry_run_rejects_ineligible_loop_with_clear_reason(bounded_e
         )
 
 
+def test_run_next_dry_run_selects_highest_ranked_loop_and_writes_nothing(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    low = _create_loop(bounded_env, title="Low", priority="low")
+    high = _create_loop(bounded_env, title="High", priority="high")
+
+    result = bounded_env["bounded"].run_next_bounded_research_open_loop(
+        write=False,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    assert result["run_next"] is True
+    assert result["ran"] is True
+    assert result["mode"] == "dry-run"
+    assert result["selected"]["open_loop"]["open_loop_id"] == high["open_loop_id"]
+    assert result["open_loop"]["open_loop"]["open_loop_id"] == high["open_loop_id"]
+    assert list((bounded_env["workspace_root"] / "research").glob("*.md")) == []
+    assert bounded_env["open_loops"].get_open_loop(high["open_loop_id"])["metadata"] == _metadata()
+    assert bounded_env["open_loops"].get_open_loop(low["open_loop_id"])["metadata"] == _metadata()
+
+
+def test_run_next_write_runs_selected_loop_and_updates_metadata(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    low = _create_loop(bounded_env, title="Low", priority="low")
+    high = _create_loop(bounded_env, title="High", priority="high")
+
+    result = bounded_env["bounded"].run_next_bounded_research_open_loop(
+        write=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    assert result["ran"] is True
+    assert result["selected"]["open_loop"]["open_loop_id"] == high["open_loop_id"]
+    assert result["write_result"]["path"] == "research/2026-05-15-what-remains-unresolved.md"
+    high_metadata = bounded_env["open_loops"].get_open_loop(high["open_loop_id"])["metadata"]
+    low_metadata = bounded_env["open_loops"].get_open_loop(low["open_loop_id"])["metadata"]
+    assert high_metadata["daily_iteration_count"] == 1
+    assert high_metadata["last_research_path"] == result["relative_path"]
+    assert low_metadata == _metadata()
+
+
+def test_run_next_write_register_indexes_selected_note(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(bounded_env)
+    monkeypatch.setattr("tir.memory.research_indexing.upsert_chunk", lambda **kwargs: None)
+
+    result = bounded_env["bounded"].run_next_bounded_research_open_loop(
+        write=True,
+        register_artifact=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    assert result["ran"] is True
+    assert result["selected"]["open_loop"]["open_loop_id"] == loop["open_loop_id"]
+    assert result["artifact_result"]["artifact"]["artifact_type"] == "research_note"
+    assert result["artifact_result"]["indexing"]["status"] == "indexed"
+    metadata = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert metadata["last_research_artifact_id"] == result["artifact_result"]["artifact"]["artifact_id"]
+
+
+def test_run_next_passes_moltbook_options_to_selected_loop(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch, body=MOLTBOOK_BODY)
+    loop = _create_loop(bounded_env)
+    registry = FakeMoltbookRegistry(payload={"posts": [_moltbook_post(id="feed-post")]})
+
+    result = bounded_env["bounded"].run_next_bounded_research_open_loop(
+        write=False,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+        use_moltbook=True,
+        moltbook_feed=True,
+        moltbook_limit=3,
+        moltbook_sort="new",
+        moltbook_registry=registry,
+    )
+
+    assert result["ran"] is True
+    assert result["selected"]["open_loop"]["open_loop_id"] == loop["open_loop_id"]
+    assert registry.calls == [("moltbook_feed", {"sort": "new", "limit": 3})]
+    assert result["moltbook_context"]["source_count"] == 1
+
+
+def test_run_next_no_eligible_loop_is_noop_and_writes_nothing(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(
+        bounded_env,
+        metadata=_metadata(daily_iteration_count=1, daily_iteration_local_date=TODAY),
+    )
+    before = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+
+    result = bounded_env["bounded"].run_next_bounded_research_open_loop(
+        write=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    assert result["run_next"] is True
+    assert result["ran"] is False
+    assert result["selected"] is None
+    assert result["plan"]["eligible_count"] == 0
+    assert result["plan"]["skipped_count_by_reason"] == {"daily_limit_reached": 1}
+    assert list((bounded_env["workspace_root"] / "research").glob("*.md")) == []
+    after = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert after == before
+
+
 def test_bounded_run_write_creates_one_markdown_note_without_registering(bounded_env, monkeypatch):
     _patch_bounded_generation(bounded_env, monkeypatch)
     loop = _create_loop(bounded_env)
