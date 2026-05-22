@@ -2,19 +2,19 @@
 
 ## Current Recommended Task
 
-Go-Live Reset Runbook v1.
+Model Behavior Smoke Test Baseline v1.
 
-This is a design/runbook task for the future destructive go-live wipe/reset process. It must not implement reset behavior or delete current runtime state.
+This is a human-run pre-go-live model/configuration baseline protocol. It must not implement an automated eval harness or change runtime prompts/model config.
 
 ## Task Goal
 
-Document a safe future go-live reset procedure:
+Create a smoke test baseline protocol:
 
-- require fresh backup and backup-restore verification
-- define what pre-live runtime state should be wiped
-- define what project/config/governance/user/schema state must be preserved
-- require explicit confirmation for any future destructive command
-- keep current pre-live data available for testing until final launch preparation
+- compare current Gemma, lower-temperature Gemma, and Qwen candidate configurations
+- use a fixed human-run prompt set
+- score fabricated memory, theatrical overreach, tool honesty, source grounding, boundary respect, pushback, uncertainty, and usability
+- store transcripts as development/test artifacts outside live memory
+- support 30/60/90 day drift comparison after go-live
 
 ## Current Checkpoint
 
@@ -48,17 +48,18 @@ Recent completed foundation and course-correction work:
 - Experiment Hypothesis / Observation Criteria v1 exists in `docs/EXPERIMENT_HYPOTHESIS_AND_OBSERVATION_CRITERIA.md`.
 - Trusted Household User Mode v1 exists in `docs/TRUSTED_HOUSEHOLD_USER_MODE.md`.
 - Backup / Restore Verification v1 is complete and committed.
+- Go-Live Reset Runbook v1 exists in `docs/GO_LIVE_RESET_RUNBOOK.md`.
 
 Research remains provisional and does not become truth, guidance, self-understanding, project decisions, review items, or working theories automatically.
 
 ## Current Documentation Scope
 
-The current go-live reset runbook patch should:
+The current model behavior smoke test baseline patch should:
 
-- add `docs/GO_LIVE_RESET_RUNBOOK.md`
-- update `ROADMAP.md` narrowly with the runbook checkpoint
-- define wipe/preserve lists, guardrails, command shape, and verification checklist
-- avoid implementing any reset behavior
+- add `docs/MODEL_BEHAVIOR_SMOKE_TEST_BASELINE.md`
+- update `ROADMAP.md` narrowly with the pre-go-live smoke test baseline checkpoint
+- define candidate configs, fixed prompt set, scoring categories, pass/fail guidance, and review cadence
+- keep outputs as development/test artifacts, not entity identity facts
 - add a changelog entry
 
 Pre-go-live candidates now include Image / Media Capability Foundation v1 and a tightly bounded scheduler/nightly tick v1, subject to separate approved implementation patches.
@@ -87,6 +88,8 @@ Pre-go-live candidates now include Image / Media Capability Foundation v1 and a 
 - Go-live DB wipe/reset.
 - Real restore into active runtime state outside the existing explicit `restore --force` path.
   Current pre-live runtime data remains useful test data until final launch preparation.
+- Automated model eval harnesses.
+- Model configuration changes.
 
 ## Design Constraints
 
@@ -116,12 +119,12 @@ Pre-go-live candidates now include Image / Media Capability Foundation v1 and a 
 
 ## Success Criteria
 
-This go-live reset runbook patch should:
+This model behavior smoke test baseline patch should:
 
-- document the future reset operator procedure
-- define what to wipe and what to preserve
-- require backup and backup-restore verification before future destructive reset
-- include future command shape and post-reset verification checklist
-- avoid implementing reset command, DB mutation, Chroma deletion, or workspace deletion
-- avoid runtime code, prompts, guidance, `soul.md`, model config, auth, UI, research, Moltbook, or web behavior changes
+- document a human-run smoke test baseline protocol
+- define candidate model/configuration comparisons
+- define fixed prompt categories and observation/scoring categories
+- avoid turning the protocol into runtime guidance or a personality script
+- avoid importing transcripts into live memory by default
+- avoid runtime code, tests, prompts, guidance, `soul.md`, model config, DB schema, retrieval, research, Moltbook/web, auth, or UI changes
 - preserve the Project Anam/entity distinction

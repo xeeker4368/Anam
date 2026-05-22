@@ -137,6 +137,15 @@ Removal and revision apply mechanics now have a concept design in `docs/BEHAVIOR
 
 This is a human/project evaluation aid only. It is not `soul.md`, behavioral guidance, operational guidance, a runtime prompt, or a personality, name, avatar, value, or identity assignment.
 
+### Pre-Go-Live Evaluation — Model Behavior Smoke Test Baseline v1
+
+- [ ] Run a human-scored model behavior smoke test before go-live.
+- [ ] Compare current Gemma, lower-temperature Gemma, and a Qwen candidate configuration.
+- [ ] Save transcripts as development/test artifacts outside live memory.
+- [ ] Use the same prompt set for 30/60/90 day drift comparison.
+
+This is a model/configuration selection and baseline protocol. It is not runtime guidance, a prompt change, or a personality script.
+
 ### Pre-Go-Live — Trusted Household User Mode v1
 
 - [ ] Support Lyle and Lyle's wife as known household users.
