@@ -292,17 +292,17 @@ This file is a governance/runtime file and cannot be ingested as normal artifact
 
 ## Artifact / source framing
 
-### 1. `tir/research/bounded.py:428` — `build_bounded_research_messages`
+### 1. `tir/research/bounded.py:40`
 
-- Name: `system`
+- Name: `MOLTBOOK_SOURCE_CONTEXT_VERSION`
 - Category: Artifact / source framing
-- Risk flags: `do not`
+- Risk flags: none
 - Audit note: `needs discussion`
 
 Excerpt:
 
 ```text
-Produce one structured provisional bounded research note for a single existing research open loop. Use only the supplied open-loop details and prior provisional research context. Do not claim external sources were collected. Do not create behavioral guidance, self-understanding, project decisions, working theories, review items, open-loop records, or runtime instructions.
+bounded_research_moltbook_source_context_v1
 ```
 
 ### 2. `tir/research/manual.py:252` — `build_manual_research_messages`
@@ -632,7 +632,20 @@ Quiet or low-signal sections may say "None" or briefly state that nothing meanin
 
 ## Research / future automation
 
-### 1. `tir/research/manual.py:47`
+### 1. `tir/research/bounded.py:644` — `build_bounded_research_messages`
+
+- Name: `system`
+- Category: Research / future automation
+- Risk flags: `do not`
+- Audit note: `needs discussion`
+
+Excerpt:
+
+```text
+Produce one structured provisional bounded research note for a single existing research open loop. {...} Do not create behavioral guidance, self-understanding, project decisions, working theories, review items, open-loop records, or runtime instructions.
+```
+
+### 2. `tir/research/manual.py:47`
 
 - Name: `PRIOR_RESEARCH_CONTEXT_HEADER`
 - Category: Research / future automation

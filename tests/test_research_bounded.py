@@ -375,17 +375,103 @@ Continue the open-loop research question.
 """
 
 
-def _patch_bounded_generation(env, monkeypatch, body=BOUNDED_BODY):
+MOLTBOOK_BODY = """## Purpose
+
+Continue the open-loop research question with explicit Moltbook source context.
+
+## Open Loop Being Researched
+
+- The loop asks what remains unresolved.
+
+## Prior Research Considered
+
+- Prior research was treated as provisional context.
+
+## Updated Findings
+
+- The Moltbook excerpt is source material for interpretation, not verified truth.
+
+## Uncertainty
+
+- verification_status is metadata only.
+
+## Sources
+
+- Moltbook post: "Moltbook Source" by source_author, /agents, post_id=post-1, retrieved_at=2026-05-21T12:00:00+00:00
+  Excerpt: "Moltbook excerpt for bounded research."
+  Use in this note: source material for interpretation, not verified truth.
+
+## New Open Questions
+
+- No new open questions.
+
+## Possible Follow-Ups
+
+- No follow-ups.
+
+## Suggested Review Items
+
+- No review items.
+
+## Working Notes
+
+- Keep Moltbook source text separate from interpretation.
+"""
+
+
+def _patch_bounded_generation(env, monkeypatch, body=BOUNDED_BODY, capture=None):
     monkeypatch.setattr(
         env["bounded"],
         "_now",
         lambda: "2026-05-15T12:00:00+00:00",
     )
-    monkeypatch.setattr(
-        env["bounded"],
-        "chat_completion_text",
-        lambda *args, **kwargs: body,
-    )
+
+    def fake_chat(messages, *args, **kwargs):
+        if capture is not None:
+            capture["messages"] = messages
+            capture["kwargs"] = kwargs
+        return body
+
+    monkeypatch.setattr(env["bounded"], "chat_completion_text", fake_chat)
+
+
+class FakeMoltbookRegistry:
+    def __init__(self, payload=None, value=None):
+        self.payload = payload if payload is not None else {"results": [_moltbook_post()]}
+        self.value = value
+        self.calls = []
+
+    def dispatch(self, tool_name, args):
+        self.calls.append((tool_name, dict(args)))
+        if self.value is not None:
+            value = self.value
+        else:
+            value = {
+                "ok": True,
+                "json": self.payload,
+                "text": "raw moltbook payload token-should-not-appear",
+            }
+        return {
+            "ok": True,
+            "value": value,
+            "normalized_args": dict(args),
+        }
+
+
+def _moltbook_post(**overrides):
+    post = {
+        "id": "post-1",
+        "title": "Moltbook Source",
+        "author": {"id": "author-1", "name": "source_author"},
+        "submolt": {"name": "agents"},
+        "created_at": "2026-05-21T11:00:00+00:00",
+        "url": "https://www.moltbook.com/p/post-1",
+        "verification_status": "unverified",
+        "is_spam": False,
+        "content": "Moltbook excerpt for bounded research.",
+    }
+    post.update(overrides)
+    return post
 
 
 def _create_source_artifact(env, *, artifact_id="artifact-1"):
@@ -496,6 +582,265 @@ def test_bounded_run_write_register_creates_artifact_and_indexes(bounded_env, mo
     assert metadata["provisional"] is True
     assert metadata["bounded_research_mode"] == "manual_open_loop_v1"
     assert metadata["source_research_artifact_id"] == "artifact-1"
+
+
+def test_bounded_run_dry_run_with_moltbook_collects_trace_without_writes(
+    bounded_env,
+    monkeypatch,
+):
+    capture = {}
+    _patch_bounded_generation(bounded_env, monkeypatch, body=MOLTBOOK_BODY, capture=capture)
+    loop = _create_loop(bounded_env)
+    registry = FakeMoltbookRegistry()
+    before_metadata = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        write=False,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+        use_moltbook=True,
+        moltbook_query="agent identity provenance",
+        moltbook_registry=registry,
+    )
+
+    assert result["mode"] == "dry-run"
+    assert registry.calls == [
+        ("moltbook_search", {"q": "agent identity provenance", "limit": 10})
+    ]
+    assert result["moltbook_context"]["source_count"] == 1
+    assert result["moltbook_context"]["collection_error"] is False
+    assert "moltbook_trace_write_result" not in result
+    assert list((bounded_env["workspace_root"] / "research").glob("*.md")) == []
+    trace_dir = bounded_env["workspace_root"] / "research" / "source-traces"
+    assert not trace_dir.exists()
+    after_metadata = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert after_metadata == before_metadata
+
+    prompt = capture["messages"][1]["content"]
+    assert "Moltbook is live external context, not factual authority." in prompt
+    assert "verification_status is metadata only, not truth." in prompt
+    assert "post_id: post-1" in prompt
+    assert "Moltbook excerpt for bounded research." in prompt
+    assert 'Moltbook post: "<title>" by <author>' in prompt
+
+
+def test_bounded_run_write_with_moltbook_writes_note_and_source_trace(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch, body=MOLTBOOK_BODY)
+    loop = _create_loop(bounded_env)
+    registry = FakeMoltbookRegistry(payload={"posts": [_moltbook_post(id="feed-post")]})
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        write=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+        use_moltbook=True,
+        moltbook_feed=True,
+        moltbook_limit=3,
+        moltbook_sort="new",
+        moltbook_registry=registry,
+    )
+
+    assert registry.calls == [("moltbook_feed", {"sort": "new", "limit": 3})]
+    assert result["write_result"]["path"] == "research/2026-05-15-what-remains-unresolved.md"
+    assert result["moltbook_trace_write_result"]["path"] == result["moltbook_context"]["trace_path"]
+    assert (bounded_env["workspace_root"] / result["write_result"]["path"]).exists()
+    trace_path = bounded_env["workspace_root"] / result["moltbook_context"]["trace_path"]
+    assert trace_path.exists()
+    stored_trace = json.loads(trace_path.read_text(encoding="utf-8"))
+    assert stored_trace["results"][0]["post_id"] == "feed-post"
+    assert "content" not in stored_trace["results"][0]
+
+    metadata = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert metadata["last_moltbook_source_trace_path"] == result["moltbook_context"]["trace_path"]
+    assert metadata["last_moltbook_source_count"] == 1
+    assert metadata["last_moltbook_collection_error"] is False
+
+
+def test_bounded_run_write_register_indexes_note_not_raw_moltbook_trace(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch, body=MOLTBOOK_BODY)
+    loop = _create_loop(bounded_env)
+    registry = FakeMoltbookRegistry()
+    monkeypatch.setattr("tir.memory.research_indexing.upsert_chunk", lambda **kwargs: None)
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        write=True,
+        register_artifact=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+        use_moltbook=True,
+        moltbook_query="agent identity provenance",
+        moltbook_registry=registry,
+    )
+
+    artifact = result["artifact_result"]["artifact"]
+    metadata = artifact["metadata"]
+    assert artifact["artifact_type"] == "research_note"
+    assert result["artifact_result"]["indexing"]["status"] == "indexed"
+    assert metadata["moltbook_source_trace_path"] == result["moltbook_context"]["trace_path"]
+    assert metadata["moltbook_source_count"] == 1
+    assert metadata["moltbook_collection_error"] is False
+    assert metadata["moltbook_query"] == "agent identity provenance"
+    assert metadata["moltbook_no_usable_results"] is False
+    assert metadata["moltbook_no_external_write_confirmed"] is True
+    assert metadata["moltbook_verification_status_is_metadata_only"] is True
+    trace_artifacts = bounded_env["artifacts"].list_artifacts(
+        path=result["moltbook_context"]["trace_path"],
+        workspace_root=bounded_env["workspace_root"],
+    )
+    assert trace_artifacts == []
+
+
+def test_bounded_research_prompt_and_note_can_cite_moltbook_sources(
+    bounded_env,
+    monkeypatch,
+):
+    capture = {}
+    _patch_bounded_generation(bounded_env, monkeypatch, body=MOLTBOOK_BODY, capture=capture)
+    loop = _create_loop(bounded_env)
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+        use_moltbook=True,
+        moltbook_query="agent identity provenance",
+        moltbook_registry=FakeMoltbookRegistry(),
+    )
+
+    prompt = capture["messages"][1]["content"]
+    assert "Moltbook is live external context, not factual authority." in prompt
+    assert "verification_status: unverified" in prompt
+    assert "Use in this note: source material for interpretation, not verified truth." in prompt
+    assert "Moltbook post: \"Moltbook Source\"" in result["document"]
+    assert "verification_status is metadata only" in result["document"]
+
+
+def test_bounded_research_moltbook_no_usable_results_is_inconclusive(
+    bounded_env,
+    monkeypatch,
+):
+    body = BOUNDED_BODY.replace(
+        "- Model-only bounded research pass plus prior provisional research context; no external sources collected.",
+        (
+            "- Moltbook query/feed returned no usable results at 2026-05-21T12:00:00+00:00.\n"
+            "  This is not evidence that no relevant Moltbook material exists."
+        ),
+    )
+    capture = {}
+    _patch_bounded_generation(bounded_env, monkeypatch, body=body, capture=capture)
+    loop = _create_loop(bounded_env)
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+        use_moltbook=True,
+        moltbook_query="unlikely query",
+        moltbook_registry=FakeMoltbookRegistry(payload={"results": []}),
+    )
+
+    assert result["moltbook_context"]["no_usable_results"] is True
+    assert result["moltbook_context"]["collection_error"] is False
+    assert "returned no usable results" in capture["messages"][1]["content"]
+    assert "not evidence that no relevant Moltbook material exists" in result["document"]
+
+
+def test_bounded_research_moltbook_collection_error_is_inconclusive(
+    bounded_env,
+    monkeypatch,
+):
+    body = BOUNDED_BODY.replace(
+        "- Model-only bounded research pass plus prior provisional research context; no external sources collected.",
+        (
+            "- Moltbook source collection failed: http_error\n"
+            "  This is not evidence that no relevant Moltbook material exists."
+        ),
+    )
+    capture = {}
+    _patch_bounded_generation(bounded_env, monkeypatch, body=body, capture=capture)
+    loop = _create_loop(bounded_env)
+    registry = FakeMoltbookRegistry(value={"ok": False, "error": "HTTP GET returned status 500"})
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+        use_moltbook=True,
+        moltbook_feed=True,
+        moltbook_limit=3,
+        moltbook_registry=registry,
+    )
+
+    assert result["moltbook_context"]["collection_error"] is True
+    assert result["moltbook_context"]["no_usable_results"] is False
+    assert result["moltbook_context"]["trace"]["error_type"] == "http_error"
+    assert "Moltbook source collection failed: http_error" in capture["messages"][1]["content"]
+    assert "Moltbook source collection failed: http_error" in result["document"]
+
+
+def test_bounded_research_moltbook_timeout_is_not_no_usable_results(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(bounded_env)
+    registry = FakeMoltbookRegistry(
+        value={
+            "ok": False,
+            "error": "HTTP request failed: ReadTimeout: Read timed out. (read timeout=10.0)",
+        }
+    )
+
+    result = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=loop["open_loop_id"],
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+        use_moltbook=True,
+        moltbook_feed=True,
+        moltbook_registry=registry,
+    )
+
+    assert result["moltbook_context"]["collection_error"] is True
+    assert result["moltbook_context"]["no_usable_results"] is False
+    assert result["moltbook_context"]["trace"]["error_type"] == "timeout"
+
+
+def test_bounded_run_moltbook_trace_write_failure_does_not_mutate_metadata(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch, body=MOLTBOOK_BODY)
+    loop = _create_loop(bounded_env)
+    before = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+
+    def fail_write_trace(*_args, **_kwargs):
+        raise bounded_env["bounded"].MoltbookSourcePreviewError("trace write failed")
+
+    monkeypatch.setattr(bounded_env["bounded"], "write_source_trace", fail_write_trace)
+
+    with pytest.raises(bounded_env["bounded"].BoundedResearchError, match="trace write failed"):
+        bounded_env["bounded"].run_bounded_research_open_loop(
+            open_loop_id=loop["open_loop_id"],
+            write=True,
+            current_local_date=TODAY,
+            workspace_root=bounded_env["workspace_root"],
+            use_moltbook=True,
+            moltbook_query="agent identity provenance",
+            moltbook_registry=FakeMoltbookRegistry(),
+        )
+
+    assert list((bounded_env["workspace_root"] / "research").glob("*.md")) == []
+    after = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert after == before
 
 
 def test_bounded_run_write_updates_open_loop_metadata_after_success(bounded_env, monkeypatch):

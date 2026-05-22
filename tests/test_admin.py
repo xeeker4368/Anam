@@ -737,6 +737,74 @@ def test_research_open_loop_run_admin_prints_write_register_summary(
     assert "last_research_artifact_id=artifact-1" in output
 
 
+def test_research_open_loop_run_admin_passes_and_prints_moltbook_options(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_run(**kwargs):
+        assert kwargs["use_moltbook"] is True
+        assert kwargs["moltbook_query"] == "agent identity provenance"
+        assert kwargs["moltbook_feed"] is False
+        assert kwargs["moltbook_limit"] == 5
+        assert kwargs["moltbook_sort"] is None
+        return {
+            "mode": "write",
+            "research_version": "manual_research_open_loop_iteration_v1",
+            "title": "What remains unresolved",
+            "relative_path": "research/2026-05-15-what-remains-unresolved.md",
+            "source_context": {},
+            "moltbook_context": {
+                "trace_path": "research/source-traces/2026-05-21-agent-identity-provenance.moltbook-sources.json",
+                "source_count": 2,
+                "collection_error": False,
+            },
+            "moltbook_trace_write_result": {
+                "path": "research/source-traces/2026-05-21-agent-identity-provenance.moltbook-sources.json",
+                "bytes": 456,
+            },
+            "write_result": {
+                "path": "research/2026-05-15-what-remains-unresolved.md",
+                "bytes": 123,
+            },
+            "open_loop_update": {
+                "metadata": {
+                    "daily_iteration_count": 1,
+                    "daily_iteration_limit": 1,
+                    "daily_iteration_local_date": "2026-05-15",
+                    "last_researched_at": "2026-05-15T12:00:00+00:00",
+                    "last_research_path": "research/2026-05-15-what-remains-unresolved.md",
+                }
+            },
+            "document": "# Research Note - What remains unresolved\n",
+        }
+
+    monkeypatch.setattr(admin_mod, "run_bounded_research_open_loop", fake_run)
+
+    admin_mod.cmd_research_open_loop_run(
+        SimpleNamespace(
+            open_loop_id="loop-1",
+            dry_run=False,
+            write=True,
+            register_artifact=False,
+            model=None,
+            use_moltbook=True,
+            moltbook_query="agent identity provenance",
+            moltbook_feed=False,
+            moltbook_limit=5,
+            moltbook_sort=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "moltbook_source_trace_path=research/source-traces/" in output
+    assert "moltbook_source_count=2" in output
+    assert "moltbook_collection_error=False" in output
+    assert "moltbook_trace_written_bytes=456" in output
+
+
 def test_research_open_loop_run_admin_errors_are_clear(temp_admin, capsys, monkeypatch):
     _db_mod, admin_mod = temp_admin
 
@@ -780,6 +848,73 @@ def test_research_open_loop_run_register_without_write_fails_cleanly(capsys):
     assert exc.value.code == 2
     captured = capsys.readouterr()
     assert "research-open-loop-run --register-artifact requires --write" in captured.err
+
+
+def test_research_open_loop_run_use_moltbook_requires_query_or_feed(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "research-open-loop-run",
+            "--open-loop-id",
+            "loop-1",
+            "--use-moltbook",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "--use-moltbook requires --moltbook-query or --moltbook-feed" in captured.err
+
+
+def test_research_open_loop_run_rejects_both_moltbook_query_and_feed(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "research-open-loop-run",
+            "--open-loop-id",
+            "loop-1",
+            "--use-moltbook",
+            "--moltbook-query",
+            "agents",
+            "--moltbook-feed",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "not allowed with argument --moltbook-query" in captured.err
+
+
+def test_research_open_loop_run_rejects_moltbook_flags_without_use(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "research-open-loop-run",
+            "--open-loop-id",
+            "loop-1",
+            "--moltbook-query",
+            "agents",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "Moltbook flags require --use-moltbook" in captured.err
 
 
 def test_moltbook_source_preview_admin_prints_compact_json(temp_admin, capsys, monkeypatch):

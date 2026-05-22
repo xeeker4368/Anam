@@ -22,6 +22,14 @@ from tir.research.manual import (
     research_relative_path,
     write_manual_research_note,
 )
+from tir.research.moltbook_sources import (
+    FEED_SORTS,
+    MAX_LIMIT as MOLTBOOK_MAX_LIMIT,
+    MoltbookSourcePreviewError,
+    collect_moltbook_source_preview,
+    source_trace_relative_path,
+    write_source_trace,
+)
 from tir.workspace.service import resolve_workspace_path
 
 
@@ -29,6 +37,7 @@ SUPPORTED_LOOP_TYPES = {"unresolved_question", "interrupted_research"}
 DEFAULT_DAILY_ITERATION_LIMIT = 1
 BOUNDED_RESEARCH_VERSION = "manual_research_open_loop_iteration_v1"
 BOUNDED_RESEARCH_MODE = "manual_open_loop_v1"
+MOLTBOOK_SOURCE_CONTEXT_VERSION = "bounded_research_moltbook_source_context_v1"
 PRIORITY_RANK = {
     "high": 0,
     "normal": 1,
@@ -354,6 +363,72 @@ def _research_date(created_at: str) -> str:
     return datetime.fromisoformat(created_at).date().isoformat()
 
 
+def _has_moltbook_options(
+    *,
+    use_moltbook: bool = False,
+    moltbook_query: str | None = None,
+    moltbook_feed: bool = False,
+    moltbook_limit: int | None = None,
+    moltbook_sort: str = "new",
+) -> bool:
+    return any(
+        (
+            use_moltbook,
+            bool((moltbook_query or "").strip()),
+            moltbook_feed,
+            moltbook_limit is not None,
+            (moltbook_sort or "new") != "new",
+        )
+    )
+
+
+def _normalize_moltbook_options(
+    *,
+    use_moltbook: bool = False,
+    moltbook_query: str | None = None,
+    moltbook_feed: bool = False,
+    moltbook_limit: int | None = None,
+    moltbook_sort: str = "new",
+) -> dict | None:
+    """Validate and normalize optional Moltbook bounded-research settings."""
+    normalized_query = (moltbook_query or "").strip() or None
+    requested_source_count = int(bool(normalized_query)) + int(bool(moltbook_feed))
+    if not use_moltbook:
+        if _has_moltbook_options(
+            use_moltbook=use_moltbook,
+            moltbook_query=moltbook_query,
+            moltbook_feed=moltbook_feed,
+            moltbook_limit=moltbook_limit,
+            moltbook_sort=moltbook_sort,
+        ):
+            raise BoundedResearchError("Moltbook flags require --use-moltbook")
+        return None
+    if requested_source_count != 1:
+        raise BoundedResearchError(
+            "--use-moltbook requires exactly one of --moltbook-query or --moltbook-feed"
+        )
+    limit = 10 if moltbook_limit is None else moltbook_limit
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError) as exc:
+        raise BoundedResearchError("--moltbook-limit must be an integer") from exc
+    if limit < 1:
+        raise BoundedResearchError("--moltbook-limit must be at least 1")
+    if limit > MOLTBOOK_MAX_LIMIT:
+        raise BoundedResearchError(f"--moltbook-limit must be at most {MOLTBOOK_MAX_LIMIT}")
+    sort = (moltbook_sort or "new").strip().lower()
+    if sort not in FEED_SORTS:
+        raise BoundedResearchError("--moltbook-sort must be one of: hot, new, top, rising")
+    if normalized_query and sort != "new":
+        raise BoundedResearchError("--moltbook-sort is only supported with --moltbook-feed")
+    return {
+        "query": normalized_query,
+        "feed": bool(moltbook_feed),
+        "limit": limit,
+        "sort": sort,
+    }
+
+
 def _source_artifact_id(loop: dict, metadata: dict) -> str | None:
     value = metadata.get("source_artifact_id") or loop.get("related_artifact_id")
     return value if _has_text(value) else None
@@ -413,6 +488,128 @@ def load_bounded_research_source_context(
     return context
 
 
+def collect_bounded_moltbook_source_context(
+    *,
+    options: dict | None,
+    workspace_root: Path = WORKSPACE_DIR,
+    registry=None,
+) -> dict | None:
+    """Collect optional compact Moltbook source context for bounded research."""
+    if not options:
+        return None
+    try:
+        trace = collect_moltbook_source_preview(
+            query=options["query"],
+            feed=options["feed"],
+            limit=options["limit"],
+            sort=options["sort"],
+            include_spam=False,
+            write_trace=False,
+            registry=registry,
+            workspace_root=workspace_root,
+        )
+    except MoltbookSourcePreviewError as exc:
+        raise BoundedResearchError(str(exc)) from exc
+    trace_path = source_trace_relative_path(trace)
+    return {
+        "version": MOLTBOOK_SOURCE_CONTEXT_VERSION,
+        "requested": True,
+        "trace": trace,
+        "trace_path": trace_path,
+        "query": trace.get("query"),
+        "feed": bool(trace.get("feed")),
+        "sort": trace.get("sort"),
+        "limit": trace.get("limit"),
+        "source_count": len(trace.get("results") or []),
+        "collection_error": bool(trace.get("collection_error")),
+        "no_usable_results": bool(trace.get("no_usable_results")),
+        "no_external_write_confirmed": bool(trace.get("no_external_write_confirmed")),
+        "verification_status_is_metadata_only": bool(
+            trace.get("verification_status_is_metadata_only")
+        ),
+    }
+
+
+def _format_moltbook_sources_for_prompt(moltbook_context: dict | None) -> str:
+    if not moltbook_context:
+        return (
+            "No Moltbook source trace was requested. Do not claim Moltbook or "
+            "other external sources were collected."
+        )
+
+    trace = moltbook_context["trace"]
+    lines = [
+        "[Moltbook source trace]",
+        "",
+        "Moltbook is live external context, not factual authority.",
+        "verification_status is metadata only, not truth.",
+        "Absence of Moltbook results is not evidence of absence.",
+        "collection_error=true means failed or inconclusive source collection, not no results.",
+        "Keep Moltbook source text separate from interpretation.",
+        f"Trace path if written: {moltbook_context['trace_path']}",
+        f"Retrieved at: {trace.get('retrieved_at')}",
+        f"Query: {trace.get('query') or 'None'}",
+        f"Feed: {trace.get('feed')}",
+        f"Sort: {trace.get('sort') or 'None'}",
+        f"Limit: {trace.get('limit')}",
+        f"collection_error: {trace.get('collection_error')}",
+        f"no_usable_results: {trace.get('no_usable_results')}",
+        "",
+    ]
+
+    if trace.get("collection_error"):
+        lines.extend(
+            [
+                f"Moltbook source collection failed: {trace.get('error_type') or 'tool_error'}",
+                "This is not evidence that no relevant Moltbook material exists.",
+            ]
+        )
+    elif trace.get("no_usable_results"):
+        mode = "feed" if trace.get("feed") else "query"
+        lines.extend(
+            [
+                f"Moltbook {mode} returned no usable results at {trace.get('retrieved_at')}.",
+                "This is not evidence that no relevant Moltbook material exists.",
+            ]
+        )
+    else:
+        for index, result in enumerate(trace.get("results") or [], start=1):
+            lines.extend(
+                [
+                    f"Source {index}:",
+                    f"- post_id: {result.get('post_id') or ''}",
+                    f"- title: {result.get('title') or ''}",
+                    f"- author: {result.get('author_name') or ''}",
+                    f"- submolt: {result.get('submolt') or ''}",
+                    f"- created_at: {result.get('created_at') or ''}",
+                    f"- retrieved_at: {result.get('retrieved_at') or ''}",
+                    f"- url: {result.get('url') or ''}",
+                    f"- verification_status: {result.get('verification_status') or ''}",
+                    f"- excerpt: {result.get('content_excerpt') or ''}",
+                    "",
+                ]
+            )
+
+    lines.extend(
+        [
+            "",
+            "In the research note Sources section, cite usable Moltbook posts as:",
+            '- Moltbook post: "<title>" by <author>, /<submolt>, post_id=<id>, retrieved_at=<timestamp>',
+            '  Excerpt: "<compact excerpt>"',
+            "  Use in this note: source material for interpretation, not verified truth.",
+            "",
+            "For source collection failure, cite:",
+            "- Moltbook source collection failed: <error_type>",
+            "  This is not evidence that no relevant Moltbook material exists.",
+            "",
+            "For no usable results, cite:",
+            "- Moltbook query/feed returned no usable results at <timestamp>.",
+            "  This is not evidence that no relevant Moltbook material exists.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def build_bounded_research_messages(
     *,
     title: str,
@@ -420,19 +617,38 @@ def build_bounded_research_messages(
     scope: str,
     evaluation: BoundedOpenLoopEvaluation,
     source_context: dict,
+    moltbook_context: dict | None = None,
 ) -> list[dict]:
     """Build model messages for one bounded open-loop research iteration."""
     loop = evaluation.loop
     metadata = evaluation.metadata or {}
+    external_source_instruction = (
+        "Use only the supplied open-loop details, prior provisional research "
+        "context, and compact Moltbook source trace. Moltbook is external "
+        "context, not factual authority."
+        if moltbook_context
+        else "Use only the supplied open-loop details and prior provisional research context."
+    )
+    source_section_instruction = (
+        "For Sources, cite the compact Moltbook source trace when supplied, "
+        "while describing Moltbook source text as source material for interpretation, "
+        "not verified truth."
+        if moltbook_context
+        else (
+            "For Sources, state that this is a model-only bounded research pass "
+            "plus prior provisional research context when available, and that no "
+            "external sources were collected."
+        )
+    )
     system = (
         "Produce one structured provisional bounded research note for a single "
-        "existing research open loop. Use only the supplied open-loop details "
-        "and prior provisional research context. Do not claim external sources "
-        "were collected. Do not create behavioral guidance, self-understanding, "
+        f"existing research open loop. {external_source_instruction} "
+        "Do not create behavioral guidance, self-understanding, "
         "project decisions, working theories, review items, open-loop records, "
         "or runtime instructions."
     )
     prior_content = source_context.get("content") or "No active prior research content was loaded."
+    moltbook_source_context = _format_moltbook_sources_for_prompt(moltbook_context)
     user = f"""Title: {title}
 Question: {question}
 Scope: {scope}
@@ -454,6 +670,8 @@ The prior research context is working research context, not truth, project decis
 
 {prior_content}
 
+{moltbook_source_context}
+
 Return Markdown body sections only, using exactly these headings:
 
 ## Purpose
@@ -467,7 +685,7 @@ Return Markdown body sections only, using exactly these headings:
 ## Suggested Review Items
 ## Working Notes
 
-Frame findings as provisional working notes. It is valid to report no useful findings, no new open questions, no follow-ups, or no review items when that is the honest result. For Sources, state that this is a model-only bounded research pass plus prior provisional research context when available, and that no external sources were collected."""
+Frame findings as provisional working notes. It is valid to report no useful findings, no new open questions, no follow-ups, or no review items when that is the honest result. {source_section_instruction}"""
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
@@ -495,10 +713,21 @@ def build_bounded_research_document(
     body: str,
     evaluation: BoundedOpenLoopEvaluation,
     source_context: dict,
+    moltbook_context: dict | None = None,
 ) -> str:
     """Wrap a bounded research model body in deterministic note metadata."""
     loop = evaluation.loop
     source_artifact = source_context.get("artifact_id") or "None"
+    sources_used = (
+        "Model bounded research pass plus prior provisional research context "
+        "when available and compact Moltbook source trace; Moltbook is external "
+        "context, not factual authority."
+        if moltbook_context
+        else (
+            "Model-only bounded research pass plus prior provisional research "
+            "context when available; no external sources collected."
+        )
+    )
     header = f"""# Research Note - {title}
 
 - Question: {question}
@@ -508,21 +737,31 @@ def build_bounded_research_document(
 - Open loop ID: {loop['open_loop_id']}
 - Source open loop: {loop['title']}
 - Source artifact: {source_artifact}
-- Sources used: Model-only bounded research pass plus prior provisional research context when available; no external sources collected.
+- Sources used: {sources_used}
 - Provisional: true
 
 """
     return header + _validate_bounded_research_body(body).rstrip() + "\n"
 
 
-def _bounded_research_scope(evaluation: BoundedOpenLoopEvaluation, source_context: dict) -> str:
+def _bounded_research_scope(
+    evaluation: BoundedOpenLoopEvaluation,
+    source_context: dict,
+    moltbook_context: dict | None = None,
+) -> str:
     loop = evaluation.loop
     metadata = evaluation.metadata or {}
+    source_instruction = (
+        "Use prior provisional research context and the compact Moltbook source trace; "
+        "treat Moltbook as external context, not factual authority."
+        if moltbook_context
+        else "Use prior provisional research context only; do not collect external sources."
+    )
     return (
-        "Run one model-only bounded research pass against this existing research "
+        "Run one bounded research pass against this existing research "
         f"open loop. Next action: {loop.get('next_action') or 'None'}. "
         f"Source artifact: {source_context.get('artifact_id') or 'None'}. "
-        "Use prior provisional research context only; do not collect external sources."
+        f"{source_instruction}"
     )
 
 
@@ -531,6 +770,7 @@ def _bounded_artifact_metadata(
     result: dict,
     evaluation: BoundedOpenLoopEvaluation,
     source_context: dict,
+    moltbook_context: dict | None,
     open_loop_iteration: int,
 ) -> dict:
     loop = evaluation.loop
@@ -555,6 +795,26 @@ def _bounded_artifact_metadata(
     }
     if source_context.get("artifact_id"):
         artifact_metadata["source_research_artifact_id"] = source_context["artifact_id"]
+    if moltbook_context:
+        artifact_metadata.update(
+            {
+                "moltbook_source_trace_path": moltbook_context["trace_path"],
+                "moltbook_source_count": moltbook_context["source_count"],
+                "moltbook_collection_error": moltbook_context["collection_error"],
+                "moltbook_no_usable_results": moltbook_context["no_usable_results"],
+                "moltbook_no_external_write_confirmed": moltbook_context[
+                    "no_external_write_confirmed"
+                ],
+                "moltbook_verification_status_is_metadata_only": moltbook_context[
+                    "verification_status_is_metadata_only"
+                ],
+            }
+        )
+        if moltbook_context.get("query"):
+            artifact_metadata["moltbook_query"] = moltbook_context["query"]
+        if moltbook_context.get("feed"):
+            artifact_metadata["moltbook_feed"] = True
+            artifact_metadata["moltbook_sort"] = moltbook_context.get("sort")
     return artifact_metadata
 
 
@@ -562,6 +822,7 @@ def generate_bounded_research_open_loop_note(
     *,
     evaluation: BoundedOpenLoopEvaluation,
     source_context: dict,
+    moltbook_context: dict | None = None,
     model: str | None = None,
     ollama_host: str = OLLAMA_HOST,
 ) -> dict:
@@ -570,7 +831,7 @@ def generate_bounded_research_open_loop_note(
     if not question:
         raise BoundedResearchError("Open loop has no research question")
     title = derive_research_title(question)
-    scope = _bounded_research_scope(evaluation, source_context)
+    scope = _bounded_research_scope(evaluation, source_context, moltbook_context)
     created_at = _now()
     messages = build_bounded_research_messages(
         title=title,
@@ -578,6 +839,7 @@ def generate_bounded_research_open_loop_note(
         scope=scope,
         evaluation=evaluation,
         source_context=source_context,
+        moltbook_context=moltbook_context,
     )
     raw = chat_completion_text(
         messages,
@@ -593,6 +855,7 @@ def generate_bounded_research_open_loop_note(
         body=raw,
         evaluation=evaluation,
         source_context=source_context,
+        moltbook_context=moltbook_context,
     )
     open_loop_iteration = evaluation.effective_daily_iteration_count + 1
     result = {
@@ -611,12 +874,14 @@ def generate_bounded_research_open_loop_note(
             for key, value in source_context.items()
             if key not in {"artifact", "content"}
         },
+        "moltbook_context": moltbook_context,
         "artifact_metadata": {},
     }
     result["artifact_metadata"] = _bounded_artifact_metadata(
         result=result,
         evaluation=evaluation,
         source_context=source_context,
+        moltbook_context=moltbook_context,
         open_loop_iteration=open_loop_iteration,
     )
     return result
@@ -639,7 +904,18 @@ def _completion_metadata(
     artifact_result = result.get("artifact_result")
     if artifact_result:
         metadata["last_research_artifact_id"] = artifact_result["artifact"]["artifact_id"]
+    moltbook_context = result.get("moltbook_context")
+    if moltbook_context:
+        metadata["last_moltbook_source_trace_path"] = moltbook_context["trace_path"]
+        metadata["last_moltbook_source_count"] = moltbook_context["source_count"]
+        metadata["last_moltbook_collection_error"] = moltbook_context["collection_error"]
     return metadata
+
+
+def _preflight_workspace_path_available(relative_path: str, *, workspace_root: Path) -> None:
+    target = resolve_workspace_path(relative_path, Path(workspace_root))
+    if target.exists():
+        raise BoundedResearchError(f"Workspace file already exists: {relative_path}")
 
 
 def _mark_open_loop_completed(
@@ -675,10 +951,23 @@ def run_bounded_research_open_loop(
     model: str | None = None,
     workspace_root: Path = WORKSPACE_DIR,
     current_local_date: str | None = None,
+    use_moltbook: bool = False,
+    moltbook_query: str | None = None,
+    moltbook_feed: bool = False,
+    moltbook_limit: int | None = None,
+    moltbook_sort: str = "new",
+    moltbook_registry=None,
 ) -> dict:
     """Run one bounded research iteration against a specific open loop."""
     if register_artifact and not write:
         raise BoundedResearchError("--register-artifact requires --write")
+    moltbook_options = _normalize_moltbook_options(
+        use_moltbook=use_moltbook,
+        moltbook_query=moltbook_query,
+        moltbook_feed=moltbook_feed,
+        moltbook_limit=moltbook_limit,
+        moltbook_sort=moltbook_sort,
+    )
 
     current_local_date = current_local_date or _current_local_date()
     evaluation = _require_eligible_open_loop(
@@ -690,9 +979,15 @@ def run_bounded_research_open_loop(
         evaluation.metadata or {},
         workspace_root=workspace_root,
     )
+    moltbook_context = collect_bounded_moltbook_source_context(
+        options=moltbook_options,
+        workspace_root=workspace_root,
+        registry=moltbook_registry,
+    )
     result = generate_bounded_research_open_loop_note(
         evaluation=evaluation,
         source_context=source_context,
+        moltbook_context=moltbook_context,
         model=model,
     )
     result["mode"] = "write" if write else "dry-run"
@@ -703,7 +998,18 @@ def run_bounded_research_open_loop(
 
     # Revalidate immediately before writing in case another run used the loop.
     _require_eligible_open_loop(open_loop_id, current_local_date=current_local_date)
+    _preflight_workspace_path_available(result["relative_path"], workspace_root=workspace_root)
+    if moltbook_context:
+        _preflight_workspace_path_available(
+            moltbook_context["trace_path"],
+            workspace_root=workspace_root,
+        )
     try:
+        if moltbook_context:
+            result["moltbook_trace_write_result"] = write_source_trace(
+                moltbook_context["trace"],
+                workspace_root=workspace_root,
+            )
         result["write_result"] = write_manual_research_note(
             result,
             workspace_root=workspace_root,
@@ -713,7 +1019,7 @@ def run_bounded_research_open_loop(
                 result,
                 workspace_root=workspace_root,
             )
-    except ManualResearchError as exc:
+    except (ManualResearchError, MoltbookSourcePreviewError) as exc:
         raise BoundedResearchError(str(exc)) from exc
 
     # Revalidate again before marking the loop completed. If this fails, the

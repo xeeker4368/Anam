@@ -1036,6 +1036,11 @@ def cmd_research_open_loop_run(args):
             write=args.write,
             register_artifact=args.register_artifact,
             model=args.model,
+            use_moltbook=getattr(args, "use_moltbook", False),
+            moltbook_query=getattr(args, "moltbook_query", None),
+            moltbook_feed=getattr(args, "moltbook_feed", False),
+            moltbook_limit=getattr(args, "moltbook_limit", None),
+            moltbook_sort=getattr(args, "moltbook_sort", None),
         )
     except BoundedResearchError as exc:
         print(f"Bounded research open-loop run failed: {exc}")
@@ -1058,6 +1063,14 @@ def cmd_research_open_loop_run(args):
     if result.get("write_result"):
         print(f"written_path={result['write_result']['path']}")
         print(f"written_bytes={result['write_result']['bytes']}")
+    moltbook_context = result.get("moltbook_context") or {}
+    if moltbook_context:
+        print(f"moltbook_source_trace_path={moltbook_context['trace_path']}")
+        print(f"moltbook_source_count={moltbook_context['source_count']}")
+        print(f"moltbook_collection_error={moltbook_context['collection_error']}")
+    if result.get("moltbook_trace_write_result"):
+        print(f"moltbook_trace_written_path={result['moltbook_trace_write_result']['path']}")
+        print(f"moltbook_trace_written_bytes={result['moltbook_trace_write_result']['bytes']}")
     if result.get("artifact_result"):
         artifact_result = result["artifact_result"]
         artifact = artifact_result["artifact"]
@@ -1347,6 +1360,30 @@ def main():
         help="After --write, register and index the note as research memory",
     )
     p.add_argument("--model", default=None, help="Optional Ollama model override")
+    p.add_argument(
+        "--use-moltbook",
+        action="store_true",
+        help="Collect compact read-only Moltbook source context for this run",
+    )
+    moltbook_source = p.add_mutually_exclusive_group()
+    moltbook_source.add_argument("--moltbook-query", default=None, help="Moltbook search query")
+    moltbook_source.add_argument(
+        "--moltbook-feed",
+        action="store_true",
+        help="Use the global Moltbook feed as source context",
+    )
+    p.add_argument(
+        "--moltbook-limit",
+        type=int,
+        default=None,
+        help="Max Moltbook posts to preview, default 10, capped at 20",
+    )
+    p.add_argument(
+        "--moltbook-sort",
+        choices=["hot", "new", "top", "rising"],
+        default=None,
+        help="Moltbook feed sort order, default new",
+    )
 
     # moltbook-source-preview
     p = sub.add_parser(
@@ -1444,6 +1481,24 @@ def main():
         parser.error("research-run --register-artifact requires --write")
     if args.command == "research-open-loop-run" and args.register_artifact and not args.write:
         parser.error("research-open-loop-run --register-artifact requires --write")
+    if args.command == "research-open-loop-run":
+        has_moltbook_flags = any(
+            (
+                bool(args.moltbook_query),
+                bool(args.moltbook_feed),
+                args.moltbook_limit is not None,
+                args.moltbook_sort is not None,
+            )
+        )
+        if has_moltbook_flags and not args.use_moltbook:
+            parser.error("research-open-loop-run Moltbook flags require --use-moltbook")
+        if args.use_moltbook and not (args.moltbook_query or args.moltbook_feed):
+            parser.error(
+                "research-open-loop-run --use-moltbook requires --moltbook-query "
+                "or --moltbook-feed"
+            )
+        if args.use_moltbook and args.moltbook_query and args.moltbook_sort is not None:
+            parser.error("research-open-loop-run --moltbook-sort requires --moltbook-feed")
 
     # Ensure databases exist for DB-facing commands. Backup/restore must not
     # create or mutate runtime state before their own safety checks run.
