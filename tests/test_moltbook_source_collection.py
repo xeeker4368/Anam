@@ -7,6 +7,7 @@ from tir.research.moltbook_sources import (
     EXCERPT_LENGTH,
     MoltbookSourcePreviewError,
     collect_moltbook_source_preview,
+    source_trace_unique_relative_path,
 )
 
 
@@ -22,6 +23,25 @@ class FakeRegistry:
             "value": {
                 "ok": True,
                 "json": self.payload,
+                "text": "raw payload should not be copied moltbook-secret-token",
+            },
+            "normalized_args": dict(args),
+        }
+
+
+class SequencedRegistry:
+    def __init__(self, payloads):
+        self.payloads = list(payloads)
+        self.calls = []
+
+    def dispatch(self, tool_name, args):
+        self.calls.append((tool_name, dict(args)))
+        payload = self.payloads.pop(0)
+        return {
+            "ok": True,
+            "value": {
+                "ok": True,
+                "json": payload,
                 "text": "raw payload should not be copied moltbook-secret-token",
             },
             "normalized_args": dict(args),
@@ -422,6 +442,59 @@ def test_write_trace_writes_failure_trace_when_requested(tmp_path):
     assert stored == trace
     assert stored["results"] == []
     assert stored["error_type"] == "http_error"
+
+
+def test_unique_trace_path_includes_source_mode_and_time_suffix():
+    trace = {
+        "retrieved_at": "2026-05-22T00:53:34+00:00",
+        "feed": True,
+        "sort": "new",
+        "query": None,
+    }
+
+    path = source_trace_unique_relative_path(trace)
+
+    assert path == "research/source-traces/2026-05-22-feed-new-005334.moltbook-sources.json"
+
+
+def test_standalone_write_trace_uses_unique_timestamped_paths(tmp_path, monkeypatch):
+    times = iter(
+        [
+            "2026-05-22T00:53:34+00:00",
+            "2026-05-22T00:54:35+00:00",
+        ]
+    )
+    monkeypatch.setattr("tir.research.moltbook_sources._now", lambda: next(times))
+    registry = SequencedRegistry(
+        [
+            {"posts": [_raw_feed_post(id="feed-1")]},
+            {"posts": [_raw_feed_post(id="feed-2")]},
+        ]
+    )
+    workspace_root = tmp_path / "workspace"
+
+    first = collect_moltbook_source_preview(
+        feed=True,
+        registry=registry,
+        write_trace=True,
+        workspace_root=workspace_root,
+    )
+    second = collect_moltbook_source_preview(
+        feed=True,
+        registry=registry,
+        write_trace=True,
+        workspace_root=workspace_root,
+    )
+
+    assert first["trace_path"] == (
+        "research/source-traces/2026-05-22-feed-new-005334.moltbook-sources.json"
+    )
+    assert second["trace_path"] == (
+        "research/source-traces/2026-05-22-feed-new-005435.moltbook-sources.json"
+    )
+    assert first["trace_path"] != second["trace_path"]
+    assert (workspace_root / first["trace_path"]).exists()
+    assert (workspace_root / second["trace_path"]).exists()
 
 
 def test_explicit_non_post_results_are_omitted():

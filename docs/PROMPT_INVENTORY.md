@@ -632,7 +632,7 @@ Quiet or low-signal sections may say "None" or briefly state that nothing meanin
 
 ## Research / future automation
 
-### 1. `tir/research/bounded.py:644` — `build_bounded_research_messages`
+### 1. `tir/research/bounded.py:652` — `build_bounded_research_messages`
 
 - Name: `system`
 - Category: Research / future automation

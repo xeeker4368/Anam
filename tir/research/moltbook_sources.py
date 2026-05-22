@@ -403,9 +403,34 @@ def source_trace_relative_path(trace: dict) -> str:
     return f"research/source-traces/{date_text}-{slug}.moltbook-sources.json"
 
 
-def write_source_trace(trace: dict, *, workspace_root: Path = WORKSPACE_DIR) -> dict:
+def _trace_time_suffix(trace: dict) -> str:
+    retrieved_at = trace["retrieved_at"]
+    return datetime.fromisoformat(retrieved_at).strftime("%H%M%S")
+
+
+def source_trace_unique_relative_path(trace: dict, *, prefix_slug: str | None = None) -> str:
+    retrieved_at = trace["retrieved_at"]
+    date_text = datetime.fromisoformat(retrieved_at).date().isoformat()
+    if trace.get("feed"):
+        source_slug = _slugify(f"feed-{trace.get('sort') or 'new'}")
+    else:
+        source_slug = _slugify(f"query-{trace.get('query') or 'query'}")
+    parts = [date_text]
+    if prefix_slug:
+        parts.append(_slugify(prefix_slug))
+    parts.extend([source_slug, _trace_time_suffix(trace)])
+    slug = "-".join(part for part in parts if part)
+    return f"research/source-traces/{slug}.moltbook-sources.json"
+
+
+def write_source_trace(
+    trace: dict,
+    *,
+    workspace_root: Path = WORKSPACE_DIR,
+    relative_path: str | None = None,
+) -> dict:
     root = ensure_workspace(Path(workspace_root))
-    relative_path = source_trace_relative_path(trace)
+    relative_path = relative_path or source_trace_unique_relative_path(trace)
     target = resolve_workspace_path(relative_path, root)
     if target.exists():
         raise MoltbookSourcePreviewError(f"Source trace already exists: {relative_path}")

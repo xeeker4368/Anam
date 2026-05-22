@@ -27,7 +27,7 @@ from tir.research.moltbook_sources import (
     MAX_LIMIT as MOLTBOOK_MAX_LIMIT,
     MoltbookSourcePreviewError,
     collect_moltbook_source_preview,
-    source_trace_relative_path,
+    source_trace_unique_relative_path,
     write_source_trace,
 )
 from tir.workspace.service import resolve_workspace_path
@@ -434,6 +434,10 @@ def _source_artifact_id(loop: dict, metadata: dict) -> str | None:
     return value if _has_text(value) else None
 
 
+def _open_loop_source_trace_prefix(open_loop_id: str) -> str:
+    return (open_loop_id or "open-loop")[:8]
+
+
 def load_bounded_research_source_context(
     loop: dict,
     metadata: dict,
@@ -491,6 +495,7 @@ def load_bounded_research_source_context(
 def collect_bounded_moltbook_source_context(
     *,
     options: dict | None,
+    open_loop_id: str,
     workspace_root: Path = WORKSPACE_DIR,
     registry=None,
 ) -> dict | None:
@@ -510,7 +515,10 @@ def collect_bounded_moltbook_source_context(
         )
     except MoltbookSourcePreviewError as exc:
         raise BoundedResearchError(str(exc)) from exc
-    trace_path = source_trace_relative_path(trace)
+    trace_path = source_trace_unique_relative_path(
+        trace,
+        prefix_slug=_open_loop_source_trace_prefix(open_loop_id),
+    )
     return {
         "version": MOLTBOOK_SOURCE_CONTEXT_VERSION,
         "requested": True,
@@ -981,6 +989,7 @@ def run_bounded_research_open_loop(
     )
     moltbook_context = collect_bounded_moltbook_source_context(
         options=moltbook_options,
+        open_loop_id=open_loop_id,
         workspace_root=workspace_root,
         registry=moltbook_registry,
     )
@@ -1009,6 +1018,7 @@ def run_bounded_research_open_loop(
             result["moltbook_trace_write_result"] = write_source_trace(
                 moltbook_context["trace"],
                 workspace_root=workspace_root,
+                relative_path=moltbook_context["trace_path"],
             )
         result["write_result"] = write_manual_research_note(
             result,

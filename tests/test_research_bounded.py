@@ -753,6 +753,10 @@ def test_bounded_run_write_with_moltbook_writes_note_and_source_trace(
     monkeypatch,
 ):
     _patch_bounded_generation(bounded_env, monkeypatch, body=MOLTBOOK_BODY)
+    monkeypatch.setattr(
+        "tir.research.moltbook_sources._now",
+        lambda: "2026-05-22T00:53:34+00:00",
+    )
     loop = _create_loop(bounded_env)
     registry = FakeMoltbookRegistry(payload={"posts": [_moltbook_post(id="feed-post")]})
 
@@ -771,6 +775,10 @@ def test_bounded_run_write_with_moltbook_writes_note_and_source_trace(
     assert registry.calls == [("moltbook_feed", {"sort": "new", "limit": 3})]
     assert result["write_result"]["path"] == "research/2026-05-15-what-remains-unresolved.md"
     assert result["moltbook_trace_write_result"]["path"] == result["moltbook_context"]["trace_path"]
+    assert (
+        f"2026-05-22-{loop['open_loop_id'][:8]}-feed-new-005334."
+        in result["moltbook_context"]["trace_path"]
+    )
     assert (bounded_env["workspace_root"] / result["write_result"]["path"]).exists()
     trace_path = bounded_env["workspace_root"] / result["moltbook_context"]["trace_path"]
     assert trace_path.exists()
@@ -782,6 +790,98 @@ def test_bounded_run_write_with_moltbook_writes_note_and_source_trace(
     assert metadata["last_moltbook_source_trace_path"] == result["moltbook_context"]["trace_path"]
     assert metadata["last_moltbook_source_count"] == 1
     assert metadata["last_moltbook_collection_error"] is False
+
+
+def test_bounded_moltbook_trace_paths_are_unique_across_retrieval_times(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch, body=MOLTBOOK_BODY)
+    times = iter(
+        [
+            "2026-05-22T00:53:34+00:00",
+            "2026-05-22T00:54:35+00:00",
+        ]
+    )
+    monkeypatch.setattr("tir.research.moltbook_sources._now", lambda: next(times))
+    first_loop = _create_loop(
+        bounded_env,
+        title="First",
+        priority="high",
+        metadata=_metadata(question="First question?"),
+    )
+    second_loop = _create_loop(
+        bounded_env,
+        title="Second",
+        priority="normal",
+        metadata=_metadata(question="Second question?"),
+    )
+
+    first = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=first_loop["open_loop_id"],
+        write=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+        use_moltbook=True,
+        moltbook_feed=True,
+        moltbook_limit=3,
+        moltbook_registry=FakeMoltbookRegistry(payload={"posts": [_moltbook_post(id="feed-1")]}),
+    )
+    second = bounded_env["bounded"].run_bounded_research_open_loop(
+        open_loop_id=second_loop["open_loop_id"],
+        write=True,
+        current_local_date=TODAY,
+        workspace_root=bounded_env["workspace_root"],
+        use_moltbook=True,
+        moltbook_feed=True,
+        moltbook_limit=3,
+        moltbook_registry=FakeMoltbookRegistry(payload={"posts": [_moltbook_post(id="feed-2")]}),
+    )
+
+    first_path = first["moltbook_context"]["trace_path"]
+    second_path = second["moltbook_context"]["trace_path"]
+    assert first_path != second_path
+    assert f"2026-05-22-{first_loop['open_loop_id'][:8]}-feed-new-005334." in first_path
+    assert f"2026-05-22-{second_loop['open_loop_id'][:8]}-feed-new-005435." in second_path
+    assert (bounded_env["workspace_root"] / first_path).exists()
+    assert (bounded_env["workspace_root"] / second_path).exists()
+
+
+def test_bounded_moltbook_trace_preflight_still_blocks_exact_collision(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch, body=MOLTBOOK_BODY)
+    monkeypatch.setattr(
+        "tir.research.moltbook_sources._now",
+        lambda: "2026-05-22T00:53:34+00:00",
+    )
+    loop = _create_loop(bounded_env)
+    collision_path = (
+        bounded_env["workspace_root"]
+        / "research"
+        / "source-traces"
+        / f"2026-05-22-{loop['open_loop_id'][:8]}-feed-new-005334.moltbook-sources.json"
+    )
+    collision_path.parent.mkdir(parents=True, exist_ok=True)
+    collision_path.write_text("existing", encoding="utf-8")
+    before = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+
+    with pytest.raises(bounded_env["bounded"].BoundedResearchError, match="Workspace file already exists"):
+        bounded_env["bounded"].run_bounded_research_open_loop(
+            open_loop_id=loop["open_loop_id"],
+            write=True,
+            current_local_date=TODAY,
+            workspace_root=bounded_env["workspace_root"],
+            use_moltbook=True,
+            moltbook_feed=True,
+            moltbook_limit=3,
+            moltbook_registry=FakeMoltbookRegistry(),
+        )
+
+    assert list((bounded_env["workspace_root"] / "research").glob("*.md")) == []
+    after = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert after == before
 
 
 def test_bounded_run_write_register_indexes_note_not_raw_moltbook_trace(
