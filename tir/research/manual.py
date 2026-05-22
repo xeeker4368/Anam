@@ -13,7 +13,11 @@ from pathlib import Path
 from tir.artifacts.service import create_artifact, get_artifact, list_artifacts
 from tir.config import CHAT_MODEL, OLLAMA_HOST, WORKSPACE_DIR
 from tir.engine.ollama import chat_completion_text
-from tir.memory.research_indexing import index_manual_research_note, research_chunks_exist
+from tir.memory.research_indexing import (
+    delete_research_chunks,
+    index_manual_research_note,
+    research_chunks_status,
+)
 from tir.workspace.service import ensure_workspace, resolve_workspace_path, write_workspace_file
 
 
@@ -51,6 +55,10 @@ This prior research note is working research context, not truth, project decisio
 
 class ManualResearchError(ValueError):
     """Raised when a manual research note cannot be generated or written."""
+
+
+RESEARCH_HEADING_RE = re.compile(r"^# Research Note\s+[—-]\s+(.+?)\s*$", re.MULTILINE)
+RESEARCH_HEADER_FIELD_RE = re.compile(r"^- ([^:]+):\s*(.*)$", re.MULTILINE)
 
 
 def _now() -> str:
@@ -126,10 +134,125 @@ def _normalize_continue_file_path(path: str | Path) -> str:
     return raw_path.as_posix()
 
 
+def _normalize_research_note_path(path: str | Path) -> str:
+    return _normalize_continue_file_path(path)
+
+
+def _research_artifacts_for_path(relative_path: str, *, workspace_root: Path) -> list[dict]:
+    return list_artifacts(
+        artifact_type="research_note",
+        path=relative_path,
+        workspace_root=workspace_root,
+        limit=10,
+    )
+
+
 def _require_research_metadata(metadata: dict, artifact_id: str, field: str):
     if field not in metadata or metadata.get(field) in (None, ""):
         raise ManualResearchError(f"Research artifact is missing required metadata: {field}")
     return metadata[field]
+
+
+def _header_fields(content: str) -> dict:
+    return {
+        key.strip().lower(): value.strip()
+        for key, value in RESEARCH_HEADER_FIELD_RE.findall(content or "")
+    }
+
+
+def _require_header_field(fields: dict, field: str) -> str:
+    value = fields.get(field.lower())
+    if value in (None, ""):
+        raise ManualResearchError(
+            f"Research note is missing required metadata: {field}"
+        )
+    return value
+
+
+def _parse_provisional(value: str) -> bool:
+    if value.strip().lower() == "true":
+        return True
+    if value.strip().lower() == "false":
+        return False
+    raise ManualResearchError("Research note is missing required metadata: Provisional")
+
+
+def _research_date_from_created(created_at: str) -> str:
+    try:
+        return datetime.fromisoformat(created_at).date().isoformat()
+    except ValueError as exc:
+        raise ManualResearchError("Research note has invalid Created metadata") from exc
+
+
+def _parse_existing_research_note(
+    relative_path: str,
+    content: str,
+) -> dict:
+    """Return a minimal result shape reconstructed from deterministic note metadata."""
+    heading = RESEARCH_HEADING_RE.search(content or "")
+    if not heading:
+        raise ManualResearchError("File is not a Project Anam research note")
+    fields = _header_fields(content)
+    created_at = _require_header_field(fields, "Created")
+    _research_date_from_created(created_at)
+    research_version = fields.get("research mode") or fields.get("research version")
+    if not research_version:
+        raise ManualResearchError(
+            "Research note is missing required metadata: Research mode/version"
+        )
+    result = {
+        "ok": True,
+        "mode": "recovery",
+        "research_version": research_version,
+        "title": heading.group(1).strip(),
+        "question": _require_header_field(fields, "Question"),
+        "scope": _require_header_field(fields, "Scope"),
+        "created_at": created_at,
+        "relative_path": relative_path,
+        "document": content,
+        "artifact_metadata": {
+            "recovered_existing_note": True,
+            "recovered_from_path": relative_path,
+        },
+    }
+    if not _parse_provisional(_require_header_field(fields, "Provisional")):
+        raise ManualResearchError("Research note is not provisional")
+    if "open loop id" in fields:
+        result["artifact_metadata"].update(
+            {
+                "open_loop_id": fields["open loop id"],
+                "bounded_research_mode": "manual_open_loop_v1",
+            }
+        )
+    if "source open loop" in fields:
+        result["artifact_metadata"]["open_loop_title"] = fields["source open loop"]
+    source_artifact = fields.get("source artifact")
+    if source_artifact and source_artifact != "None":
+        result["artifact_metadata"]["source_research_artifact_id"] = source_artifact
+    return result
+
+
+def _validate_research_artifact(artifact: dict) -> None:
+    artifact_id = artifact.get("artifact_id") or "unknown"
+    if artifact.get("artifact_type") != "research_note":
+        raise ManualResearchError(f"Artifact is not a research note: {artifact_id}")
+    if artifact.get("status") != "active":
+        raise ManualResearchError(f"Research artifact is not active: {artifact_id}")
+    metadata = artifact.get("metadata") or {}
+    for field, expected in (
+        ("source_type", "research"),
+        ("source_role", "research_reference"),
+        ("origin", "manual_research"),
+    ):
+        value = _require_research_metadata(metadata, artifact_id, field)
+        if value != expected:
+            raise ManualResearchError(
+                f"Research artifact is missing required metadata: {field}"
+            )
+    if metadata.get("provisional") is not True:
+        raise ManualResearchError(
+            "Research artifact is missing required metadata: provisional"
+        )
 
 
 def load_research_continuation_artifact(
@@ -547,23 +670,49 @@ def register_manual_research_artifact(
     target = resolve_workspace_path(relative_path, root)
     if not target.exists():
         raise ManualResearchError(f"Manual research note file not found: {relative_path}")
-    if list_artifacts(path=relative_path, workspace_root=root):
-        raise ManualResearchError(f"Manual research note already registered: {relative_path}")
-    if research_chunks_exist(relative_path):
-        raise ManualResearchError(f"Manual research chunks already exist for {relative_path}")
-
+    content = target.read_text(encoding="utf-8")
+    chunks = research_chunks_status(relative_path, content)
+    artifacts = _research_artifacts_for_path(relative_path, workspace_root=root)
+    if len(artifacts) > 1:
+        raise ManualResearchError(
+            f"Multiple research artifacts already registered for {relative_path}"
+        )
+    if not artifacts and chunks["status"] != "missing":
+        delete_research_chunks(relative_path)
+        chunks = research_chunks_status(relative_path, content)
     metadata = manual_research_metadata(result)
     title = f"Research Note — {result['title']}"
-    content = target.read_text(encoding="utf-8")
-    artifact = create_artifact(
-        artifact_type="research_note",
-        title=title,
-        path=relative_path,
-        status="active",
-        source="manual_research",
-        metadata=metadata,
-        workspace_root=root,
-    )
+    if artifacts:
+        artifact = artifacts[0]
+        _validate_research_artifact(artifact)
+    else:
+        artifact = create_artifact(
+            artifact_type="research_note",
+            title=title,
+            path=relative_path,
+            status="active",
+            source="manual_research",
+            metadata=metadata,
+            workspace_root=root,
+        )
+
+    if chunks["status"] == "complete":
+        return {
+            "artifact": artifact,
+            "indexing": {
+                "status": "already_indexed",
+                "chunks_written": 0,
+                "reason": None,
+                "existing_chunks": chunks["existing_count"],
+                "expected_chunks": chunks["expected_count"],
+            },
+            "path": relative_path,
+            "action_taken": "noop" if artifacts else "registered",
+        }
+
+    if chunks["status"] == "partial":
+        delete_research_chunks(relative_path)
+
     indexing = index_manual_research_note(
         artifact_id=artifact["artifact_id"],
         title=title,
@@ -577,7 +726,130 @@ def register_manual_research_artifact(
         "artifact": artifact,
         "indexing": indexing,
         "path": relative_path,
+        "action_taken": (
+            "reindexed"
+            if chunks["status"] == "partial"
+            else "indexed"
+            if artifacts
+            else "registered"
+        ),
     }
+
+
+def inspect_existing_research_note_registration(
+    path: str | Path,
+    *,
+    workspace_root: Path = WORKSPACE_DIR,
+) -> dict:
+    root = ensure_workspace(Path(workspace_root))
+    relative_path = _normalize_research_note_path(path)
+    target = resolve_workspace_path(relative_path, root)
+    file_exists = target.exists() and target.is_file()
+    base = {
+        "path": relative_path,
+        "file_exists": file_exists,
+        "artifact_exists": False,
+        "artifact_id": None,
+        "chunks_status": "missing",
+        "action_needed": None,
+        "action_taken": None,
+        "indexing_status": None,
+        "open_loop_metadata_updated": False,
+    }
+    if not file_exists:
+        raise ManualResearchError(f"Manual research note file not found: {relative_path}")
+
+    content = target.read_text(encoding="utf-8")
+    parsed = _parse_existing_research_note(relative_path, content)
+    artifacts = _research_artifacts_for_path(relative_path, workspace_root=root)
+    if len(artifacts) > 1:
+        raise ManualResearchError(
+            f"Multiple research artifacts already registered for {relative_path}"
+        )
+    artifact = artifacts[0] if artifacts else None
+    if artifact is not None:
+        _validate_research_artifact(artifact)
+
+    chunks = research_chunks_status(relative_path, content)
+    action_needed = "none"
+    if artifact is None:
+        action_needed = "register_and_index"
+    elif chunks["status"] == "missing":
+        action_needed = "index"
+    elif chunks["status"] == "partial":
+        action_needed = "reindex"
+
+    base.update(
+        {
+            "artifact_exists": artifact is not None,
+            "artifact_id": artifact.get("artifact_id") if artifact else None,
+            "chunks_status": chunks["status"],
+            "existing_chunks": chunks["existing_count"],
+            "expected_chunks": chunks["expected_count"],
+            "action_needed": action_needed,
+            "indexing_status": (
+                "already_indexed" if chunks["status"] == "complete" else "not_run"
+            ),
+            "parsed_result": parsed,
+            "artifact": artifact,
+        }
+    )
+    return base
+
+
+def register_existing_research_note(
+    path: str | Path,
+    *,
+    write: bool = False,
+    workspace_root: Path = WORKSPACE_DIR,
+) -> dict:
+    inspection = inspect_existing_research_note_registration(
+        path,
+        workspace_root=workspace_root,
+    )
+    if not write:
+        result = {
+            key: value
+            for key, value in inspection.items()
+            if key not in {"parsed_result", "artifact"}
+        }
+        result["action_taken"] = "dry_run"
+        return result
+
+    if inspection["action_needed"] == "none":
+        result = {
+            key: value
+            for key, value in inspection.items()
+            if key not in {"parsed_result", "artifact"}
+        }
+        result["action_taken"] = "noop"
+        result["indexing_status"] = "already_indexed"
+        return result
+
+    artifact_result = register_manual_research_artifact(
+        inspection["parsed_result"],
+        workspace_root=workspace_root,
+    )
+    after = inspect_existing_research_note_registration(
+        inspection["path"],
+        workspace_root=workspace_root,
+    )
+    result = {
+        key: value
+        for key, value in after.items()
+        if key not in {"parsed_result", "artifact"}
+    }
+    result["action_needed"] = inspection["action_needed"]
+    result["action_taken"] = artifact_result.get("action_taken") or (
+        "registered"
+        if inspection["action_needed"] == "register_and_index"
+        else "reindexed"
+        if inspection["action_needed"] == "reindex"
+        else "indexed"
+    )
+    result["indexing_status"] = artifact_result["indexing"]["status"]
+    result["indexing"] = artifact_result["indexing"]
+    return result
 
 
 def run_manual_research(

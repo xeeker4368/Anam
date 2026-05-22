@@ -305,7 +305,7 @@ Excerpt:
 bounded_research_moltbook_source_context_v1
 ```
 
-### 2. `tir/research/manual.py:252` — `build_manual_research_messages`
+### 2. `tir/research/manual.py:375` — `build_manual_research_messages`
 
 - Name: `system`
 - Category: Artifact / source framing
@@ -318,7 +318,7 @@ Excerpt:
 Produce a structured provisional research note. Use only the supplied question and scope. Do not claim external sources were collected. Do not create behavioral guidance, self-understanding, project decisions, review items, open loops, or runtime instructions.
 ```
 
-### 3. `tir/research/manual.py:290` — `build_manual_research_continuation_messages`
+### 3. `tir/research/manual.py:413` — `build_manual_research_continuation_messages`
 
 - Name: `system`
 - Category: Artifact / source framing
@@ -645,7 +645,7 @@ Excerpt:
 Produce one structured provisional bounded research note for a single existing research open loop. {...} Do not create behavioral guidance, self-understanding, project decisions, working theories, review items, open-loop records, or runtime instructions.
 ```
 
-### 2. `tir/research/manual.py:47`
+### 2. `tir/research/manual.py:51`
 
 - Name: `PRIOR_RESEARCH_CONTEXT_HEADER`
 - Category: Research / future automation

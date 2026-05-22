@@ -395,6 +395,60 @@ def test_research_run_register_without_write_fails_cleanly(capsys):
     assert "research-run --register-artifact requires --write" in captured.err
 
 
+def test_research_note_register_existing_admin_prints_recovery_status(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_register(path, *, write):
+        assert path == "research/existing.md"
+        assert write is False
+        return {
+            "path": "research/existing.md",
+            "file_exists": True,
+            "artifact_exists": False,
+            "artifact_id": None,
+            "chunks_status": "missing",
+            "action_needed": "register_and_index",
+            "action_taken": "dry_run",
+            "indexing_status": "not_run",
+            "open_loop_metadata_updated": False,
+            "existing_chunks": 0,
+            "expected_chunks": 1,
+        }
+
+    monkeypatch.setattr(admin_mod, "register_existing_research_note", fake_register)
+
+    admin_mod.cmd_research_note_register_existing(
+        SimpleNamespace(path="research/existing.md", dry_run=True, write=False)
+    )
+
+    output = capsys.readouterr().out
+    assert "Research note recovery complete" in output
+    assert "path=research/existing.md" in output
+    assert "action_needed=register_and_index" in output
+    assert "action_taken=dry_run" in output
+    assert "open_loop_metadata_updated=False" in output
+
+
+def test_research_note_register_existing_parser_requires_mode(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "research-note-register-existing",
+            "--path",
+            "research/existing.md",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "one of the arguments --dry-run --write is required" in captured.err
+
+
 def test_research_open_loops_preview_admin_prints_candidates(temp_admin, capsys, monkeypatch):
     _db_mod, admin_mod = temp_admin
 

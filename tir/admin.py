@@ -37,6 +37,8 @@ Commands:
     operational-reflection-day
                     Review operational/system activity for review candidates
     research-run     Generate a manual provisional research note
+    research-note-register-existing
+                    Register/index an existing research note file
     research-open-loop-next
                     Preview the next eligible bounded research open loop
     research-open-loop-run
@@ -99,7 +101,11 @@ from tir.reflection.operational import (
     OperationalReflectionError,
     run_operational_reflection_day,
 )
-from tir.research.manual import ManualResearchError, run_manual_research
+from tir.research.manual import (
+    ManualResearchError,
+    register_existing_research_note,
+    run_manual_research,
+)
 from tir.research.open_loops import (
     ResearchOpenLoopError,
     create_research_open_loops,
@@ -907,6 +913,39 @@ def cmd_research_run(args):
     print(result["document"], end="")
 
 
+def cmd_research_note_register_existing(args):
+    """Recover artifact/indexing state for an existing research note file."""
+    try:
+        result = register_existing_research_note(
+            args.path,
+            write=args.write,
+        )
+    except ManualResearchError as exc:
+        print(f"Research note recovery failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Research note recovery failed: {exc}")
+        sys.exit(1)
+
+    print("Research note recovery complete")
+    for key in (
+        "path",
+        "file_exists",
+        "artifact_exists",
+        "artifact_id",
+        "chunks_status",
+        "action_needed",
+        "action_taken",
+        "indexing_status",
+        "open_loop_metadata_updated",
+    ):
+        print(f"{key}={result.get(key)}")
+    if result.get("existing_chunks") is not None:
+        print(f"existing_chunks={result['existing_chunks']}")
+    if result.get("expected_chunks") is not None:
+        print(f"expected_chunks={result['expected_chunks']}")
+
+
 def _print_research_open_loop_result(result: dict, *, include_created: bool = False) -> None:
     artifact = result["artifact"]
     print(f"source_artifact_id={artifact['artifact_id']}")
@@ -1406,6 +1445,16 @@ def main():
         help="After --write, register and index the note as research memory",
     )
 
+    # research-note-register-existing
+    p = sub.add_parser(
+        "research-note-register-existing",
+        help="Register/index an existing research note file",
+    )
+    p.add_argument("--path", required=True, help="Markdown path under workspace/research")
+    mode = p.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true", help="Report recovery action without writing")
+    mode.add_argument("--write", action="store_true", help="Repair artifact/indexing state")
+
     # research-open-loops-preview
     p = sub.add_parser(
         "research-open-loops-preview",
@@ -1595,6 +1644,7 @@ def main():
         "reflection-journal-register": cmd_reflection_journal_register,
         "operational-reflection-day": cmd_operational_reflection_day,
         "research-run": cmd_research_run,
+        "research-note-register-existing": cmd_research_note_register_existing,
         "research-open-loops-preview": cmd_research_open_loops_preview,
         "research-open-loops-create": cmd_research_open_loops_create,
         "research-open-loop-next": cmd_research_open_loop_next,

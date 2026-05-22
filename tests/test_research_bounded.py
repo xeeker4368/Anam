@@ -1203,3 +1203,40 @@ def test_bounded_run_registration_failure_does_not_mutate_metadata(bounded_env, 
     assert (bounded_env["workspace_root"] / "research" / "2026-05-15-what-remains-unresolved.md").exists()
     after = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
     assert after == before
+
+
+def test_recovery_after_bounded_registration_failure_does_not_mutate_metadata(
+    bounded_env,
+    monkeypatch,
+):
+    _patch_bounded_generation(bounded_env, monkeypatch)
+    loop = _create_loop(bounded_env)
+    before = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+
+    def fail_register(*args, **kwargs):
+        raise bounded_env["bounded"].ManualResearchError("Manual research indexing failed: boom")
+
+    monkeypatch.setattr(bounded_env["bounded"], "register_manual_research_artifact", fail_register)
+
+    with pytest.raises(bounded_env["bounded"].BoundedResearchError, match="indexing failed"):
+        bounded_env["bounded"].run_bounded_research_open_loop(
+            open_loop_id=loop["open_loop_id"],
+            write=True,
+            register_artifact=True,
+            current_local_date=TODAY,
+            workspace_root=bounded_env["workspace_root"],
+        )
+
+    import tir.research.manual as manual_mod
+
+    monkeypatch.setattr("tir.memory.research_indexing.upsert_chunk", lambda **kwargs: None)
+    recovery = manual_mod.register_existing_research_note(
+        "research/2026-05-15-what-remains-unresolved.md",
+        write=True,
+        workspace_root=bounded_env["workspace_root"],
+    )
+
+    assert recovery["action_taken"] == "registered"
+    assert recovery["open_loop_metadata_updated"] is False
+    after = bounded_env["open_loops"].get_open_loop(loop["open_loop_id"])["metadata"]
+    assert after == before

@@ -293,6 +293,193 @@ def test_write_register_artifact_creates_research_artifact_and_index(tmp_path, m
     assert "Manual research note: Research Note — Manual Research Runtime" in rows[0]["text"]
 
 
+def _write_generated_research_file(tmp_path, monkeypatch, *, body=RESEARCH_BODY):
+    monkeypatch.setattr(manual, "_now", lambda: "2026-05-10T12:00:00+00:00")
+    monkeypatch.setattr(manual, "chat_completion_text", lambda *args, **kwargs: body)
+    result = manual.generate_manual_research_note(
+        title="Manual Research Runtime",
+        question="What should the manual research runtime do?",
+        scope="CLI-only v1.",
+    )
+    target = tmp_path / result["relative_path"]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(result["document"], encoding="utf-8")
+    return result
+
+
+def test_existing_research_file_without_artifact_registers_and_indexes(tmp_path, monkeypatch):
+    db_mod, artifacts_mod = _init_research_db(tmp_path, monkeypatch)
+    result = _write_generated_research_file(tmp_path, monkeypatch)
+    monkeypatch.setattr("tir.memory.research_indexing.upsert_chunk", lambda **kwargs: None)
+
+    recovery = manual.register_existing_research_note(
+        result["relative_path"],
+        write=True,
+        workspace_root=tmp_path,
+    )
+
+    assert recovery["path"] == result["relative_path"]
+    assert recovery["artifact_exists"] is True
+    assert recovery["artifact_id"]
+    assert recovery["chunks_status"] == "complete"
+    assert recovery["action_needed"] == "register_and_index"
+    assert recovery["action_taken"] == "registered"
+    assert recovery["indexing_status"] == "indexed"
+    assert recovery["open_loop_metadata_updated"] is False
+
+    artifacts = artifacts_mod.list_artifacts(path=result["relative_path"], workspace_root=tmp_path)
+    assert len(artifacts) == 1
+    assert artifacts[0]["metadata"]["recovered_existing_note"] is True
+    with db_mod.get_connection() as conn:
+        rows = conn.execute("SELECT chunk_id FROM main.chunks_fts").fetchall()
+    assert len(rows) == 1
+
+
+def test_existing_artifact_with_missing_chunks_is_indexed(tmp_path, monkeypatch):
+    db_mod, artifacts_mod = _init_research_db(tmp_path, monkeypatch)
+    result = _write_generated_research_file(tmp_path, monkeypatch)
+    metadata = manual.manual_research_metadata(result)
+    artifact = artifacts_mod.create_artifact(
+        artifact_type="research_note",
+        title="Research Note — Manual Research Runtime",
+        path=result["relative_path"],
+        status="active",
+        source="manual_research",
+        metadata=metadata,
+        workspace_root=tmp_path,
+    )
+    monkeypatch.setattr("tir.memory.research_indexing.upsert_chunk", lambda **kwargs: None)
+
+    recovery = manual.register_existing_research_note(
+        result["relative_path"],
+        write=True,
+        workspace_root=tmp_path,
+    )
+
+    assert recovery["artifact_exists"] is True
+    assert recovery["artifact_id"] == artifact["artifact_id"]
+    assert recovery["action_needed"] == "index"
+    assert recovery["action_taken"] == "indexed"
+    assert recovery["indexing_status"] == "indexed"
+    assert recovery["chunks_status"] == "complete"
+    with db_mod.get_connection() as conn:
+        rows = conn.execute("SELECT chunk_id FROM main.chunks_fts").fetchall()
+    assert len(rows) == 1
+
+
+def test_existing_artifact_with_complete_chunks_is_noop_and_idempotent(tmp_path, monkeypatch):
+    db_mod, _artifacts_mod = _init_research_db(tmp_path, monkeypatch)
+    result = _write_generated_research_file(tmp_path, monkeypatch)
+    monkeypatch.setattr("tir.memory.research_indexing.upsert_chunk", lambda **kwargs: None)
+
+    first = manual.register_manual_research_artifact(result, workspace_root=tmp_path)
+    second = manual.register_manual_research_artifact(result, workspace_root=tmp_path)
+    recovery = manual.register_existing_research_note(
+        result["relative_path"],
+        write=True,
+        workspace_root=tmp_path,
+    )
+
+    assert first["indexing"]["status"] == "indexed"
+    assert second["indexing"]["status"] == "already_indexed"
+    assert second["action_taken"] == "noop"
+    assert recovery["action_needed"] == "none"
+    assert recovery["action_taken"] == "noop"
+    assert recovery["indexing_status"] == "already_indexed"
+    with db_mod.get_connection() as conn:
+        rows = conn.execute("SELECT chunk_id FROM main.chunks_fts").fetchall()
+    assert len(rows) == 1
+
+
+def test_existing_artifact_with_partial_chunks_is_repaired(tmp_path, monkeypatch):
+    db_mod, artifacts_mod = _init_research_db(tmp_path, monkeypatch)
+    result = _write_generated_research_file(tmp_path, monkeypatch)
+    target = tmp_path / result["relative_path"]
+    target.write_text(result["document"] + "\n\n" + ("extra research context " * 400), encoding="utf-8")
+    metadata = manual.manual_research_metadata(result)
+    artifact = artifacts_mod.create_artifact(
+        artifact_type="research_note",
+        title="Research Note — Manual Research Runtime",
+        path=result["relative_path"],
+        status="active",
+        source="manual_research",
+        metadata=metadata,
+        workspace_root=tmp_path,
+    )
+    from tir.memory.research_indexing import research_chunk_prefix
+    from tir.memory.db import upsert_chunk_fts
+
+    upsert_chunk_fts(
+        chunk_id=f"{research_chunk_prefix(result['relative_path'])}_chunk_99",
+        text="stale chunk",
+        conversation_id=None,
+        user_id=None,
+        source_type="research",
+        source_trust="thirdhand",
+        created_at="2026-05-10T12:00:00+00:00",
+    )
+    monkeypatch.setattr("tir.memory.research_indexing.upsert_chunk", lambda **kwargs: None)
+    monkeypatch.setattr("tir.memory.research_indexing.delete_chunks_by_prefix", lambda prefix: None)
+
+    recovery = manual.register_existing_research_note(
+        result["relative_path"],
+        write=True,
+        workspace_root=tmp_path,
+    )
+
+    assert recovery["artifact_id"] == artifact["artifact_id"]
+    assert recovery["action_needed"] == "reindex"
+    assert recovery["action_taken"] == "reindexed"
+    assert recovery["indexing_status"] == "indexed"
+    assert recovery["chunks_status"] == "complete"
+    with db_mod.get_connection() as conn:
+        rows = conn.execute("SELECT chunk_id, text FROM main.chunks_fts ORDER BY chunk_id").fetchall()
+    assert len(rows) == recovery["expected_chunks"]
+    assert all("stale chunk" not in row["text"] for row in rows)
+
+
+def test_recovery_dry_run_reports_action_without_mutation(tmp_path, monkeypatch):
+    _db_mod, artifacts_mod = _init_research_db(tmp_path, monkeypatch)
+    result = _write_generated_research_file(tmp_path, monkeypatch)
+
+    recovery = manual.register_existing_research_note(
+        result["relative_path"],
+        write=False,
+        workspace_root=tmp_path,
+    )
+
+    assert recovery["file_exists"] is True
+    assert recovery["artifact_exists"] is False
+    assert recovery["action_needed"] == "register_and_index"
+    assert recovery["action_taken"] == "dry_run"
+    assert artifacts_mod.list_artifacts(workspace_root=tmp_path) == []
+
+
+def test_recovery_rejects_missing_file(tmp_path, monkeypatch):
+    _init_research_db(tmp_path, monkeypatch)
+
+    with pytest.raises(manual.ManualResearchError, match="file not found"):
+        manual.register_existing_research_note(
+            "research/missing.md",
+            write=True,
+            workspace_root=tmp_path,
+        )
+
+
+def test_recovery_rejects_non_research_markdown(tmp_path, monkeypatch):
+    _init_research_db(tmp_path, monkeypatch)
+    target = tmp_path / "research" / "not-research.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# Notes\n\nNot a research note.\n", encoding="utf-8")
+
+    with pytest.raises(manual.ManualResearchError, match="not a Project Anam research note"):
+        manual.register_existing_research_note(
+            "research/not-research.md",
+            write=True,
+            workspace_root=tmp_path,
+        )
+
+
 def test_continue_artifact_loads_registered_research_artifact_and_prior_file(tmp_path, monkeypatch):
     _db_mod, artifacts_mod = _init_research_db(tmp_path, monkeypatch)
     artifact = _create_research_artifact(artifacts_mod, tmp_path)

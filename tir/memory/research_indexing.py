@@ -3,7 +3,7 @@
 import re
 from datetime import datetime, timezone
 
-from tir.memory.chroma import upsert_chunk
+from tir.memory.chroma import delete_chunks_by_prefix, upsert_chunk
 from tir.memory.db import get_connection, upsert_chunk_fts
 
 
@@ -51,14 +51,58 @@ def research_chunk_prefix(path: str) -> str:
     return f"research_{safe_path}"
 
 
-def research_chunks_exist(path: str) -> bool:
+def research_chunk_count(path: str) -> int:
     prefix = research_chunk_prefix(path)
     with get_connection() as conn:
         row = conn.execute(
             "SELECT COUNT(*) AS count FROM main.chunks_fts WHERE chunk_id LIKE ?",
             (f"{prefix}_chunk_%",),
         ).fetchone()
-    return bool(row["count"])
+    return int(row["count"])
+
+
+def research_chunks_exist(path: str) -> bool:
+    return research_chunk_count(path) > 0
+
+
+def expected_research_chunk_count(text: str) -> int:
+    return len(_chunk_text(text))
+
+
+def research_chunks_status(path: str, text: str) -> dict:
+    expected = expected_research_chunk_count(text)
+    existing = research_chunk_count(path)
+    if existing == 0:
+        status = "missing"
+    elif existing == expected:
+        status = "complete"
+    else:
+        status = "partial"
+    return {
+        "status": status,
+        "existing_count": existing,
+        "expected_count": expected,
+    }
+
+
+def delete_research_chunks(path: str) -> dict:
+    prefix = research_chunk_prefix(path)
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS count FROM main.chunks_fts WHERE chunk_id LIKE ?",
+            (f"{prefix}_chunk_%",),
+        ).fetchone()
+        fts_deleted = int(row["count"])
+        conn.execute(
+            "DELETE FROM main.chunks_fts WHERE chunk_id LIKE ?",
+            (f"{prefix}_chunk_%",),
+        )
+        conn.commit()
+    delete_chunks_by_prefix(prefix)
+    return {
+        "prefix": prefix,
+        "fts_deleted": fts_deleted,
+    }
 
 
 def index_manual_research_note(
