@@ -1,0 +1,49 @@
+{
+  "collection_version": "moltbook_source_collection_v1",
+  "feed": true,
+  "limit": 3,
+  "mode": "preview",
+  "no_external_write_confirmed": true,
+  "no_result_note": "No usable Moltbook results were returned. This is not evidence that no relevant material exists.",
+  "no_usable_results": true,
+  "omitted_count": 3,
+  "omitted_reasons": [
+    {
+      "post_id": null,
+      "reason": "non_post_result",
+      "result_rank": 1
+    },
+    {
+      "post_id": null,
+      "reason": "non_post_result",
+      "result_rank": 2
+    },
+    {
+      "post_id": null,
+      "reason": "non_post_result",
+      "result_rank": 3
+    }
+  ],
+  "query": null,
+  "results": [],
+  "retrieved_at": "2026-05-21T23:51:23.793950+00:00",
+  "sort": "new",
+  "tool_calls": [
+    {
+      "arguments": {
+        "limit": 3,
+        "sort": "new"
+      },
+      "normalized_args": {
+        "limit": 3,
+        "sort": "new"
+      },
+      "ok": true,
+      "result_count": 3,
+      "tool_name": "moltbook_feed",
+      "tool_returned_ok": true
+    }
+  ],
+  "trace_path": "research/source-traces/2026-05-21-feed-new.moltbook-sources.json",
+  "verification_status_is_metadata_only": true
+}

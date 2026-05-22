@@ -1,0 +1,38 @@
+{
+  "collection_error": true,
+  "collection_version": "moltbook_source_collection_v1",
+  "error_note": "This is not evidence that no relevant Moltbook material exists.",
+  "error_type": "timeout",
+  "feed": true,
+  "limit": 3,
+  "mode": "preview",
+  "no_external_write_confirmed": true,
+  "no_result_note": null,
+  "no_usable_results": false,
+  "omitted_count": 0,
+  "omitted_reasons": [],
+  "path": "/api/v1/posts?sort=new&limit=3",
+  "query": null,
+  "results": [],
+  "retrieved_at": "2026-05-22T01:04:51.365668+00:00",
+  "sort": "new",
+  "tool_calls": [
+    {
+      "arguments": {
+        "limit": 3,
+        "sort": "new"
+      },
+      "error": "HTTP request failed: ReadTimeout: HTTPSConnectionPool(host='www.moltbook.com', port=443): Read timed out. (read timeout=10.0)",
+      "normalized_args": {
+        "limit": 3,
+        "sort": "new"
+      },
+      "ok": true,
+      "tool_name": "moltbook_feed",
+      "tool_returned_ok": false
+    }
+  ],
+  "tool_name": "moltbook_feed",
+  "trace_path": "research/source-traces/2026-05-22-fd689442-feed-new-010451.moltbook-sources.json",
+  "verification_status_is_metadata_only": true
+}
