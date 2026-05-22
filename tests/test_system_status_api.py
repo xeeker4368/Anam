@@ -83,6 +83,11 @@ def test_system_health_returns_ok_and_db_status(tmp_path, monkeypatch):
         "active_skill_count": 4,
         "active_tool_count": 4,
     }
+    assert data["identity"] == {
+        "identity_mode": "trusted_client_user_id",
+        "network_assumption": "local_household_lan_or_vpn",
+        "real_user_auth": False,
+    }
 
 
 def test_system_health_does_not_expose_moltbook_token_value(tmp_path, monkeypatch):

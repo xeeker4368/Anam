@@ -80,6 +80,20 @@ Project Anam is not:
 
 ---
 
+## Local Household Trust Model
+
+Project Anam currently uses Trusted Household User Mode for local identity.
+
+The only intended users are Lyle and Lyle's wife. Access is intended for the trusted home LAN or VPN only.
+
+The frontend may send a selected `user_id` to the backend. That `user_id` is source attribution for conversations, messages, artifacts, and operator actions. It is not proof of identity and can be spoofed by anyone who can make API requests.
+
+If configured, `ANAM_API_SECRET` protects API access with a shared secret, but it does not provide per-user identity.
+
+Real login/session authentication is deferred until before public internet exposure, guest access, untrusted LAN access, or sensitive admin UI expansion.
+
+---
+
 ## Entity Identity
 
 The entity:

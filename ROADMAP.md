@@ -137,6 +137,16 @@ Removal and revision apply mechanics now have a concept design in `docs/BEHAVIOR
 
 This is a human/project evaluation aid only. It is not `soul.md`, behavioral guidance, operational guidance, a runtime prompt, or a personality, name, avatar, value, or identity assignment.
 
+### Pre-Go-Live — Trusted Household User Mode v1
+
+- [ ] Support Lyle and Lyle's wife as known household users.
+- [ ] UI clearly displays the current active user.
+- [ ] The runtime may trust local UI/client-supplied user identity for household LAN/VPN use only.
+- [ ] Source labels continue preserving which household user supplied a conversation, message, or artifact.
+- [ ] Document that this is not real authentication.
+
+This mode accepts trusted-client `user_id` only for the current household LAN/VPN deployment. It is not suitable for public internet exposure, guest access, untrusted LAN use, or sensitive admin UI expansion.
+
 ### Phase 4 — Image / Media Capability Foundation v1
 
 Pre-go-live foundation work:
@@ -192,6 +202,17 @@ Do not create or assign the avatar before go-live.
 ### Post-Go-Live — Expanded Autonomy / Background Research
 
 Expanded autonomy remains post-go-live. It may include richer autonomous research windows, broader source use, global caps, drift canary integration, stronger monitoring, and deeper background research only after bounded scheduler v1 proves stable.
+
+### Post-Go-Live / Before Broader Exposure — Real Login / Session Auth v1
+
+Real login/session auth is required before public internet exposure, guest access, untrusted LAN access, broader device/network deployment, or sensitive admin UI expansion.
+
+Expected direction:
+
+- backend resolves user from an authenticated session or token
+- frontend no longer controls user identity directly
+- body-trusted `user_id` is removed or ignored
+- per-user authorization rules become explicit
 
 ---
 

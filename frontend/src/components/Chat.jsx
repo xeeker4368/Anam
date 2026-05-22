@@ -1,7 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { apiFetch, readErrorMessage } from '../api'
 
-function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRefresh }) {
+function Chat({
+  conversationId,
+  userId,
+  userName,
+  onConversationCreated,
+  onDebugData,
+  onRefresh,
+}) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
@@ -331,6 +338,10 @@ function Chat({ conversationId, userId, onConversationCreated, onDebugData, onRe
 
   return (
     <div className="chat">
+      <div className="chat-active-user" aria-live="polite">
+        <span className="chat-active-user-label">Active household user</span>
+        <span className="chat-active-user-name">{userName || 'No user selected'}</span>
+      </div>
       <div className="messages-container">
         {messages.length === 0 && (
           <div className="empty-chat">

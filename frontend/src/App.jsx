@@ -553,6 +553,9 @@ function App() {
     }
   }
 
+  const activeUser = users.find(user => user.id === activeUserId) || null
+  const activeUserName = activeUser?.name || 'No user selected'
+
   // --- Sidebar content ---
   const sidebarContent = (
     <>
@@ -668,6 +671,7 @@ function App() {
     <Chat
       conversationId={activeConversationId}
       userId={activeUserId}
+      userName={activeUserName}
       onConversationCreated={handleConversationCreated}
       onDebugData={handleDebugData}
       onRefresh={handleRefresh}
@@ -679,7 +683,10 @@ function App() {
     return (
       <div className="app-mobile">
         <div className="m-header">
-          <span className="m-title">Tír</span>
+          <div className="m-title-group">
+            <span className="m-title">Tír</span>
+            <span className="m-active-user">User: {activeUserName}</span>
+          </div>
           {activeConversationId && (
             <button onClick={handleCloseConversation} className="btn btn-small">
               Close

@@ -167,6 +167,27 @@ body {
   height: 100%;
 }
 
+.chat-active-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 20px;
+  background: #182642;
+  border-bottom: 1px solid #2a2a4a;
+  color: #b8c7d8;
+  font-size: 12px;
+}
+
+.chat-active-user-label {
+  color: #8fa6ba;
+}
+
+.chat-active-user-name {
+  color: #e0e0e0;
+  font-weight: 600;
+}
+
 .messages-container {
   flex: 1;
   overflow-y: auto;
@@ -1665,6 +1686,7 @@ body {
 .m-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
   background: #16213e;
@@ -1672,11 +1694,25 @@ body {
   flex-shrink: 0;
 }
 
+.m-title-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .m-title {
   font-size: 18px;
   font-weight: 600;
   color: #7faacc;
-  flex: 1;
+}
+
+.m-active-user {
+  color: #b8c7d8;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .m-body {

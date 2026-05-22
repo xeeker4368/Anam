@@ -2,19 +2,19 @@
 
 ## Current Recommended Task
 
-Experiment Hypothesis / Observation Criteria v1.
+Trusted Household User Mode v1.
 
-This is a human/project-level evaluation document. It should not appoint or implement a new runtime feature, change prompts, or become behavioral guidance.
+This is a documentation/state-light hardening task for the current local household trust model. It should not implement full authentication.
 
 ## Task Goal
 
-Define what Project Anam is trying to observe before go-live:
+Document and lightly harden Project Anam's current household/LAN/VPN user model:
 
-- entityhood is not assumed as fact
-- entityhood or development through continuity is the experimental question
-- interesting signal is separated from weak/no signal
-- baseline comparison and review windows are defined
-- evaluation criteria remain outside runtime prompts and guidance
+- current `user_id` handling is trusted-client identity, not authentication
+- only Lyle and Lyle's wife are intended users
+- access is intended for trusted home LAN/VPN only
+- accidental wrong-user use is reduced by showing the active household user
+- real login/session auth remains required before broader exposure
 
 ## Current Checkpoint
 
@@ -45,18 +45,20 @@ Recent completed foundation and course-correction work:
 - Research Open-Loop Run-Next v1 is complete.
 - Web Source Collection Design v1 exists in `docs/WEB_SOURCE_COLLECTION_DESIGN.md`.
 - Pre-Go-Live Roadmap Correction clarified the image/avatar split and bounded scheduler candidate status.
+- Experiment Hypothesis / Observation Criteria v1 exists in `docs/EXPERIMENT_HYPOTHESIS_AND_OBSERVATION_CRITERIA.md`.
 
 Research remains provisional and does not become truth, guidance, self-understanding, project decisions, review items, or working theories automatically.
 
 ## Current Documentation Scope
 
-The current experiment framing patch should:
+The current trusted household user mode patch should:
 
-- add `docs/EXPERIMENT_HYPOTHESIS_AND_OBSERVATION_CRITERIA.md`
-- record the core hypothesis and observation criteria
-- define interesting signals, weak/no-signal indicators, and things not to over-interpret
-- define baseline comparison and 30/60/90 day observation windows
-- keep the document human-facing and outside runtime guidance
+- add `docs/TRUSTED_HOUSEHOLD_USER_MODE.md`
+- document that client/body `user_id` is source attribution, not authentication
+- update `ROADMAP.md` with Trusted Household User Mode v1 and later Real Login / Session Auth v1
+- update `PROJECT_STATE.md` with the LAN/VPN-only household trust assumption
+- show the active household user clearly in the chat UI if small
+- optionally expose non-secret system status metadata for identity mode
 - add a changelog entry
 
 Pre-go-live candidates now include Image / Media Capability Foundation v1 and a tightly bounded scheduler/nightly tick v1, subject to separate approved implementation patches.
@@ -77,6 +79,7 @@ Pre-go-live candidates now include Image / Media Capability Foundation v1 and a 
 - Retrieval ranking changes.
 - Changes to `BEHAVIORAL_GUIDANCE.md`, `SELF_UNDERSTANDING.md`, `OPERATIONAL_GUIDANCE.md`, or `soul.md`.
 - Implementing household multi-user support.
+- Real login/session authentication.
 - Implementing image generation or scheduler runtime behavior.
 - Moltbook behavior changes beyond separately approved read-only/source-trace work.
 - Canary runtime harness.
@@ -111,13 +114,13 @@ Pre-go-live candidates now include Image / Media Capability Foundation v1 and a 
 
 ## Success Criteria
 
-This experiment framing patch should:
+This trusted household user mode patch should:
 
-- define a human-facing hypothesis and observation criteria document
-- make clear that entityhood is not assumed as fact
-- define interesting signal, weak/no-signal indicators, and things not to over-interpret
-- define baseline comparison and observation windows
-- avoid assigning the entity a name, personality, avatar, values, or fixed identity
-- avoid turning evaluation criteria into runtime guidance
-- avoid runtime code, tests, DB schema, UI, prompt, guidance, scheduler, image, or model config changes
+- document the current household/LAN/VPN trust model
+- clearly state that `user_id` is trusted-client identity, not authentication
+- clarify that `ANAM_API_SECRET` is shared-secret API protection, not per-user identity
+- reduce accidental wrong-user use by making the active household user visible
+- avoid username/password, sessions, cookies, OAuth, MFA, token auth, or public multi-user auth
+- keep runtime changes limited to approved UI visibility and non-secret system status metadata
+- avoid DB schema, retrieval, research behavior, prompt, guidance, scheduler, image, or model config changes
 - preserve the Project Anam/entity distinction

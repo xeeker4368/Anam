@@ -137,6 +137,11 @@ def build_system_health(registry=None) -> dict:
             },
             "moltbook_token_configured": bool(os.getenv("MOLTBOOK_TOKEN")),
         },
+        "identity": {
+            "identity_mode": "trusted_client_user_id",
+            "network_assumption": "local_household_lan_or_vpn",
+            "real_user_auth": False,
+        },
         "skills": _registry_counts(registry),
     }
 
