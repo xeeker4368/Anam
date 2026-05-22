@@ -157,6 +157,16 @@ This mode accepts trusted-client `user_id` only for the current household LAN/VP
 
 Backup verification must not start the live server, call models, call external tools, mutate active runtime state, or commit backup artifacts.
 
+### Pre-Go-Live — Go-Live Reset Runbook v1
+
+- [ ] Document the future go-live wipe/reset operator procedure.
+- [ ] Define what pre-live runtime state should be wiped.
+- [ ] Define what substrate/config/governance/user/schema state must be preserved.
+- [ ] Require backup and backup-restore verification before destructive reset.
+- [ ] Defer reset command implementation to a separate explicitly approved patch.
+
+Current pre-live data may remain useful for testing until final launch preparation. Do not run a destructive reset during active development.
+
 ### Phase 4 — Image / Media Capability Foundation v1
 
 Pre-go-live foundation work:

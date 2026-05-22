@@ -2,19 +2,19 @@
 
 ## Current Recommended Task
 
-Backup / Restore Verification v1.
+Go-Live Reset Runbook v1.
 
-This is a pre-go-live disaster recovery verification task. It should prove a backup can be restored into an isolated target without mutating active runtime state.
+This is a design/runbook task for the future destructive go-live wipe/reset process. It must not implement reset behavior or delete current runtime state.
 
 ## Task Goal
 
-Add an isolated backup restore verification command:
+Document a safe future go-live reset procedure:
 
-- restore backup payloads into a separate target layout
-- open restored databases read-only
-- verify key DB tables, schema versions, workspace, Chroma directory, governance files, and manifest hashes
-- report pass/fail clearly
-- never use or mutate active configured runtime paths during verification
+- require fresh backup and backup-restore verification
+- define what pre-live runtime state should be wiped
+- define what project/config/governance/user/schema state must be preserved
+- require explicit confirmation for any future destructive command
+- keep current pre-live data available for testing until final launch preparation
 
 ## Current Checkpoint
 
@@ -47,18 +47,18 @@ Recent completed foundation and course-correction work:
 - Pre-Go-Live Roadmap Correction clarified the image/avatar split and bounded scheduler candidate status.
 - Experiment Hypothesis / Observation Criteria v1 exists in `docs/EXPERIMENT_HYPOTHESIS_AND_OBSERVATION_CRITERIA.md`.
 - Trusted Household User Mode v1 exists in `docs/TRUSTED_HOUSEHOLD_USER_MODE.md`.
+- Backup / Restore Verification v1 is complete and committed.
 
 Research remains provisional and does not become truth, guidance, self-understanding, project decisions, review items, or working theories automatically.
 
 ## Current Documentation Scope
 
-The current backup/restore verification patch should:
+The current go-live reset runbook patch should:
 
-- add `backup-restore-verify`
-- support `--backup-path` or `--latest`
-- require an isolated `--target-dir`
-- reject non-empty targets unless explicitly overwritten
-- verify restored runtime state without using active paths
+- add `docs/GO_LIVE_RESET_RUNBOOK.md`
+- update `ROADMAP.md` narrowly with the runbook checkpoint
+- define wipe/preserve lists, guardrails, command shape, and verification checklist
+- avoid implementing any reset behavior
 - add a changelog entry
 
 Pre-go-live candidates now include Image / Media Capability Foundation v1 and a tightly bounded scheduler/nightly tick v1, subject to separate approved implementation patches.
@@ -86,6 +86,7 @@ Pre-go-live candidates now include Image / Media Capability Foundation v1 and a 
 - UI redesign.
 - Go-live DB wipe/reset.
 - Real restore into active runtime state outside the existing explicit `restore --force` path.
+  Current pre-live runtime data remains useful test data until final launch preparation.
 
 ## Design Constraints
 
@@ -115,12 +116,12 @@ Pre-go-live candidates now include Image / Media Capability Foundation v1 and a 
 
 ## Success Criteria
 
-This backup/restore verification patch should:
+This go-live reset runbook patch should:
 
-- verify a backup can be restored into an isolated target directory
-- report restored DB table counts and working schema versions
-- verify Chroma/workspace/governance presence and manifest hashes where present
-- avoid mutating active runtime state
-- avoid calling Ollama, Chroma client, Moltbook, web, or server startup
-- avoid DB schema, retrieval, research behavior, prompt, guidance, scheduler, image, UI, auth, or model config changes
+- document the future reset operator procedure
+- define what to wipe and what to preserve
+- require backup and backup-restore verification before future destructive reset
+- include future command shape and post-reset verification checklist
+- avoid implementing reset command, DB mutation, Chroma deletion, or workspace deletion
+- avoid runtime code, prompts, guidance, `soul.md`, model config, auth, UI, research, Moltbook, or web behavior changes
 - preserve the Project Anam/entity distinction
