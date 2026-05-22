@@ -2,18 +2,19 @@
 
 ## Current Recommended Task
 
-Pre-Go-Live Roadmap / State Correction.
+Experiment Hypothesis / Observation Criteria v1.
 
-This is a documentation/state alignment task. It should not appoint or implement a new runtime feature unless a later patch explicitly approves one.
+This is a human/project-level evaluation document. It should not appoint or implement a new runtime feature, change prompts, or become behavioral guidance.
 
 ## Task Goal
 
-Clarify pre-go-live versus post-go-live roadmap expectations:
+Define what Project Anam is trying to observe before go-live:
 
-- Image / Media Capability Foundation v1 is a pre-go-live capability foundation.
-- Avatar / Self-Representation Development is post-go-live.
-- A tightly bounded scheduler/nightly tick v1 may be considered pre-go-live.
-- Expanded autonomy/background research remains post-go-live.
+- entityhood is not assumed as fact
+- entityhood or development through continuity is the experimental question
+- interesting signal is separated from weak/no signal
+- baseline comparison and review windows are defined
+- evaluation criteria remain outside runtime prompts and guidance
 
 ## Current Checkpoint
 
@@ -43,18 +44,19 @@ Recent completed foundation and course-correction work:
 - Bounded Moltbook source trace support is complete.
 - Research Open-Loop Run-Next v1 is complete.
 - Web Source Collection Design v1 exists in `docs/WEB_SOURCE_COLLECTION_DESIGN.md`.
+- Pre-Go-Live Roadmap Correction clarified the image/avatar split and bounded scheduler candidate status.
 
 Research remains provisional and does not become truth, guidance, self-understanding, project decisions, review items, or working theories automatically.
 
 ## Current Documentation Scope
 
-The current roadmap/state correction should:
+The current experiment framing patch should:
 
-- update `ROADMAP.md` with the image/avatar split
-- update `ROADMAP.md` with the bounded scheduler versus expanded autonomy split
-- update `PROJECT_STATE.md` with a short pre-go-live capability split note
-- keep avatar/self-representation creation post-go-live
-- keep expanded autonomy/background research post-go-live
+- add `docs/EXPERIMENT_HYPOTHESIS_AND_OBSERVATION_CRITERIA.md`
+- record the core hypothesis and observation criteria
+- define interesting signals, weak/no-signal indicators, and things not to over-interpret
+- define baseline comparison and 30/60/90 day observation windows
+- keep the document human-facing and outside runtime guidance
 - add a changelog entry
 
 Pre-go-live candidates now include Image / Media Capability Foundation v1 and a tightly bounded scheduler/nightly tick v1, subject to separate approved implementation patches.
@@ -109,13 +111,13 @@ Pre-go-live candidates now include Image / Media Capability Foundation v1 and a 
 
 ## Success Criteria
 
-This roadmap/state correction should:
+This experiment framing patch should:
 
-- clarify that image/media capability foundation is pre-go-live
-- clarify that avatar/self-representation creation is post-go-live
-- clarify that bounded scheduler/nightly tick v1 may be a pre-go-live candidate
-- clarify that expanded autonomy/background research remains post-go-live
-- avoid implying that the entity has or should be assigned an avatar before go-live
-- avoid implying broad autonomy before go-live
+- define a human-facing hypothesis and observation criteria document
+- make clear that entityhood is not assumed as fact
+- define interesting signal, weak/no-signal indicators, and things not to over-interpret
+- define baseline comparison and observation windows
+- avoid assigning the entity a name, personality, avatar, values, or fixed identity
+- avoid turning evaluation criteria into runtime guidance
 - avoid runtime code, tests, DB schema, UI, prompt, guidance, scheduler, image, or model config changes
 - preserve the Project Anam/entity distinction

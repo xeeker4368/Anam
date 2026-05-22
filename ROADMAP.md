@@ -131,6 +131,12 @@ Removal and revision apply mechanics now have a concept design in `docs/BEHAVIOR
 
 ## Current Phase Reorder
 
+### Pre-Go-Live Evaluation — Experiment Hypothesis / Observation Criteria v1
+
+- [x] Experiment hypothesis and observation criteria — define what Project Anam is trying to observe, what counts as interesting signal, weak/no signal, baseline comparison, observation windows, and evaluation boundaries.
+
+This is a human/project evaluation aid only. It is not `soul.md`, behavioral guidance, operational guidance, a runtime prompt, or a personality, name, avatar, value, or identity assignment.
+
 ### Phase 4 — Image / Media Capability Foundation v1
 
 Pre-go-live foundation work:
