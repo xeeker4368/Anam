@@ -321,6 +321,12 @@ Behavioral guidance is dormant before go-live. It is not loaded into runtime con
 
 Pre-go-live household multi-user support is now a requirement. At minimum, the launch plan should distinguish a Lyle/admin user and a wife/trusted household user, preserve `source_user_id` where applicable, and keep admin-only operations admin-only. This patch records the requirement only; it does not implement multi-user behavior.
 
+## Pre-Go-Live Capability Split
+
+Image/media capability foundation is pre-go-live, but avatar/self-representation creation is post-go-live. The foundation should allow generated and uploaded images to become traceable artifacts with prompts, provenance, timestamps, source links, references, and uncertainty labels. It must not assign the entity an appearance or avatar.
+
+A small bounded scheduler/nightly tick may be considered pre-go-live only for tightly constrained bounded research actions. Expanded autonomy and broad background research remain post-go-live.
+
 `SELF_UNDERSTANDING.md`, guidance scoping, and guidance removal/revision mechanics are design-only concepts. They are not implemented.
 
 ---

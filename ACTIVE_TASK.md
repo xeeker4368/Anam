@@ -2,13 +2,18 @@
 
 ## Current Recommended Task
 
-Moltbook Source Preview Runtime v1.
+Pre-Go-Live Roadmap / State Correction.
+
+This is a documentation/state alignment task. It should not appoint or implement a new runtime feature unless a later patch explicitly approves one.
 
 ## Task Goal
 
-Implement the smallest safe preview command for bounded, read-only Moltbook source collection.
+Clarify pre-go-live versus post-go-live roadmap expectations:
 
-The preview should make Moltbook source collection inspectable before bounded research uses live Moltbook context.
+- Image / Media Capability Foundation v1 is a pre-go-live capability foundation.
+- Avatar / Self-Representation Development is post-go-live.
+- A tightly bounded scheduler/nightly tick v1 may be considered pre-go-live.
+- Expanded autonomy/background research remains post-go-live.
 
 ## Current Checkpoint
 
@@ -34,53 +39,44 @@ Recent completed foundation and course-correction work:
 - Manual Bounded Open-Loop Research Planner v1 is complete.
 - Manual Bounded Open-Loop Research Run v1 is complete.
 - Moltbook Source Collection Design v1 exists in `docs/MOLTBOOK_SOURCE_COLLECTION_DESIGN.md`.
+- Moltbook Source Preview Runtime v1 is complete.
+- Bounded Moltbook source trace support is complete.
+- Research Open-Loop Run-Next v1 is complete.
+- Web Source Collection Design v1 exists in `docs/WEB_SOURCE_COLLECTION_DESIGN.md`.
 
 Research remains provisional and does not become truth, guidance, self-understanding, project decisions, review items, or working theories automatically.
 
-## Current Implementation Scope
+## Current Documentation Scope
 
-Moltbook Source Preview Runtime v1 should likely implement:
+The current roadmap/state correction should:
 
-- deterministic Moltbook source preview for an explicit query/feed/submolt/post selection
-- compact source records with source ids, titles, authors, URLs, timestamps, excerpts, and provenance
-- read-only enforcement through existing Moltbook tools
-- source limits from `docs/MOLTBOOK_SOURCE_COLLECTION_DESIGN.md`
-- clear no-result output that does not imply proof of absence
-- no research note generation
-- no source trace writes unless explicitly approved by the runtime patch scope
-- no scheduler/background behavior
+- update `ROADMAP.md` with the image/avatar split
+- update `ROADMAP.md` with the bounded scheduler versus expanded autonomy split
+- update `PROJECT_STATE.md` with a short pre-go-live capability split note
+- keep avatar/self-representation creation post-go-live
+- keep expanded autonomy/background research post-go-live
+- add a changelog entry
 
-Likely command:
-
-```bash
-.pyanam/bin/python -m tir.admin moltbook-source-preview --query "agent autonomy before go-live" --limit 10
-```
-
-The next runtime patch may add:
-
-```bash
-.pyanam/bin/python -m tir.admin moltbook-source-preview --query "agent autonomy before go-live" --read-post-id <post_id> --comments-limit 5
-```
+Pre-go-live candidates now include Image / Media Capability Foundation v1 and a tightly bounded scheduler/nightly tick v1, subject to separate approved implementation patches.
 
 ## Explicitly Deferred
 
-- True scheduler/background research.
-- Web source collection.
-- Moltbook use inside bounded research.
+- Avatar/self-representation creation before go-live.
+- Expanded autonomy/background research.
+- Broad autonomous web crawling.
 - Working-theory/synthesis records.
 - Review-item creation.
 - Automatic open-loop creation without explicit operator action.
 - Automatic review-item creation.
-- DB schema changes unless implementation proves existing `metadata_json` is insufficient.
-- Chroma indexing for open loops.
+- DB schema changes unless a separate approved implementation proves existing metadata fields are insufficient.
+- Chroma indexing changes.
 - Promotion to truth, behavioral guidance, self-understanding, or project decisions.
 - Value-density scoring.
 - Retrieval ranking changes.
-- Title/search research continuation.
 - Changes to `BEHAVIORAL_GUIDANCE.md`, `SELF_UNDERSTANDING.md`, `OPERATIONAL_GUIDANCE.md`, or `soul.md`.
 - Implementing household multi-user support.
-- Media/image artifact implementation.
-- Moltbook behavior changes beyond separately approved read-only source preview/capture work.
+- Implementing image generation or scheduler runtime behavior.
+- Moltbook behavior changes beyond separately approved read-only/source-trace work.
 - Canary runtime harness.
 - UI redesign.
 - Go-live DB wipe/reset.
@@ -95,37 +91,31 @@ The next runtime patch may add:
 - Open loops are unresolved questions, not conclusions or instructions.
 - Behavioral guidance runtime loading must remain dormant.
 - Research artifacts need a clear purpose and consumption path.
-- Moltbook source material is live external context, not factual authority.
-- Moltbook source text must be separated from Anam's interpretation.
-- Absence of Moltbook results is not proof of absence.
+- Live/external source material is context, not factual authority.
+- Source text must be separated from the entity's interpretation.
+- Absence of external results is not proof of absence.
 - No durable research state should update silently without an artifact once execution exists.
 - Future record creation must preserve source lineage.
-- The design must preserve the Anam/entity distinction.
+- The design must preserve the Project Anam/entity distinction.
 
 ## Files/Subsystems To Inspect First
 
-- `docs/MOLTBOOK_SOURCE_COLLECTION_DESIGN.md`
-- `skills/active/moltbook/skill.yaml`
-- `skills/active/moltbook/moltbook.py`
-- `tir/tools/registry.py`
-- `tir/tools/http_declarative.py`
-- `tir/admin.py`
-- `tests/test_moltbook_declarative_skill.py`
-- `tests/test_moltbook_search_semantics.py`
-- `tests/test_admin.py`
+- `PROJECT_STATE.md`
+- `DECISIONS.md`
+- `ROADMAP.md`
+- `ACTIVE_TASK.md`
+- `CODING_ASSISTANT_RULES.md`
+- `changelog/`
 
 ## Success Criteria
 
-Moltbook Source Preview Runtime v1 should:
+This roadmap/state correction should:
 
-- preview compact Moltbook sources without writing research notes
-- require an explicit query/feed/submolt/post selection
-- enforce read-only Moltbook use
-- preserve provenance for each compact source record
-- keep source text separate from interpretation
-- report no usable results without treating absence as proof
-- avoid Chroma indexing changes
-- avoid bounded research integration unless separately approved
-- avoid scheduler/background behavior
-- avoid review-item creation
-- avoid promotion to truth, guidance, self-understanding, working theories, or project decisions
+- clarify that image/media capability foundation is pre-go-live
+- clarify that avatar/self-representation creation is post-go-live
+- clarify that bounded scheduler/nightly tick v1 may be a pre-go-live candidate
+- clarify that expanded autonomy/background research remains post-go-live
+- avoid implying that the entity has or should be assigned an avatar before go-live
+- avoid implying broad autonomy before go-live
+- avoid runtime code, tests, DB schema, UI, prompt, guidance, scheduler, image, or model config changes
+- preserve the Project Anam/entity distinction

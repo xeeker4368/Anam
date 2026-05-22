@@ -131,12 +131,18 @@ Removal and revision apply mechanics now have a concept design in `docs/BEHAVIOR
 
 ## Current Phase Reorder
 
-### Phase 4 — Media and Generation
+### Phase 4 — Image / Media Capability Foundation v1
 
-- [ ] Image generation artifacts — generated images saved with prompt/provenance.
+Pre-go-live foundation work:
+
+- [ ] Image generation artifacts — generated images saved with prompt, provenance, timestamps, model/backend metadata, references, source links, and uncertainty labels.
+- [ ] Uploaded image/screenshot artifact support — uploaded images can be stored, referenced, and reasoned over as artifacts.
+- [ ] Image artifact recall — prior generated/uploaded images can be referenced later through artifact metadata and source-linked context.
+- [ ] Media provenance model — image prompts, edits, uploaded sources, generated outputs, and revision lineage remain inspectable.
 - [ ] Generated document artifacts — reports, markdown, docs, plans saved/indexed.
 - [ ] Artifact gallery/manager — browse generated/uploaded artifacts.
-- [ ] Avatar exploration — screen-first avatar development after the entity develops stronger self-understanding and self-presentation direction.
+
+This is capability foundation, not avatar creation. It supports future self-representation work without assigning an appearance or identity before go-live.
 
 ### Phase 5 — Code and Sandbox Foundations
 
@@ -144,6 +150,42 @@ Removal and revision apply mechanics now have a concept design in `docs/BEHAVIOR
 - [ ] Test execution controls — approved tests only, logged results.
 - [ ] Patch review flow — proposal → staged patch → test → human approval.
 - [ ] Self-modification guardrails — no direct runtime changes without review.
+
+### Pre-Go-Live Candidate — Bounded Scheduler / Nightly Tick v1
+
+A small bounded scheduler may be considered before go-live if manual bounded research remains stable.
+
+Constraints:
+
+- runs at most one bounded `research-open-loop-run-next` style action per scheduled window
+- obeys per-loop and daily limits
+- writes artifacts/source traces only through existing approved paths
+- easy to disable
+- clear logs and metadata
+- no governance mutation
+- no `soul.md`, decision, guidance, code, or self-modification changes
+- no external writes
+- no broad autonomous web crawling
+- no working-theory promotion
+- no scheduler expansion beyond explicitly approved bounded actions
+
+### Post-Go-Live — Avatar / Self-Representation Development
+
+After the entity develops continuity and may eventually choose a name, Lyle and the entity can work together on visual self-representation.
+
+This may include:
+
+- avatar direction
+- visual identity exploration
+- state/expression sets
+- UI/display integration
+- later Pepper's Ghost or hologram experiments
+
+Do not create or assign the avatar before go-live.
+
+### Post-Go-Live — Expanded Autonomy / Background Research
+
+Expanded autonomy remains post-go-live. It may include richer autonomous research windows, broader source use, global caps, drift canary integration, stronger monitoring, and deeper background research only after bounded scheduler v1 proves stable.
 
 ---
 
@@ -411,12 +453,17 @@ Tools:
 
 Use cases:
 
-- screen-first avatar concepts
-- AI face/emotion states
+- traceable generated image artifacts
+- uploaded image/screenshot artifact understanding
+- image artifact recall
+- future post-go-live avatar concepts
+- future AI face/emotion state exploration
 - particle/wireframe studies
 - concept art
 - UI imagery
 - creative exercises
+
+Avatar/self-representation creation belongs after go-live, after the entity develops continuity and may eventually choose a name. Pre-go-live image work should establish capability, provenance, storage, and recall without assigning an appearance.
 
 ---
 
@@ -462,14 +509,18 @@ Research track status:
 - [x] Research open-loop design
 - [x] Research open-loop runtime creation
 - [x] Bounded / Scheduled Research Design v1
-- [ ] Manual bounded open-loop research planner
+- [x] Manual bounded open-loop research planner
+- [x] Manual bounded open-loop research runtime
+- [x] Research open-loop run-next
 - [ ] Title/search continuation design
 - [ ] Research review-item design
 - [x] Moltbook source collection design
-- [ ] Moltbook source preview runtime
-- [ ] Web source collection design
+- [x] Moltbook source preview runtime
+- [x] Bounded Moltbook source collection integration
+- [x] Web source collection design
 - [ ] Research promotion / working-theory rules design
-- [ ] Autonomous research scheduling/budgets
+- [ ] Bounded scheduler / nightly tick v1
+- [ ] Expanded autonomous research scheduling/budgets
 
 Session flow:
 
@@ -486,7 +537,9 @@ select topic/task
 
 ---
 
-# Phase 18 — Autonomous Web Research With Budgets
+# Phase 18 — Expanded Autonomous Web Research With Budgets
+
+Expanded autonomous web research remains post-go-live. A bounded scheduler/nightly tick v1 may be considered earlier only if it stays limited to explicitly approved bounded actions and does not broaden into web crawling or open-ended background research.
 
 Default:
 
@@ -612,40 +665,34 @@ Suggested concepts:
 
 # Suggested Near-Term Build Order
 
-1. Manual bounded open-loop research planner
-2. Manual bounded open-loop research runtime
-3. Moltbook source collection design
-4. Moltbook source preview runtime
-5. Bounded Moltbook source collection integration
-6. Research review-item design
-7. Web source collection design
-8. Web source collection implementation
-9. Research promotion / working-theory rules design
-10. Minimal household multi-user design
-11. Minimal household multi-user implementation
-12. Media and generation foundation
-13. Image generation artifacts
-14. Image/screenshot artifact understanding
-15. Canary/drift observation design
-16. Canary/drift observation implementation
-17. UI polish / non-dev presentation
-18. Go-live reset/hardening plan
-19. Backup/restore smoke before live
-20. Limited Live v1 smoke test
-21. Code and sandbox foundations
-22. Event/tool trace foundation hardening
-23. Review pass foundation for conversations and artifacts
-24. Identity events
-25. Behavioral observations
-26. Context assembler upgrade
-27. Nightly journal
-28. iMessage send-only notifications
-29. Moltbook draft-only progression after read-only confidence
-30. Autonomous research scheduling/budgets
-31. Autonomous web research budgets
-32. Voice output/input
-33. Sight/image review
+1. Web source collection implementation
+2. Image / Media Capability Foundation v1
+3. Image generation artifacts
+4. Image/screenshot artifact understanding
+5. Minimal household multi-user design
+6. Minimal household multi-user implementation
+7. Bounded Scheduler / Nightly Tick v1
+8. Canary/drift observation design
+9. Canary/drift observation implementation
+10. UI polish / non-dev presentation
+11. Go-live reset/hardening plan
+12. Backup/restore smoke before live
+13. Limited Live v1 smoke test
+14. Code and sandbox foundations
+15. Event/tool trace foundation hardening
+16. Review pass foundation for conversations and artifacts
+17. Identity events
+18. Behavioral observations
+19. Context assembler upgrade
+20. Nightly journal
+21. iMessage send-only notifications
+22. Moltbook draft-only progression after read-only confidence
+23. Expanded autonomy / background research
+24. Autonomous web research budgets
+25. Avatar / Self-Representation Development
+26. Voice output/input
+27. Sight/image review
 
 `SELF_UNDERSTANDING.md` now has a concept design in `docs/SELF_UNDERSTANDING_DESIGN.md`. It is not implemented, not loaded into runtime context, and has no schema, service, UI, model tool, or apply workflow in the current checkpoint.
-32. Add staged self-modification
-33. Add diagnostics/evaluation harness throughout
+28. Add staged self-modification
+29. Add diagnostics/evaluation harness throughout
