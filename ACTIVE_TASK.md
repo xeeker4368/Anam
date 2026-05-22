@@ -2,19 +2,19 @@
 
 ## Current Recommended Task
 
-Trusted Household User Mode v1.
+Backup / Restore Verification v1.
 
-This is a documentation/state-light hardening task for the current local household trust model. It should not implement full authentication.
+This is a pre-go-live disaster recovery verification task. It should prove a backup can be restored into an isolated target without mutating active runtime state.
 
 ## Task Goal
 
-Document and lightly harden Project Anam's current household/LAN/VPN user model:
+Add an isolated backup restore verification command:
 
-- current `user_id` handling is trusted-client identity, not authentication
-- only Lyle and Lyle's wife are intended users
-- access is intended for trusted home LAN/VPN only
-- accidental wrong-user use is reduced by showing the active household user
-- real login/session auth remains required before broader exposure
+- restore backup payloads into a separate target layout
+- open restored databases read-only
+- verify key DB tables, schema versions, workspace, Chroma directory, governance files, and manifest hashes
+- report pass/fail clearly
+- never use or mutate active configured runtime paths during verification
 
 ## Current Checkpoint
 
@@ -46,19 +46,19 @@ Recent completed foundation and course-correction work:
 - Web Source Collection Design v1 exists in `docs/WEB_SOURCE_COLLECTION_DESIGN.md`.
 - Pre-Go-Live Roadmap Correction clarified the image/avatar split and bounded scheduler candidate status.
 - Experiment Hypothesis / Observation Criteria v1 exists in `docs/EXPERIMENT_HYPOTHESIS_AND_OBSERVATION_CRITERIA.md`.
+- Trusted Household User Mode v1 exists in `docs/TRUSTED_HOUSEHOLD_USER_MODE.md`.
 
 Research remains provisional and does not become truth, guidance, self-understanding, project decisions, review items, or working theories automatically.
 
 ## Current Documentation Scope
 
-The current trusted household user mode patch should:
+The current backup/restore verification patch should:
 
-- add `docs/TRUSTED_HOUSEHOLD_USER_MODE.md`
-- document that client/body `user_id` is source attribution, not authentication
-- update `ROADMAP.md` with Trusted Household User Mode v1 and later Real Login / Session Auth v1
-- update `PROJECT_STATE.md` with the LAN/VPN-only household trust assumption
-- show the active household user clearly in the chat UI if small
-- optionally expose non-secret system status metadata for identity mode
+- add `backup-restore-verify`
+- support `--backup-path` or `--latest`
+- require an isolated `--target-dir`
+- reject non-empty targets unless explicitly overwritten
+- verify restored runtime state without using active paths
 - add a changelog entry
 
 Pre-go-live candidates now include Image / Media Capability Foundation v1 and a tightly bounded scheduler/nightly tick v1, subject to separate approved implementation patches.
@@ -85,6 +85,7 @@ Pre-go-live candidates now include Image / Media Capability Foundation v1 and a 
 - Canary runtime harness.
 - UI redesign.
 - Go-live DB wipe/reset.
+- Real restore into active runtime state outside the existing explicit `restore --force` path.
 
 ## Design Constraints
 
@@ -114,13 +115,12 @@ Pre-go-live candidates now include Image / Media Capability Foundation v1 and a 
 
 ## Success Criteria
 
-This trusted household user mode patch should:
+This backup/restore verification patch should:
 
-- document the current household/LAN/VPN trust model
-- clearly state that `user_id` is trusted-client identity, not authentication
-- clarify that `ANAM_API_SECRET` is shared-secret API protection, not per-user identity
-- reduce accidental wrong-user use by making the active household user visible
-- avoid username/password, sessions, cookies, OAuth, MFA, token auth, or public multi-user auth
-- keep runtime changes limited to approved UI visibility and non-secret system status metadata
-- avoid DB schema, retrieval, research behavior, prompt, guidance, scheduler, image, or model config changes
+- verify a backup can be restored into an isolated target directory
+- report restored DB table counts and working schema versions
+- verify Chroma/workspace/governance presence and manifest hashes where present
+- avoid mutating active runtime state
+- avoid calling Ollama, Chroma client, Moltbook, web, or server startup
+- avoid DB schema, retrieval, research behavior, prompt, guidance, scheduler, image, UI, auth, or model config changes
 - preserve the Project Anam/entity distinction

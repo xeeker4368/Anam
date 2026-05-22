@@ -302,6 +302,145 @@ def test_restore_to_clean_temp_runtime_restores_db_and_workspace(temp_backup_env
     assert (tmp_path / "data" / "prod" / "chromadb" / "index.bin").read_bytes() == b"vector data"
 
 
+def test_backup_restore_verify_succeeds_for_complete_backup(temp_backup_env):
+    db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
+    db_mod.create_user("Lyle")
+    _write_runtime_dirs(tmp_path)
+    (tmp_path / "workspace" / "research").mkdir()
+    (tmp_path / "workspace" / "journals").mkdir()
+    (tmp_path / "workspace" / "research" / "source-traces").mkdir()
+    (tmp_path / "workspace" / "uploads").mkdir()
+    _write_governance_file(tmp_path, "PROJECT_STATE.md", "Project state\n")
+    summary = backup_mod.create_backup()
+
+    report = backup_mod.verify_backup_restore(
+        summary["backup_path"],
+        tmp_path / "restore-check",
+    )
+
+    assert report["ok"] is True
+    assert report["status"] == "passed"
+    assert report["active_environment_mutated"] is False
+    assert report["working_db"]["ok"] is True
+    assert report["working_db"]["table_counts"]["users"] == 1
+    assert report["working_db"]["schema_versions"] == [
+        {"version": 1, "name": "baseline_current_schema"}
+    ]
+    assert report["archive_db"]["ok"] is True
+    assert report["chroma"]["ok"] is True
+    assert report["workspace"]["ok"] is True
+    assert report["workspace"]["subpaths"]["research"]["exists"] is True
+    assert report["workspace"]["subpaths"]["journals"]["exists"] is True
+    assert report["workspace"]["subpaths"]["research/source-traces"]["exists"] is True
+    assert report["workspace"]["subpaths"]["uploads"]["exists"] is True
+    assert report["governance_files"]["files"]["PROJECT_STATE.md"]["ok"] is True
+    assert report["hashes_ok"] is True
+    assert (tmp_path / "restore-check" / "data" / "prod" / "working.db").exists()
+
+
+def test_backup_restore_verify_does_not_mutate_active_runtime(temp_backup_env):
+    db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
+    db_mod.create_user("Before")
+    _write_runtime_dirs(tmp_path)
+    summary = backup_mod.create_backup()
+
+    db_mod.create_user("After")
+    (tmp_path / "workspace" / "note.txt").write_text("mutated", encoding="utf-8")
+
+    report = backup_mod.verify_backup_restore(
+        summary["backup_path"],
+        tmp_path / "restore-check",
+    )
+
+    assert report["ok"] is True
+    assert db_mod.get_user_by_name("After") is not None
+    assert (tmp_path / "workspace" / "note.txt").read_text(encoding="utf-8") == "mutated"
+
+
+def test_backup_restore_verify_missing_working_db_payload_fails(temp_backup_env):
+    db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
+    db_mod.create_user("Lyle")
+    summary = backup_mod.create_backup()
+    backup_path = tmp_path / "backups" / summary["backup_path"].split("/")[-1]
+    (backup_path / "runtime" / "working.db").unlink()
+
+    with pytest.raises(backup_mod.BackupError, match="working_db"):
+        backup_mod.verify_backup_restore(
+            summary["backup_path"],
+            tmp_path / "restore-check",
+        )
+
+
+def test_backup_restore_verify_missing_archive_db_payload_fails(temp_backup_env):
+    db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
+    db_mod.create_user("Lyle")
+    summary = backup_mod.create_backup()
+    backup_path = tmp_path / "backups" / summary["backup_path"].split("/")[-1]
+    (backup_path / "runtime" / "archive.db").unlink()
+
+    with pytest.raises(backup_mod.BackupError, match="archive_db"):
+        backup_mod.verify_backup_restore(
+            summary["backup_path"],
+            tmp_path / "restore-check",
+        )
+
+
+def test_backup_restore_verify_validates_manifest(temp_backup_env, tmp_path):
+    _db_mod, backup_mod, _admin_mod, _env_tmp_path = temp_backup_env
+    bad_backup = tmp_path / "bad-backup"
+    bad_backup.mkdir()
+    (bad_backup / "manifest.json").write_text("{bad json", encoding="utf-8")
+
+    with pytest.raises(backup_mod.BackupError, match="invalid JSON"):
+        backup_mod.verify_backup_restore(
+            bad_backup,
+            tmp_path / "restore-check",
+        )
+
+
+def test_backup_restore_verify_rejects_non_empty_target(temp_backup_env):
+    db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
+    db_mod.create_user("Lyle")
+    summary = backup_mod.create_backup()
+    target = tmp_path / "restore-check"
+    target.mkdir()
+    (target / "existing.txt").write_text("existing", encoding="utf-8")
+
+    with pytest.raises(backup_mod.BackupError, match="not empty"):
+        backup_mod.verify_backup_restore(summary["backup_path"], target)
+
+
+def test_backup_restore_verify_allows_empty_target(temp_backup_env):
+    db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
+    db_mod.create_user("Lyle")
+    summary = backup_mod.create_backup()
+    target = tmp_path / "restore-check"
+    target.mkdir()
+
+    report = backup_mod.verify_backup_restore(summary["backup_path"], target)
+
+    assert report["ok"] is True
+    assert (target / "data" / "prod" / "working.db").exists()
+
+
+def test_find_latest_backup_selects_latest_manifest(temp_backup_env):
+    db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
+    db_mod.create_user("Lyle")
+    first = backup_mod.create_backup()
+    db_mod.create_user("Wife")
+    second = backup_mod.create_backup()
+
+    latest = backup_mod.find_latest_backup()
+    report = backup_mod.verify_backup_restore(
+        latest,
+        tmp_path / "restore-check",
+    )
+
+    assert latest == tmp_path / "backups" / second["backup_path"].split("/")[-1]
+    assert first["backup_path"] != second["backup_path"]
+    assert report["working_db"]["table_counts"]["users"] == 2
+
+
 def test_admin_backup_command_prints_summary(temp_backup_env, capsys):
     db_mod, _backup_mod, admin_mod, tmp_path = temp_backup_env
     db_mod.create_user("Lyle")
@@ -331,3 +470,70 @@ def test_admin_restore_dry_run_prints_summary(temp_backup_env, capsys):
     assert "Restore" in output
     assert "Dry run: True" in output
     assert "Would replace:" in output
+
+
+def test_admin_backup_restore_verify_prints_summary(temp_backup_env, capsys):
+    db_mod, backup_mod, admin_mod, tmp_path = temp_backup_env
+    db_mod.create_user("Lyle")
+    _write_runtime_dirs(tmp_path)
+    summary = backup_mod.create_backup()
+
+    admin_mod.cmd_backup_restore_verify(
+        SimpleNamespace(
+            backup_path=summary["backup_path"],
+            latest=False,
+            target_dir=tmp_path / "restore-check",
+            overwrite_target=False,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Backup restore verification complete" in output
+    assert "status=passed" in output
+    assert "working_db_ok=True" in output
+    assert "archive_db_ok=True" in output
+    assert "active_environment_mutated=False" in output
+
+
+def test_admin_backup_restore_verify_latest_prints_summary(temp_backup_env, capsys):
+    db_mod, _backup_mod, admin_mod, tmp_path = temp_backup_env
+    db_mod.create_user("Lyle")
+
+    admin_mod.cmd_backup(SimpleNamespace(destination=None))
+    capsys.readouterr()
+    admin_mod.cmd_backup_restore_verify(
+        SimpleNamespace(
+            backup_path=None,
+            latest=True,
+            target_dir=tmp_path / "restore-check",
+            overwrite_target=False,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Backup restore verification complete" in output
+    assert "status=passed" in output
+
+
+def test_backup_restore_verify_output_does_not_print_secret_files(
+    temp_backup_env,
+    capsys,
+):
+    _db_mod, backup_mod, admin_mod, tmp_path = temp_backup_env
+    _write_runtime_dirs(tmp_path)
+    summary = backup_mod.create_backup()
+
+    admin_mod.cmd_backup_restore_verify(
+        SimpleNamespace(
+            backup_path=summary["backup_path"],
+            latest=False,
+            target_dir=tmp_path / "restore-check",
+            overwrite_target=False,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "SECRET=1" not in output
+    assert "token" not in output
+    assert ".env" not in output
+    assert "secrets" not in output

@@ -18,6 +18,8 @@ Commands:
                     Checkpoint active conversations into retrieval
     backup           Back up runtime state
     restore          Restore runtime state from a backup
+    backup-restore-verify
+                    Verify a backup by restoring into an isolated target
     behavioral-guidance-proposal-list
                     List behavioral guidance proposals
     behavioral-guidance-proposal-add
@@ -68,7 +70,13 @@ from tir.memory.audit import (
     checkpoint_active_conversations,
     repair_memory_integrity,
 )
-from tir.ops.backup import BackupError, create_backup, restore_backup
+from tir.ops.backup import (
+    BackupError,
+    create_backup,
+    find_latest_backup,
+    restore_backup,
+    verify_backup_restore,
+)
 from tir.review.service import (
     ReviewValidationError,
     create_review_item,
@@ -388,6 +396,49 @@ def _print_restore_summary(summary: dict):
         print(f"  {target['key']} -> {target['destination']}")
 
 
+def _print_backup_restore_verify_summary(summary: dict):
+    """Print a readable isolated restore verification summary."""
+    print("Backup restore verification complete")
+    print(f"backup_path={summary['backup_path']}")
+    print(f"target_dir={summary['target_dir']}")
+    print(f"status={summary['status']}")
+    print(f"working_db_ok={summary['working_db']['ok']}")
+    print(f"archive_db_ok={summary['archive_db']['ok']}")
+    print(f"chroma_ok={summary['chroma']['ok']}")
+    print(f"workspace_ok={summary['workspace']['ok']}")
+    print(f"governance_docs_ok={summary['governance_files']['ok']}")
+    print(f"hashes_ok={summary['hashes_ok']}")
+    print(f"active_environment_mutated={summary['active_environment_mutated']}")
+
+    print("working_db_table_counts:")
+    for table_name, count in sorted(summary["working_db"]["table_counts"].items()):
+        print(f"  {table_name}={count}")
+
+    print("archive_db_table_counts:")
+    for table_name, count in sorted(summary["archive_db"]["table_counts"].items()):
+        print(f"  {table_name}={count}")
+
+    if summary["working_db"].get("schema_versions"):
+        print("schema_versions:")
+        for row in summary["working_db"]["schema_versions"]:
+            print(f"  version={row['version']} name={row['name']}")
+
+    print("workspace_subpaths:")
+    for relative, item in summary["workspace"]["subpaths"].items():
+        print(
+            f"  {relative}: exists={item['exists']} readable={item['readable']}"
+        )
+
+    if not summary.get("ok"):
+        print("Verification errors:")
+        for section_name in ("working_db", "archive_db"):
+            for error in summary[section_name].get("errors", []):
+                print(f"  {section_name}: {error}")
+        for check in summary.get("hash_checks", []):
+            if not check["ok"]:
+                print(f"  hash mismatch: {check['key']}")
+
+
 def _print_review_item(item: dict):
     """Print one compact review item row."""
     print(
@@ -464,6 +515,24 @@ def cmd_restore(args):
         print(f"Restore failed: {exc}")
         sys.exit(1)
     _print_restore_summary(summary)
+    if not summary.get("ok"):
+        sys.exit(1)
+
+
+def cmd_backup_restore_verify(args):
+    """Verify a backup by restoring it into an isolated target directory."""
+    try:
+        backup_path = find_latest_backup() if args.latest else Path(args.backup_path)
+        summary = verify_backup_restore(
+            backup_path,
+            Path(args.target_dir),
+            overwrite_target=args.overwrite_target,
+        )
+    except BackupError as exc:
+        print(f"Backup restore verification failed: {exc}")
+        sys.exit(1)
+
+    _print_backup_restore_verify_summary(summary)
     if not summary.get("ok"):
         sys.exit(1)
 
@@ -1302,6 +1371,25 @@ def main():
     p.add_argument("--dry-run", action="store_true", help="Report restore plan only")
     p.add_argument("--force", action="store_true", help="Required to mutate runtime state")
 
+    # backup-restore-verify
+    p = sub.add_parser(
+        "backup-restore-verify",
+        help="Verify a backup by restoring into an isolated target",
+    )
+    source = p.add_mutually_exclusive_group(required=True)
+    source.add_argument("--backup-path", help="Backup folder containing manifest.json")
+    source.add_argument("--latest", action="store_true", help="Use latest backup with manifest")
+    p.add_argument(
+        "--target-dir",
+        required=True,
+        help="Isolated restore verification target directory",
+    )
+    p.add_argument(
+        "--overwrite-target",
+        action="store_true",
+        help="Delete and recreate a non-empty verification target",
+    )
+
     # review-list
     p = sub.add_parser("review-list", help="List review queue items")
     p.add_argument("--status", default=None, help="Filter by status")
@@ -1612,6 +1700,7 @@ def main():
         "init-db",
         "backup",
         "restore",
+        "backup-restore-verify",
         "research-run",
         "moltbook-source-preview",
     } or (
@@ -1631,6 +1720,7 @@ def main():
         "memory-checkpoint-active": cmd_memory_checkpoint_active,
         "backup": cmd_backup,
         "restore": cmd_restore,
+        "backup-restore-verify": cmd_backup_restore_verify,
         "review-list": cmd_review_list,
         "review-add": cmd_review_add,
         "review-update": cmd_review_update,

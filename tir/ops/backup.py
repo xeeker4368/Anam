@@ -32,6 +32,26 @@ GOVERNANCE_FILE_NAMES = (
     "ACTIVE_TASK.md",
     "CODING_ASSISTANT_RULES.md",
 )
+WORKING_DB_VERIFY_TABLES = (
+    "schema_versions",
+    "users",
+    "conversations",
+    "messages",
+    "artifacts",
+    "open_loops",
+    "review_items",
+    "behavioral_guidance_proposals",
+)
+ARCHIVE_DB_VERIFY_TABLES = (
+    "users",
+    "messages",
+)
+WORKSPACE_VERIFY_SUBPATHS = (
+    "research",
+    "journals",
+    "research/source-traces",
+    "uploads",
+)
 
 
 class BackupError(RuntimeError):
@@ -239,6 +259,371 @@ def _load_manifest(backup_path: Path) -> dict:
             f"Unsupported backup version: {manifest.get('backup_version')!r}"
         )
     return manifest
+
+
+def find_latest_backup(root: Path | None = None) -> Path:
+    """Return the latest backup directory that contains a manifest."""
+    backup_root = Path(root) if root is not None else Path(config.BACKUP_DIR)
+    if not backup_root.exists():
+        raise BackupError(f"Backup root not found: {backup_root}")
+
+    candidates = [
+        path for path in backup_root.iterdir()
+        if path.is_dir() and (path / "manifest.json").exists()
+    ]
+    if not candidates:
+        raise BackupError(f"No backups with manifest.json found in: {backup_root}")
+    return max(candidates, key=lambda path: path.name)
+
+
+def _target_is_non_empty(path: Path) -> bool:
+    return path.exists() and any(path.iterdir())
+
+
+def _prepare_verify_target(target_dir: Path, overwrite_target: bool) -> None:
+    if target_dir.exists() and not target_dir.is_dir():
+        raise BackupError(f"Verification target exists and is not a directory: {target_dir}")
+
+    if _target_is_non_empty(target_dir):
+        if not overwrite_target:
+            raise BackupError(
+                f"Verification target directory is not empty: {target_dir}"
+            )
+        shutil.rmtree(target_dir)
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+
+def _manifest_path_entry(manifest: dict, key: str) -> dict:
+    entry = manifest.get("paths", {}).get(key)
+    if not isinstance(entry, dict):
+        raise BackupError(f"Backup manifest is missing paths.{key}")
+    return entry
+
+
+def _copy_manifest_file(
+    backup_path: Path,
+    entry: dict,
+    destination: Path,
+    key: str,
+) -> dict:
+    expected = bool(entry.get("exists", False))
+    copied = {
+        "key": key,
+        "expected": expected,
+        "destination": str(destination),
+        "copied": False,
+    }
+    if not expected:
+        return copied
+
+    source_relative = entry.get("backup")
+    if not source_relative:
+        raise BackupError(f"Manifest entry missing backup path: {key}")
+    source = backup_path / source_relative
+    if not source.exists():
+        raise BackupError(f"Backup payload missing for {key}: {source}")
+    if not source.is_file():
+        raise BackupError(f"Expected backup file for {key}: {source}")
+
+    _restore_file(source, destination)
+    copied["copied"] = True
+    return copied
+
+
+def _copy_manifest_directory(
+    backup_path: Path,
+    entry: dict,
+    destination: Path,
+    key: str,
+) -> dict:
+    expected = bool(entry.get("exists", False))
+    copied = {
+        "key": key,
+        "expected": expected,
+        "destination": str(destination),
+        "copied": False,
+    }
+    if not expected:
+        return copied
+
+    source_relative = entry.get("backup")
+    if not source_relative:
+        raise BackupError(f"Manifest entry missing backup path: {key}")
+    source = backup_path / source_relative
+    if not source.exists():
+        raise BackupError(f"Backup payload missing for {key}: {source}")
+    if not source.is_dir():
+        raise BackupError(f"Expected backup directory for {key}: {source}")
+
+    _restore_directory(source, destination)
+    copied["copied"] = True
+    return copied
+
+
+def _sqlite_table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _verify_sqlite_db(
+    path: Path,
+    *,
+    required_tables: tuple[str, ...],
+    require_schema_versions: bool = False,
+) -> dict:
+    result = {
+        "exists": path.exists(),
+        "opens": False,
+        "ok": False,
+        "quick_check": None,
+        "schema_versions": [],
+        "table_counts": {},
+        "errors": [],
+    }
+    if not path.exists():
+        result["errors"].append("missing")
+        return result
+
+    uri = f"file:{path}?mode=ro"
+    try:
+        conn = sqlite3.connect(uri, uri=True, timeout=5)
+        try:
+            result["opens"] = True
+            quick_check = conn.execute("PRAGMA quick_check").fetchone()
+            result["quick_check"] = quick_check[0] if quick_check else None
+            if result["quick_check"] != "ok":
+                result["errors"].append(f"quick_check={result['quick_check']}")
+
+            for table_name in required_tables:
+                if not _sqlite_table_exists(conn, table_name):
+                    result["errors"].append(f"missing table: {table_name}")
+                    continue
+                count = conn.execute(
+                    f"SELECT COUNT(*) FROM {table_name}"
+                ).fetchone()[0]
+                result["table_counts"][table_name] = count
+
+            if require_schema_versions and _sqlite_table_exists(conn, "schema_versions"):
+                rows = conn.execute(
+                    "SELECT version, name FROM schema_versions ORDER BY version"
+                ).fetchall()
+                result["schema_versions"] = [
+                    {"version": row[0], "name": row[1]} for row in rows
+                ]
+                if not result["schema_versions"]:
+                    result["errors"].append("schema_versions is empty")
+            elif require_schema_versions:
+                result["errors"].append("missing table: schema_versions")
+        finally:
+            conn.close()
+    except Exception as exc:
+        result["errors"].append(f"{type(exc).__name__}: {exc}")
+
+    result["ok"] = result["exists"] and result["opens"] and not result["errors"]
+    return result
+
+
+def _path_readability(path: Path, expected: bool, *, kind: str) -> dict:
+    result = {
+        "expected": expected,
+        "exists": path.exists(),
+        "readable": False,
+        "ok": not expected,
+    }
+    if not expected:
+        return result
+
+    if not path.exists():
+        result["error"] = "missing"
+        return result
+
+    if kind == "directory" and not path.is_dir():
+        result["error"] = "not a directory"
+        return result
+    if kind == "file" and not path.is_file():
+        result["error"] = "not a file"
+        return result
+
+    try:
+        if kind == "directory":
+            list(path.iterdir())
+        else:
+            with path.open("rb") as handle:
+                handle.read(1)
+        result["readable"] = True
+        result["ok"] = True
+    except Exception as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
+def _verify_hash(path: Path, entry: dict, key: str) -> dict | None:
+    expected_hash = entry.get("sha256")
+    if not expected_hash:
+        return None
+    result = {
+        "key": key,
+        "expected_sha256": expected_hash,
+        "actual_sha256": None,
+        "ok": False,
+    }
+    if not path.exists() or not path.is_file():
+        result["error"] = "missing"
+        return result
+    actual_hash = _sha256_file(path)
+    result["actual_sha256"] = actual_hash
+    result["ok"] = actual_hash == expected_hash
+    return result
+
+
+def _workspace_report(workspace_path: Path, expected: bool) -> dict:
+    report = _path_readability(workspace_path, expected, kind="directory")
+    subpaths = {}
+    for relative in WORKSPACE_VERIFY_SUBPATHS:
+        subpath = workspace_path / relative
+        subpaths[relative] = {
+            "exists": subpath.exists(),
+            "readable": False,
+        }
+        if subpath.exists():
+            try:
+                list(subpath.iterdir())
+                subpaths[relative]["readable"] = True
+            except Exception as exc:
+                subpaths[relative]["error"] = f"{type(exc).__name__}: {exc}"
+    report["subpaths"] = subpaths
+    return report
+
+
+def _governance_report(target_dir: Path, manifest: dict) -> dict:
+    entries = {}
+    all_ok = True
+    for name, entry in manifest.get("governance_files", {}).items():
+        expected = bool(entry.get("exists", False))
+        path = target_dir / "governance" / name
+        item = _path_readability(path, expected, kind="file")
+        entries[name] = item
+        all_ok = all_ok and item["ok"]
+    return {
+        "ok": all_ok,
+        "files": entries,
+    }
+
+
+def verify_backup_restore(
+    backup_path: Path,
+    target_dir: Path,
+    *,
+    overwrite_target: bool = False,
+) -> dict:
+    """Restore a backup into an isolated target and verify restored state.
+
+    This helper never writes to configured runtime paths. It copies backup
+    payloads into ``target_dir`` and performs read-only verification there.
+    """
+    backup_path = Path(backup_path)
+    target_dir = Path(target_dir)
+    manifest = _load_manifest(backup_path)
+    _prepare_verify_target(target_dir, overwrite_target)
+
+    working_entry = _manifest_path_entry(manifest, "working_db")
+    archive_entry = _manifest_path_entry(manifest, "archive_db")
+    chroma_entry = _manifest_path_entry(manifest, "chroma_dir")
+    workspace_entry = _manifest_path_entry(manifest, "workspace_dir")
+
+    target_working_db = target_dir / "data" / "prod" / "working.db"
+    target_archive_db = target_dir / "data" / "prod" / "archive.db"
+    target_chroma_dir = target_dir / "data" / "prod" / "chromadb"
+    target_workspace_dir = target_dir / "workspace"
+
+    restored = [
+        _copy_manifest_file(backup_path, working_entry, target_working_db, "working_db"),
+        _copy_manifest_file(backup_path, archive_entry, target_archive_db, "archive_db"),
+        _copy_manifest_directory(backup_path, chroma_entry, target_chroma_dir, "chroma_dir"),
+        _copy_manifest_directory(
+            backup_path,
+            workspace_entry,
+            target_workspace_dir,
+            "workspace_dir",
+        ),
+    ]
+
+    for name, entry in manifest.get("governance_files", {}).items():
+        restored.append(
+            _copy_manifest_file(
+                backup_path,
+                entry,
+                target_dir / "governance" / name,
+                f"governance:{name}",
+            )
+        )
+
+    hash_checks = [
+        check for check in (
+            _verify_hash(target_working_db, working_entry, "working_db"),
+            _verify_hash(target_archive_db, archive_entry, "archive_db"),
+            *(
+                _verify_hash(target_dir / "governance" / name, entry, f"governance:{name}")
+                for name, entry in manifest.get("governance_files", {}).items()
+            ),
+        )
+        if check is not None
+    ]
+
+    working_db = _verify_sqlite_db(
+        target_working_db,
+        required_tables=WORKING_DB_VERIFY_TABLES,
+        require_schema_versions=True,
+    )
+    archive_db = _verify_sqlite_db(
+        target_archive_db,
+        required_tables=ARCHIVE_DB_VERIFY_TABLES,
+    )
+    chroma = _path_readability(
+        target_chroma_dir,
+        bool(chroma_entry.get("exists", False)),
+        kind="directory",
+    )
+    workspace = _workspace_report(
+        target_workspace_dir,
+        bool(workspace_entry.get("exists", False)),
+    )
+    governance = _governance_report(target_dir, manifest)
+    hashes_ok = all(check["ok"] for check in hash_checks)
+
+    ok = all((
+        working_db["ok"],
+        archive_db["ok"],
+        chroma["ok"],
+        workspace["ok"],
+        governance["ok"],
+        hashes_ok,
+    ))
+
+    return {
+        "ok": ok,
+        "status": "passed" if ok else "failed",
+        "backup_path": str(backup_path),
+        "target_dir": str(target_dir),
+        "manifest": {
+            "backup_version": manifest.get("backup_version"),
+            "project": manifest.get("project"),
+            "created_at": manifest.get("created_at"),
+        },
+        "restored": restored,
+        "working_db": working_db,
+        "archive_db": archive_db,
+        "chroma": chroma,
+        "workspace": workspace,
+        "governance_files": governance,
+        "hash_checks": hash_checks,
+        "hashes_ok": hashes_ok,
+        "active_environment_mutated": False,
+    }
 
 
 def _planned_restore_targets(manifest: dict) -> list[dict[str, Any]]:

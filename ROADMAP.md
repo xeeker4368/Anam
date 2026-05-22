@@ -147,6 +147,16 @@ This is a human/project evaluation aid only. It is not `soul.md`, behavioral gui
 
 This mode accepts trusted-client `user_id` only for the current household LAN/VPN deployment. It is not suitable for public internet exposure, guest access, untrusted LAN use, or sensitive admin UI expansion.
 
+### Pre-Go-Live — Backup / Restore Verification v1
+
+- [ ] Verify backups can be restored into an isolated target directory.
+- [ ] Confirm `working.db`, `archive.db`, ChromaDB, workspace files, source traces, uploads, and governance files are present/readable after restore.
+- [ ] Confirm manifest hashes where present.
+- [ ] Keep restore verification separate from active runtime paths.
+- [ ] Produce clear pass/fail operator output before go-live wipe/reset or live launch.
+
+Backup verification must not start the live server, call models, call external tools, mutate active runtime state, or commit backup artifacts.
+
 ### Phase 4 — Image / Media Capability Foundation v1
 
 Pre-go-live foundation work:
