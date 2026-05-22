@@ -282,6 +282,10 @@ def test_declarative_tool_non_200_response(mock_get, tmp_path):
     assert result["value"] == {
         "ok": False,
         "error": "HTTP GET returned status 503",
+        "error_class": "HTTPError",
+        "error_type": "http_error",
+        "status_code": 503,
+        "url": "https://example.com/api/status",
     }
 
 
@@ -290,7 +294,7 @@ def test_declarative_tool_timeout_and_connection_failure(mock_get, tmp_path):
     _write_skill(tmp_path, skill_yaml=_base_skill_yaml())
     registry = SkillRegistry.from_directory(tmp_path)
 
-    mock_get.side_effect = requests.Timeout("timed out")
+    mock_get.side_effect = requests.ReadTimeout("timed out")
     timeout_result = registry.dispatch("example_status", {})
 
     mock_get.side_effect = requests.ConnectionError("down")
@@ -298,12 +302,41 @@ def test_declarative_tool_timeout_and_connection_failure(mock_get, tmp_path):
 
     assert timeout_result["value"] == {
         "ok": False,
-        "error": "HTTP request failed: Timeout: timed out",
+        "error": "HTTP request failed: ReadTimeout: timed out",
+        "error_class": "ReadTimeout",
+        "error_type": "timeout",
     }
     assert connection_result["value"] == {
         "ok": False,
         "error": "HTTP request failed: ConnectionError: down",
+        "error_class": "ConnectionError",
+        "error_type": "network_error",
     }
+
+
+@patch("tir.tools.http_declarative.requests.get")
+def test_declarative_tool_timeout_metadata_does_not_leak_bearer_token(
+    mock_get,
+    monkeypatch,
+    tmp_path,
+):
+    skill_yaml = _base_skill_yaml(
+        auth="""    auth:
+      type: bearer_env
+      env: EXAMPLE_API_TOKEN
+"""
+    )
+    _write_skill(tmp_path, skill_yaml=skill_yaml)
+    monkeypatch.setenv("EXAMPLE_API_TOKEN", "super-secret-token")
+    mock_get.side_effect = requests.ReadTimeout("timed out")
+    registry = SkillRegistry.from_directory(tmp_path)
+
+    result = registry.dispatch("example_status", {})
+
+    assert result["ok"] is True
+    assert result["value"]["error_class"] == "ReadTimeout"
+    assert result["value"]["error_type"] == "timeout"
+    assert "super-secret-token" not in str(result)
 
 
 @patch("tir.tools.http_declarative.requests.get")
@@ -319,6 +352,8 @@ def test_declarative_tool_response_size_cap(mock_get, tmp_path):
     assert result["value"] == {
         "ok": False,
         "error": "HTTP response exceeded 1000 bytes",
+        "error_class": "ValueError",
+        "error_type": "tool_error",
     }
 
 

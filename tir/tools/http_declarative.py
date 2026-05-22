@@ -115,16 +115,10 @@ class DeclarativeHttpTool:
                 allow_redirects=False,
             )
         except requests.RequestException as exc:
-            return {
-                "ok": False,
-                "error": f"HTTP request failed: {type(exc).__name__}: {exc}",
-            }
+            return _http_exception_failure(exc)
 
         if response.status_code != 200:
-            return {
-                "ok": False,
-                "error": f"HTTP GET returned status {response.status_code}",
-            }
+            return _http_status_failure(response)
 
         try:
             response_bytes = _read_response_bytes(
@@ -132,7 +126,7 @@ class DeclarativeHttpTool:
                 self.config.max_response_bytes,
             )
         except (requests.RequestException, ValueError) as exc:
-            return {"ok": False, "error": str(exc)}
+            return _http_exception_failure(exc, prefix=False)
 
         content_type = response.headers.get("Content-Type", "")
         text = _decode_response(response_bytes, response)
@@ -575,6 +569,51 @@ def _build_request_url(
         return None, str(exc)
 
     return final_url, None
+
+
+def _safe_response_url(response) -> str | None:
+    url = getattr(response, "url", None)
+    return str(url) if url else None
+
+
+def _error_type_for_exception(exc: Exception) -> str:
+    if isinstance(exc, requests.Timeout):
+        return "timeout"
+    if isinstance(exc, requests.ConnectionError):
+        return "network_error"
+    if isinstance(exc, requests.RequestException):
+        return "tool_error"
+    return "tool_error"
+
+
+def _http_exception_failure(exc: Exception, *, prefix: bool = True) -> dict:
+    error_class = type(exc).__name__
+    error_text = (
+        f"HTTP request failed: {error_class}: {exc}"
+        if prefix
+        else str(exc)
+    )
+    return {
+        "ok": False,
+        "error": error_text,
+        "error_class": error_class,
+        "error_type": _error_type_for_exception(exc),
+    }
+
+
+def _http_status_failure(response) -> dict:
+    status_code = int(response.status_code)
+    result = {
+        "ok": False,
+        "error": f"HTTP GET returned status {status_code}",
+        "error_class": "HTTPError",
+        "error_type": "http_error",
+        "status_code": status_code,
+    }
+    url = _safe_response_url(response)
+    if url:
+        result["url"] = url
+    return result
 
 
 def _read_response_bytes(response, max_response_bytes: int) -> bytes:

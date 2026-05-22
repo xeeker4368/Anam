@@ -377,6 +377,29 @@ def test_inner_read_timeout_returns_collection_error_trace():
     assert "moltbook-secret-token" not in json.dumps(trace)
 
 
+def test_structured_timeout_fields_drive_collection_error_classification():
+    registry = FailingRegistry(
+        {
+            "ok": False,
+            "error": "Moltbook collection failed",
+            "error_class": "ReadTimeout",
+            "error_type": "timeout",
+            "text": "raw payload should not be copied moltbook-secret-token",
+            "headers": {"Authorization": "Bearer moltbook-secret-token"},
+        }
+    )
+
+    trace = collect_moltbook_source_preview(feed=True, limit=3, registry=registry)
+
+    assert trace["collection_error"] is True
+    assert trace["error_type"] == "timeout"
+    assert trace["no_usable_results"] is False
+    assert trace["tool_calls"][0]["error"] == "Moltbook collection failed"
+    assert trace["tool_calls"][0]["error_class"] == "ReadTimeout"
+    assert trace["tool_calls"][0]["error_type"] == "timeout"
+    assert "moltbook-secret-token" not in json.dumps(trace)
+
+
 def test_http_500_returns_collection_error_with_status_code():
     registry = FailingRegistry(
         {
@@ -398,6 +421,29 @@ def test_http_500_returns_collection_error_with_status_code():
     assert trace["results"] == []
     assert trace["no_usable_results"] is False
     assert trace["no_result_note"] is None
+
+
+def test_structured_status_code_drives_http_error_classification():
+    registry = FailingRegistry(
+        {
+            "ok": False,
+            "error": "Moltbook collection failed",
+            "error_class": "HTTPError",
+            "error_type": "http_error",
+            "status_code": 500,
+            "url": "https://www.moltbook.com/api/v1/posts?sort=new&limit=3",
+        }
+    )
+
+    trace = collect_moltbook_source_preview(feed=True, limit=3, registry=registry)
+
+    assert trace["collection_error"] is True
+    assert trace["error_type"] == "http_error"
+    assert trace["status_code"] == 500
+    assert trace["path"] == "/api/v1/posts?sort=new&limit=3"
+    assert trace["no_usable_results"] is False
+    assert trace["tool_calls"][0]["status_code"] == 500
+    assert trace["tool_calls"][0]["error_type"] == "http_error"
 
 
 def test_registry_level_failure_returns_tool_error_trace():

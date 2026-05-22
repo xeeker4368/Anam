@@ -307,6 +307,8 @@ def _status_code_from_error(error: str, value: dict | None) -> int | None:
         status_code = value.get("status_code")
         if isinstance(status_code, int):
             return status_code
+        if isinstance(status_code, str) and status_code.isdigit():
+            return int(status_code)
 
     text_sources = [error or ""]
     if isinstance(value, dict) and isinstance(value.get("text"), str):
@@ -320,15 +322,51 @@ def _status_code_from_error(error: str, value: dict | None) -> int | None:
     return None
 
 
+def _structured_error_type(value: dict | None) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    error_type = value.get("error_type")
+    if error_type in {"timeout", "http_error", "network_error", "tool_error"}:
+        return error_type
+    return None
+
+
+def _structured_error_class(value: dict | None) -> str:
+    if not isinstance(value, dict):
+        return ""
+    error_class = value.get("error_class")
+    return str(error_class or "")
+
+
 def _classify_collection_error(error: str, value: dict | None) -> tuple[str, int | None]:
     error_text = error or ""
     lowered = error_text.lower()
     status_code = _status_code_from_error(error_text, value)
+    structured_error_type = _structured_error_type(value)
+    error_class = _structured_error_class(value).lower()
+
+    if structured_error_type == "timeout" or "timeout" in error_class:
+        return "timeout", status_code
+    if status_code is not None or structured_error_type == "http_error":
+        return "http_error", status_code
+    if structured_error_type == "network_error":
+        return "network_error", status_code
+    if structured_error_type == "tool_error":
+        return "tool_error", status_code
+
     if "readtimeout" in lowered or "timeout" in lowered or "timed out" in lowered:
         return "timeout", status_code
     if status_code is not None:
         return "http_error", status_code
-    return "tool_error", None
+    return "tool_error", status_code
+
+
+def _copy_structured_error_fields(tool_call: dict, value: dict | None) -> None:
+    if not isinstance(value, dict):
+        return
+    for key in ("error_type", "error_class", "status_code", "url"):
+        if value.get(key) is not None:
+            tool_call[key] = value[key]
 
 
 def _apply_collection_failure(
@@ -384,6 +422,10 @@ def _dispatch_moltbook(
     if not isinstance(value, dict) or not value.get("ok"):
         error = value.get("error") if isinstance(value, dict) else None
         tool_call["error"] = error or f"{tool_name} returned an invalid response"
+        _copy_structured_error_fields(
+            tool_call,
+            value if isinstance(value, dict) else None,
+        )
         return value if isinstance(value, dict) else None, tool_call, True
     return value, tool_call, False
 
