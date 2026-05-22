@@ -11,6 +11,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 
 from tir.config import SKILLS_DIR, WORKSPACE_DIR
 from tir.tools.registry import SkillRegistry
@@ -26,7 +27,10 @@ NO_RESULT_NOTE = (
     "No usable Moltbook results were returned. This is not evidence that no "
     "relevant material exists."
 )
+COLLECTION_FAILURE_NOTE = "This is not evidence that no relevant Moltbook material exists."
 FEED_SORTS = {"hot", "new", "top", "rising"}
+HTTP_STATUS_RE = re.compile(r"HTTP GET returned status\s+(\d+)")
+STATUS_CODE_RE = re.compile(r'"statusCode"\s*:\s*(\d+)')
 
 
 class MoltbookSourcePreviewError(ValueError):
@@ -126,7 +130,7 @@ def _is_post_like(item: dict, *, feed: bool = False) -> bool:
         "mentions",
     }:
         return False
-    if feed and result_type == "unknown":
+    if feed:
         return True
     return result_type in {"post", "posts"} or isinstance(item.get("post"), dict)
 
@@ -253,6 +257,9 @@ def _base_trace(
         "omitted_reasons": [],
         "no_external_write_confirmed": True,
         "verification_status_is_metadata_only": True,
+        "collection_error": False,
+        "error_type": None,
+        "error_note": None,
         "no_usable_results": False,
         "no_result_note": None,
     }
@@ -275,12 +282,91 @@ def _json_payload_from_tool_value(value: dict):
     return value.get("json")
 
 
+def _safe_moltbook_path(tool_name: str, arguments: dict) -> str | None:
+    if tool_name == "moltbook_feed":
+        query = urlencode(
+            {
+                "sort": arguments.get("sort") or "new",
+                "limit": arguments.get("limit"),
+            }
+        )
+        return f"/api/v1/posts?{query}"
+    if tool_name == "moltbook_search":
+        query = urlencode(
+            {
+                "q": arguments.get("q") or "",
+                "limit": arguments.get("limit"),
+            }
+        )
+        return f"/api/v1/search?{query}"
+    return None
+
+
+def _status_code_from_error(error: str, value: dict | None) -> int | None:
+    if isinstance(value, dict):
+        status_code = value.get("status_code")
+        if isinstance(status_code, int):
+            return status_code
+
+    text_sources = [error or ""]
+    if isinstance(value, dict) and isinstance(value.get("text"), str):
+        text_sources.append(value["text"])
+
+    for pattern in (HTTP_STATUS_RE, STATUS_CODE_RE):
+        for text in text_sources:
+            match = pattern.search(text)
+            if match:
+                return int(match.group(1))
+    return None
+
+
+def _classify_collection_error(error: str, value: dict | None) -> tuple[str, int | None]:
+    error_text = error or ""
+    lowered = error_text.lower()
+    status_code = _status_code_from_error(error_text, value)
+    if "readtimeout" in lowered or "timeout" in lowered or "timed out" in lowered:
+        return "timeout", status_code
+    if status_code is not None:
+        return "http_error", status_code
+    return "tool_error", None
+
+
+def _apply_collection_failure(
+    trace: dict,
+    *,
+    tool_call: dict,
+    tool_value: dict | None,
+) -> dict:
+    error = str(tool_call.get("error") or "Moltbook tool collection failed")
+    error_type, status_code = _classify_collection_error(error, tool_value)
+    path = _safe_moltbook_path(
+        str(tool_call.get("tool_name") or ""),
+        tool_call.get("arguments") or {},
+    )
+
+    trace["tool_calls"].append(tool_call)
+    trace["results"] = []
+    trace["omitted_count"] = 0
+    trace["omitted_reasons"] = []
+    trace["collection_error"] = True
+    trace["error_type"] = error_type
+    trace["error_note"] = COLLECTION_FAILURE_NOTE
+    trace["tool_name"] = tool_call.get("tool_name")
+    trace["no_usable_results"] = False
+    trace["no_result_note"] = None
+    if status_code is not None:
+        trace["status_code"] = status_code
+    if path:
+        trace["path"] = path
+    return trace
+
+
 def _dispatch_moltbook(
     *,
     registry,
     tool_name: str,
     arguments: dict,
-) -> tuple[dict, dict]:
+) -> tuple[dict | None, dict, bool]:
     envelope = registry.dispatch(tool_name, arguments)
     tool_call = {
         "tool_name": tool_name,
@@ -291,15 +377,15 @@ def _dispatch_moltbook(
         tool_call["normalized_args"] = envelope["normalized_args"]
     if not envelope.get("ok"):
         tool_call["error"] = envelope.get("error")
-        raise MoltbookSourcePreviewError(envelope.get("error") or f"{tool_name} failed")
+        return None, tool_call, True
 
     value = envelope.get("value")
     tool_call["tool_returned_ok"] = bool(isinstance(value, dict) and value.get("ok"))
     if not isinstance(value, dict) or not value.get("ok"):
         error = value.get("error") if isinstance(value, dict) else None
         tool_call["error"] = error or f"{tool_name} returned an invalid response"
-        raise MoltbookSourcePreviewError(tool_call["error"])
-    return value, tool_call
+        return value if isinstance(value, dict) else None, tool_call, True
+    return value, tool_call, False
 
 
 def _slugify(value: str) -> str:
@@ -364,22 +450,20 @@ def collect_moltbook_source_preview(
         limit=bounded_limit,
     )
 
-    try:
-        tool_value, tool_call = _dispatch_moltbook(
-            registry=registry,
-            tool_name=tool_name,
-            arguments=arguments,
+    tool_value, tool_call, collection_failed = _dispatch_moltbook(
+        registry=registry,
+        tool_name=tool_name,
+        arguments=arguments,
+    )
+    if collection_failed:
+        _apply_collection_failure(
+            trace,
+            tool_call=tool_call,
+            tool_value=tool_value,
         )
-    except MoltbookSourcePreviewError as exc:
-        trace["tool_calls"].append(
-            {
-                "tool_name": tool_name,
-                "arguments": arguments,
-                "ok": False,
-                "error": str(exc),
-            }
-        )
-        raise
+        if write_trace:
+            write_source_trace(trace, workspace_root=workspace_root)
+        return trace
 
     payload = _json_payload_from_tool_value(tool_value)
     raw_results = _extract_results(payload)

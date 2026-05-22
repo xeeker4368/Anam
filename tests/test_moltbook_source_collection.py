@@ -28,6 +28,27 @@ class FakeRegistry:
         }
 
 
+class FailingRegistry:
+    def __init__(self, value=None, *, envelope_ok=True, envelope_error=None):
+        self.value = value
+        self.envelope_ok = envelope_ok
+        self.envelope_error = envelope_error
+        self.calls = []
+
+    def dispatch(self, tool_name, args):
+        self.calls.append((tool_name, dict(args)))
+        if not self.envelope_ok:
+            return {
+                "ok": False,
+                "error": self.envelope_error or f"{tool_name} dispatch failed",
+            }
+        return {
+            "ok": True,
+            "value": self.value,
+            "normalized_args": dict(args),
+        }
+
+
 def _post(**overrides):
     post = {
         "id": "post-1",
@@ -162,6 +183,29 @@ def test_feed_raw_post_objects_without_search_markers_compact():
     assert "body" not in result
 
 
+def test_feed_post_content_type_is_not_treated_as_search_result_type():
+    registry = FakeRegistry(
+        {
+            "posts": [
+                _raw_feed_post(
+                    id="feed-text-post",
+                    type="text",
+                    name="Feed text post",
+                    body="Text post body.",
+                )
+            ]
+        }
+    )
+
+    trace = collect_moltbook_source_preview(feed=True, registry=registry)
+
+    assert trace["results"][0]["post_id"] == "feed-text-post"
+    assert trace["results"][0]["title"] == "Feed text post"
+    assert trace["results"][0]["content_excerpt"] == "Text post body."
+    assert trace["omitted_count"] == 0
+    assert trace["no_usable_results"] is False
+
+
 def test_explicit_limit_works():
     registry = FakeRegistry({"results": []})
 
@@ -263,8 +307,121 @@ def test_no_result_trace_is_success_and_warns_against_absence_proof():
     trace = collect_moltbook_source_preview(query="unlikely query", registry=registry)
 
     assert trace["results"] == []
+    assert trace["collection_error"] is False
     assert trace["no_usable_results"] is True
     assert "not evidence that no relevant material exists" in trace["no_result_note"]
+
+
+def test_inner_read_timeout_returns_collection_error_trace():
+    registry = FailingRegistry(
+        {
+            "ok": False,
+            "error": (
+                "HTTP request failed: ReadTimeout: HTTPSConnectionPool("
+                "host='www.moltbook.com', port=443): Read timed out. "
+                "(read timeout=10.0)"
+            ),
+            "text": "raw payload should not be copied moltbook-secret-token",
+            "headers": {"Authorization": "Bearer moltbook-secret-token"},
+        }
+    )
+
+    trace = collect_moltbook_source_preview(feed=True, limit=3, registry=registry)
+
+    assert registry.calls == [("moltbook_feed", {"sort": "new", "limit": 3})]
+    assert trace["collection_error"] is True
+    assert trace["error_type"] == "timeout"
+    assert trace["results"] == []
+    assert trace["omitted_count"] == 0
+    assert trace["omitted_reasons"] == []
+    assert trace["no_usable_results"] is False
+    assert trace["no_result_note"] is None
+    assert trace["error_note"] == (
+        "This is not evidence that no relevant Moltbook material exists."
+    )
+    assert trace["path"] == "/api/v1/posts?sort=new&limit=3"
+    assert trace["tool_calls"] == [
+        {
+            "tool_name": "moltbook_feed",
+            "arguments": {"sort": "new", "limit": 3},
+            "ok": True,
+            "normalized_args": {"sort": "new", "limit": 3},
+            "tool_returned_ok": False,
+            "error": (
+                "HTTP request failed: ReadTimeout: HTTPSConnectionPool("
+                "host='www.moltbook.com', port=443): Read timed out. "
+                "(read timeout=10.0)"
+            ),
+        }
+    ]
+    assert "moltbook-secret-token" not in json.dumps(trace)
+
+
+def test_http_500_returns_collection_error_with_status_code():
+    registry = FailingRegistry(
+        {
+            "ok": False,
+            "error": "HTTP GET returned status 500",
+            "text": (
+                '{"statusCode":500,"message":"Internal server error",'
+                '"path":"/api/v1/posts?sort=new&limit=3","error":"Error"}'
+            ),
+        }
+    )
+
+    trace = collect_moltbook_source_preview(feed=True, limit=3, registry=registry)
+
+    assert trace["collection_error"] is True
+    assert trace["error_type"] == "http_error"
+    assert trace["status_code"] == 500
+    assert trace["path"] == "/api/v1/posts?sort=new&limit=3"
+    assert trace["results"] == []
+    assert trace["no_usable_results"] is False
+    assert trace["no_result_note"] is None
+
+
+def test_registry_level_failure_returns_tool_error_trace():
+    registry = FailingRegistry(envelope_ok=False, envelope_error="registry unavailable")
+
+    trace = collect_moltbook_source_preview(query="agents", registry=registry)
+
+    assert trace["collection_error"] is True
+    assert trace["error_type"] == "tool_error"
+    assert trace["tool_name"] == "moltbook_search"
+    assert trace["path"] == "/api/v1/search?q=agents&limit=10"
+    assert trace["no_usable_results"] is False
+    assert trace["tool_calls"] == [
+        {
+            "tool_name": "moltbook_search",
+            "arguments": {"q": "agents", "limit": 10},
+            "ok": False,
+            "error": "registry unavailable",
+        }
+    ]
+
+
+def test_write_trace_writes_failure_trace_when_requested(tmp_path):
+    registry = FailingRegistry(
+        {"ok": False, "error": "HTTP GET returned status 500"}
+    )
+    workspace_root = tmp_path / "workspace"
+
+    trace = collect_moltbook_source_preview(
+        feed=True,
+        limit=3,
+        registry=registry,
+        write_trace=True,
+        workspace_root=workspace_root,
+    )
+
+    assert trace["collection_error"] is True
+    assert trace["trace_path"].startswith("research/source-traces/")
+    written = Path(workspace_root / trace["trace_path"])
+    assert written.exists()
+    stored = json.loads(written.read_text(encoding="utf-8"))
+    assert stored == trace
+    assert stored["results"] == []
+    assert stored["error_type"] == "http_error"
 
 
 def test_explicit_non_post_results_are_omitted():
