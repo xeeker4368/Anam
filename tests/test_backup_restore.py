@@ -302,6 +302,79 @@ def test_restore_to_clean_temp_runtime_restores_db_and_workspace(temp_backup_env
     assert (tmp_path / "data" / "prod" / "chromadb" / "index.bin").read_bytes() == b"vector data"
 
 
+def test_restore_missing_source_file_rejected_before_destination_touched(temp_backup_env):
+    db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
+    db_mod.create_user("Before")
+    summary = backup_mod.create_backup()
+    backup_path = tmp_path / "backups" / summary["backup_path"].split("/")[-1]
+    (backup_path / "runtime" / "working.db").unlink()
+    db_mod.create_user("After")
+
+    with pytest.raises(backup_mod.BackupError, match="working_db"):
+        backup_mod.restore_backup(summary["backup_path"], force=True)
+
+    assert db_mod.get_user_by_name("Before") is not None
+    assert db_mod.get_user_by_name("After") is not None
+
+
+def test_restore_missing_source_directory_rejected_before_destination_touched(temp_backup_env):
+    _db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
+    _write_runtime_dirs(tmp_path)
+    summary = backup_mod.create_backup()
+    backup_path = tmp_path / "backups" / summary["backup_path"].split("/")[-1]
+    shutil.rmtree(backup_path / "workspace")
+    (tmp_path / "workspace" / "note.txt").write_text("mutated", encoding="utf-8")
+
+    with pytest.raises(backup_mod.BackupError, match="workspace_dir"):
+        backup_mod.restore_backup(summary["backup_path"], force=True)
+
+    assert (tmp_path / "workspace" / "note.txt").read_text(encoding="utf-8") == "mutated"
+
+
+def test_directory_copy_failure_leaves_existing_destination_intact(
+    temp_backup_env,
+    monkeypatch,
+):
+    _db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
+    source = tmp_path / "source-dir"
+    destination = tmp_path / "destination-dir"
+    source.mkdir()
+    destination.mkdir()
+    (source / "restored.txt").write_text("restored", encoding="utf-8")
+    (destination / "existing.txt").write_text("existing", encoding="utf-8")
+
+    def fail_copytree(_source, _destination, *args, **kwargs):
+        raise OSError("copy failed")
+
+    monkeypatch.setattr(backup_mod.shutil, "copytree", fail_copytree)
+
+    with pytest.raises(OSError, match="copy failed"):
+        backup_mod._restore_directory(source, destination)
+
+    assert (destination / "existing.txt").read_text(encoding="utf-8") == "existing"
+    assert not (destination / "restored.txt").exists()
+
+
+def test_successful_directory_restore_replaces_destination_and_cleans_temp(temp_backup_env):
+    _db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
+    source = tmp_path / "source-dir"
+    destination = tmp_path / "destination-dir"
+    source.mkdir()
+    destination.mkdir()
+    (source / "restored.txt").write_text("restored", encoding="utf-8")
+    (destination / "existing.txt").write_text("existing", encoding="utf-8")
+
+    backup_mod._restore_directory(source, destination)
+
+    assert (destination / "restored.txt").read_text(encoding="utf-8") == "restored"
+    assert not (destination / "existing.txt").exists()
+    leftovers = [
+        path.name for path in tmp_path.iterdir()
+        if path.name.startswith(".destination-dir.restore-")
+    ]
+    assert leftovers == []
+
+
 def test_backup_restore_verify_succeeds_for_complete_backup(temp_backup_env):
     db_mod, backup_mod, _admin_mod, tmp_path = temp_backup_env
     db_mod.create_user("Lyle")

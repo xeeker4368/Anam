@@ -2,8 +2,10 @@
 
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -671,16 +673,111 @@ def _planned_restore_targets(manifest: dict) -> list[dict[str, Any]]:
     return targets
 
 
+def _restore_temp_path(destination: Path, *, kind: str) -> Path:
+    name = f".{destination.name}.restore-{kind}-{uuid.uuid4().hex}"
+    return destination.parent / name
+
+
+def _validate_restore_sources(
+    backup_path: Path,
+    targets: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Validate every restore payload before touching any destination."""
+    validated = []
+    for target in targets:
+        if not target["exists"]:
+            continue
+
+        source_relative = target["source"]
+        if not source_relative:
+            raise BackupError(f"Manifest entry missing backup path: {target['key']}")
+
+        source = backup_path / source_relative
+        if not source.exists():
+            raise BackupError(f"Backup payload missing for {target['key']}: {source}")
+
+        if target["kind"] == "file" and not source.is_file():
+            raise BackupError(f"Expected backup file for {target['key']}: {source}")
+        if target["kind"] == "directory" and not source.is_dir():
+            raise BackupError(f"Expected backup directory for {target['key']}: {source}")
+        if target["kind"] not in {"file", "directory"}:
+            raise BackupError(f"Unsupported restore target kind: {target['kind']}")
+
+        validated.append({
+            **target,
+            "source_path": source,
+        })
+    return validated
+
+
 def _restore_file(source: Path, destination: Path) -> None:
+    if not source.exists():
+        raise BackupError(f"Backup payload missing: {source}")
+    if not source.is_file():
+        raise BackupError(f"Expected backup file: {source}")
+    if destination.exists() and destination.is_dir():
+        raise BackupError(f"Cannot restore file over directory: {destination}")
+
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
+    temp_path = _restore_temp_path(destination, kind="file")
+    try:
+        shutil.copy2(source, temp_path)
+        os.replace(temp_path, destination)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 
 def _restore_directory(source: Path, destination: Path) -> None:
+    if not source.exists():
+        raise BackupError(f"Backup payload missing: {source}")
+    if not source.is_dir():
+        raise BackupError(f"Expected backup directory: {source}")
+    if destination.exists() and not destination.is_dir():
+        raise BackupError(f"Cannot restore directory over non-directory: {destination}")
+
     destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.exists():
-        shutil.rmtree(destination)
-    shutil.copytree(source, destination)
+    temp_path = _restore_temp_path(destination, kind="dir")
+    old_path = _restore_temp_path(destination, kind="old")
+    copied = False
+    old_moved = False
+    try:
+        shutil.copytree(source, temp_path)
+        copied = True
+        if destination.exists():
+            destination.rename(old_path)
+            old_moved = True
+        temp_path.rename(destination)
+        copied = False
+        if old_moved and old_path.exists():
+            shutil.rmtree(old_path)
+            old_moved = False
+    except Exception:
+        if copied and temp_path.exists():
+            shutil.rmtree(temp_path)
+        if old_moved and old_path.exists() and not destination.exists():
+            old_path.rename(destination)
+            old_moved = False
+        raise
+    finally:
+        if temp_path.exists():
+            shutil.rmtree(temp_path)
+        if old_moved and old_path.exists():
+            shutil.rmtree(old_path)
+
+
+def _restore_target(target: dict[str, Any]) -> dict[str, str]:
+    destination = target["destination"]
+    if target["kind"] == "file":
+        _restore_file(target["source_path"], destination)
+    elif target["kind"] == "directory":
+        _restore_directory(target["source_path"], destination)
+    else:
+        raise BackupError(f"Unsupported restore target kind: {target['kind']}")
+    return {
+        "key": target["key"],
+        "destination": str(destination),
+    }
 
 
 def restore_backup(
@@ -730,35 +827,16 @@ def restore_backup(
             "warnings": ["Restore should be run with the app stopped."],
         }
 
+    validated_targets = _validate_restore_sources(backup_path, targets)
+
     pre_restore = _create_backup_at(
         Path(config.BACKUP_DIR),
         f"pre-restore-{_utc_timestamp()}",
     )
 
     restored = []
-    for target in targets:
-        if not target["exists"]:
-            continue
-
-        source_relative = target["source"]
-        if not source_relative:
-            raise BackupError(f"Manifest entry missing backup path: {target['key']}")
-        source = backup_path / source_relative
-        if not source.exists():
-            raise BackupError(f"Backup payload missing: {source}")
-
-        destination = target["destination"]
-        if target["kind"] == "file":
-            _restore_file(source, destination)
-        elif target["kind"] == "directory":
-            _restore_directory(source, destination)
-        else:
-            raise BackupError(f"Unsupported restore target kind: {target['kind']}")
-
-        restored.append({
-            "key": target["key"],
-            "destination": str(destination),
-        })
+    for target in validated_targets:
+        restored.append(_restore_target(target))
 
     return {
         "ok": True,
