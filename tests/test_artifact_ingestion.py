@@ -297,6 +297,129 @@ def test_unsupported_file_writes_event_chunk_only(temp_ingestion_env):
     assert result["artifact"]["metadata"]["indexing_status"] == "metadata_only"
 
 
+@pytest.mark.parametrize("filename", ["diagram.png", "photo.jpeg"])
+def test_image_upload_gets_uploaded_image_media_metadata(temp_ingestion_env, filename):
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        result = ingest_artifact_file(
+            filename=filename,
+            content=b"image bytes",
+            user_id="user-image",
+            source_conversation_id="conv-image",
+            source_message_id="msg-image",
+            workspace_root=temp_ingestion_env["workspace_root"],
+        )
+
+    artifact = result["artifact"]
+    metadata = artifact["metadata"]
+    assert artifact["artifact_type"] == "image"
+    assert metadata["media_kind"] == "uploaded_image"
+    assert metadata["media_foundation_version"] == "image_media_foundation_v1"
+    assert metadata["source_user_id"] == "user-image"
+    assert metadata["source_conversation_id"] == "conv-image"
+    assert metadata["source_message_id"] == "msg-image"
+    assert metadata["human_confirmed"] is False
+    assert metadata["intended_use"] == "general"
+    assert result["indexing"]["status"] == "metadata_only"
+    assert result["indexing"]["content_chunks_written"] == 0
+
+
+def test_screenshot_media_kind_can_be_supplied(temp_ingestion_env):
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        result = ingest_artifact_file(
+            filename="capture.png",
+            content=b"image bytes",
+            metadata={"media_kind": "screenshot", "intended_use": "reference"},
+            workspace_root=temp_ingestion_env["workspace_root"],
+        )
+
+    metadata = result["artifact"]["metadata"]
+    assert metadata["media_kind"] == "screenshot"
+    assert metadata["intended_use"] == "reference"
+
+
+def test_generated_image_provenance_fields_are_preserved(temp_ingestion_env):
+    captured = []
+
+    def capture_upsert(chunk_id, text, metadata):
+        captured.append({"chunk_id": chunk_id, "text": text, "metadata": metadata})
+
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        original = ingest_artifact_file(
+            filename="original.png",
+            content=b"\x89PNG original",
+            workspace_root=temp_ingestion_env["workspace_root"],
+        )
+
+    with patch("tir.memory.artifact_indexing.upsert_chunk", side_effect=capture_upsert):
+        result = ingest_artifact_file(
+            filename="generated.png",
+            content=b"\x89PNG generated image bytes",
+            artifact_type="generated_file",
+            source="generation",
+            created_by="tool",
+            user_id="user-gen",
+            source_conversation_id="conv-gen",
+            source_message_id="msg-gen",
+            revision_of=original["artifact"]["artifact_id"],
+            metadata={
+                "prompt": "a careful artifact provenance test",
+                "negative_prompt": "no identity assignment",
+                "generation_backend": "local-test-backend",
+                "generation_model": "test-image-model",
+                "generation_params": {"seed": 7},
+                "source_artifact_id": "artifact-source",
+                "observed_description": "A generated test image.",
+                "human_confirmed": True,
+                "uncertainty_label": "human_confirmed_description",
+                "interpretation_source": "human",
+                "intended_use": "reference",
+            },
+            workspace_root=temp_ingestion_env["workspace_root"],
+        )
+
+    metadata = result["artifact"]["metadata"]
+    assert metadata["media_kind"] == "generated_image"
+    assert metadata["prompt"] == "a careful artifact provenance test"
+    assert metadata["negative_prompt"] == "no identity assignment"
+    assert metadata["generation_backend"] == "local-test-backend"
+    assert metadata["generation_model"] == "test-image-model"
+    assert metadata["generation_params"] == {"seed": 7}
+    assert metadata["source_artifact_id"] == "artifact-source"
+    assert metadata["observed_description"] == "A generated test image."
+    assert metadata["human_confirmed"] is True
+    assert metadata["uncertainty_label"] == "human_confirmed_description"
+    assert metadata["interpretation_source"] == "human"
+    assert metadata["intended_use"] == "reference"
+    assert metadata["source_user_id"] == "user-gen"
+    assert metadata["source_conversation_id"] == "conv-gen"
+    assert metadata["source_message_id"] == "msg-gen"
+    assert metadata["revision_of"] == original["artifact"]["artifact_id"]
+    assert result["indexing"]["content_chunks_written"] == 0
+    assert len(captured) == 1
+    event = captured[0]
+    assert event["metadata"]["media_kind"] == "generated_image"
+    assert "Generation prompt (provenance metadata): a careful artifact provenance test" in event["text"]
+    assert "Observed description (human_confirmed_description; visual interpretation, not verified fact)" in event["text"]
+    assert "generated image bytes" not in event["text"]
+
+
+def test_image_binary_bytes_are_not_indexed_into_fts(temp_ingestion_env):
+    raw_content = b"\x89PNG\r\nraw-image-marker"
+    with patch("tir.memory.artifact_indexing.upsert_chunk"):
+        result = ingest_artifact_file(
+            filename="raw.png",
+            content=raw_content,
+            description="Operator supplied visual reference.",
+            workspace_root=temp_ingestion_env["workspace_root"],
+        )
+
+    assert result["indexing"]["content_chunks_written"] == 0
+    rows = _fts_rows(temp_ingestion_env["working_db"])
+    assert len(rows) == 1
+    assert "raw-image-marker" not in rows[0]["text"]
+    assert "Description (artifact metadata, not raw image content)" in rows[0]["text"]
+
+
 def test_duplicate_hash_upload_does_not_silently_overwrite(temp_ingestion_env):
     with patch("tir.memory.artifact_indexing.upsert_chunk"):
         first = ingest_artifact_file(

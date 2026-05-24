@@ -18,6 +18,11 @@ from tir.artifacts.governance_blocklist import (
     is_governance_file_name,
     is_source_trace_path,
 )
+from tir.artifacts.media import (
+    MediaMetadataError,
+    media_indexing_metadata,
+    normalize_media_metadata,
+)
 from tir.config import WORKSPACE_DIR
 from tir.artifacts.source_roles import (
     default_origin,
@@ -154,6 +159,26 @@ def ingest_artifact_file(
     if len(content) > MAX_INGEST_BYTES:
         raise ArtifactIngestionError("file exceeds ingestion size limit")
 
+    safe_filename = _safe_filename(filename)
+    original_filename = Path(filename.replace("\\", "/")).name
+    mime_type = _mime_type_for_filename(safe_filename)
+
+    try:
+        artifact_type, normalized_metadata = normalize_media_metadata(
+            filename=safe_filename,
+            mime_type=mime_type,
+            artifact_type=artifact_type,
+            source=source,
+            created_by=created_by,
+            user_id=user_id,
+            source_conversation_id=source_conversation_id,
+            source_message_id=source_message_id,
+            revision_of=revision_of,
+            metadata=metadata,
+        )
+    except MediaMetadataError as exc:
+        raise ArtifactIngestionError(str(exc)) from exc
+
     if artifact_type not in ALLOWED_ARTIFACT_TYPES:
         raise ArtifactIngestionError(f"Invalid artifact_type: {artifact_type}")
     if status not in ALLOWED_ARTIFACT_STATUSES:
@@ -179,8 +204,6 @@ def ingest_artifact_file(
     )
 
     artifact_id = str(uuid.uuid4())
-    safe_filename = _safe_filename(filename)
-    original_filename = Path(filename.replace("\\", "/")).name
     relative_path = _storage_path(
         artifact_id=artifact_id,
         safe_filename=safe_filename,
@@ -191,7 +214,6 @@ def ingest_artifact_file(
     resolved_path = resolve_workspace_path(relative_path, workspace_root)
     normalized_path = resolved_path.relative_to(Path(workspace_root).resolve()).as_posix()
 
-    mime_type = _mime_type_for_filename(safe_filename)
     sha256 = hashlib.sha256(content).hexdigest()
     size_bytes = len(content)
     artifact_title = (title or safe_filename).strip()
@@ -210,8 +232,7 @@ def ingest_artifact_file(
         "source_type": "artifact_document",
         "user_id": user_id,
     }
-    if metadata:
-        base_metadata.update(metadata)
+    base_metadata.update(normalized_metadata)
 
     file_result = _write_bytes(normalized_path, content, workspace_root)
 
@@ -231,6 +252,7 @@ def ingest_artifact_file(
         source_message_id=source_message_id,
         user_id=user_id,
         description=description,
+        media_metadata=media_indexing_metadata(base_metadata),
     )
 
     artifact_metadata = {

@@ -876,6 +876,68 @@ def api_close_conversation(conversation_id: str):
     return {"closed": True, "chunks_saved": chunks_saved}
 
 
+def _validate_artifact_source_target(
+    *,
+    user_id: str,
+    source_artifact_id: str | None,
+) -> str | None | JSONResponse:
+    """Validate an optional source artifact link for media provenance."""
+    if source_artifact_id is None:
+        return None
+
+    normalized = source_artifact_id.strip()
+    if not normalized:
+        return _error_response(400, "source_artifact_id cannot be empty")
+
+    artifact = get_artifact(normalized)
+    if artifact is None:
+        return _error_response(404, "Source artifact not found")
+
+    metadata = artifact.get("metadata") or {}
+    artifact_user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
+    if artifact_user_id and artifact_user_id != user_id:
+        return _error_response(403, "Source artifact does not belong to user")
+
+    return normalized
+
+
+def _artifact_upload_media_metadata(
+    *,
+    media_kind: str | None,
+    source_artifact_id: str | None,
+    prompt: str | None,
+    negative_prompt: str | None,
+    generation_backend: str | None,
+    generation_model: str | None,
+    generation_params: str | None,
+    observed_description: str | None,
+    human_confirmed: str | None,
+    uncertainty_label: str | None,
+    interpretation_source: str | None,
+    intended_use: str | None,
+) -> dict:
+    """Build optional media metadata from upload form fields."""
+    fields = {
+        "media_kind": media_kind,
+        "source_artifact_id": source_artifact_id,
+        "prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "generation_backend": generation_backend,
+        "generation_model": generation_model,
+        "generation_params": generation_params,
+        "observed_description": observed_description,
+        "human_confirmed": human_confirmed,
+        "uncertainty_label": uncertainty_label,
+        "interpretation_source": interpretation_source,
+        "intended_use": intended_use,
+    }
+    return {
+        key: value.strip() if isinstance(value, str) else value
+        for key, value in fields.items()
+        if value is not None and (not isinstance(value, str) or value.strip())
+    }
+
+
 # ---------------------------------------------------------------------------
 # Artifacts
 # ---------------------------------------------------------------------------
@@ -892,7 +954,19 @@ async def api_upload_artifact(
     status: str = Form("active"),
     source_conversation_id: str | None = Form(None),
     source_message_id: str | None = Form(None),
+    source_artifact_id: str | None = Form(None),
     revision_of: str | None = Form(None),
+    media_kind: str | None = Form(None),
+    prompt: str | None = Form(None),
+    negative_prompt: str | None = Form(None),
+    generation_backend: str | None = Form(None),
+    generation_model: str | None = Form(None),
+    generation_params: str | None = Form(None),
+    observed_description: str | None = Form(None),
+    human_confirmed: str | None = Form(None),
+    uncertainty_label: str | None = Form(None),
+    interpretation_source: str | None = Form(None),
+    intended_use: str | None = Form(None),
 ):
     """Upload a file as an artifact and index it as source material."""
     try:
@@ -916,6 +990,12 @@ async def api_upload_artifact(
     )
     if isinstance(revision_target, JSONResponse):
         return revision_target
+    source_artifact_target = _validate_artifact_source_target(
+        user_id=user["id"],
+        source_artifact_id=source_artifact_id,
+    )
+    if isinstance(source_artifact_target, JSONResponse):
+        return source_artifact_target
 
     content = await file.read(MAX_INGEST_BYTES + 1)
     await file.close()
@@ -936,6 +1016,20 @@ async def api_upload_artifact(
             source_conversation_id=source_conversation_id,
             source_message_id=source_message_id,
             revision_of=revision_target,
+            metadata=_artifact_upload_media_metadata(
+                media_kind=media_kind,
+                source_artifact_id=source_artifact_target,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                generation_backend=generation_backend,
+                generation_model=generation_model,
+                generation_params=generation_params,
+                observed_description=observed_description,
+                human_confirmed=human_confirmed,
+                uncertainty_label=uncertainty_label,
+                interpretation_source=interpretation_source,
+                intended_use=intended_use,
+            ),
         )
     except (ArtifactIngestionError, ArtifactValidationError, ValueError) as exc:
         return _error_response(400, str(exc))

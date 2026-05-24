@@ -776,6 +776,7 @@ body {
 }
 
 .artifact-upload-field input,
+.artifact-upload-field select,
 .artifact-upload-field textarea {
   width: 100%;
   min-width: 0;
@@ -799,6 +800,7 @@ body {
 }
 
 .artifact-upload-field input:disabled,
+.artifact-upload-field select:disabled,
 .artifact-upload-field textarea:disabled {
   opacity: 0.65;
 }

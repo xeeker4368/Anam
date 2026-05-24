@@ -73,6 +73,9 @@ function humanizeSourceValue(value) {
     draft: 'Draft',
     log: 'Log',
     unknown: 'Unknown',
+    uploaded_image: 'Uploaded image',
+    screenshot: 'Screenshot',
+    generated_image: 'Generated image',
   }
   return labels[value] || String(value || 'Unknown').replaceAll('_', ' ')
 }
@@ -144,6 +147,31 @@ function ArtifactDetails({ artifact }) {
           } />
         </ArtifactDetailGroup>
 
+        <ArtifactDetailGroup title="Media">
+          <ArtifactDetailRow
+            label="Media kind"
+            value={metadata.media_kind ? humanizeSourceValue(metadata.media_kind) : null}
+          />
+          <ArtifactDetailRow label="Source user" value={metadata.source_user_id} />
+          <ArtifactDetailRow label="Source artifact" value={metadata.source_artifact_id} />
+          <ArtifactDetailRow label="Prompt" value={metadata.prompt} />
+          <ArtifactDetailRow label="Negative prompt" value={metadata.negative_prompt} />
+          <ArtifactDetailRow label="Generation backend" value={metadata.generation_backend} />
+          <ArtifactDetailRow label="Generation model" value={metadata.generation_model} />
+          <ArtifactDetailRow label="Observed description" value={metadata.observed_description} />
+          <ArtifactDetailRow label="Uncertainty" value={metadata.uncertainty_label} />
+          <ArtifactDetailRow label="Interpretation source" value={metadata.interpretation_source} />
+          <ArtifactDetailRow
+            label="Human confirmed"
+            value={
+              metadata.human_confirmed === undefined
+                ? null
+                : String(Boolean(metadata.human_confirmed))
+            }
+          />
+          <ArtifactDetailRow label="Intended use" value={metadata.intended_use} />
+        </ArtifactDetailGroup>
+
         <ArtifactDetailGroup title="Indexing">
           <ArtifactDetailRow label="Indexing" value={metadata.indexing_status} />
           <ArtifactDetailRow label="Type" value={artifact.artifact_type} />
@@ -175,6 +203,9 @@ function ArtifactCard({ artifact }) {
           <RegistryBadge tone={metadata.indexing_status}>
             {metadata.indexing_status}
           </RegistryBadge>
+        )}
+        {metadata.media_kind && (
+          <RegistryBadge>{humanizeSourceValue(metadata.media_kind)}</RegistryBadge>
         )}
       </div>
       <RegistryMeta label="Path" value={artifact.path} />
@@ -230,6 +261,7 @@ function UploadSummary({ result }) {
   const artifact = result.artifact || {}
   const file = result.file || {}
   const indexing = result.indexing || {}
+  const metadata = artifactMetadata(artifact)
   const metadataOnly = indexing.status === 'metadata_only'
 
   return (
@@ -248,6 +280,10 @@ function UploadSummary({ result }) {
       )}
       <div className="artifact-upload-meta">
         <RegistryMeta label="File" value={file.path || artifact.path} />
+        <RegistryMeta
+          label="Media"
+          value={metadata.media_kind ? humanizeSourceValue(metadata.media_kind) : null}
+        />
         <RegistryMeta label="Events" value={indexing.event_chunks_written} />
         <RegistryMeta label="Chunks" value={indexing.content_chunks_written} />
       </div>
@@ -260,8 +296,10 @@ function ArtifactUpload({ uploading, uploadError, uploadResult, onUpload }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [revisionOf, setRevisionOf] = useState('')
+  const [mediaKind, setMediaKind] = useState('')
   const [localError, setLocalError] = useState(null)
   const fileInputRef = useRef(null)
+  const isImageFile = Boolean(file?.type?.startsWith('image/'))
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -272,11 +310,12 @@ function ArtifactUpload({ uploading, uploadError, uploadResult, onUpload }) {
     }
 
     try {
-      await onUpload({ file, title, description, revisionOf })
+      await onUpload({ file, title, description, revisionOf, mediaKind })
       setFile(null)
       setTitle('')
       setDescription('')
       setRevisionOf('')
+      setMediaKind('')
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch {
       // App-level upload state renders the backend error.
@@ -295,10 +334,32 @@ function ArtifactUpload({ uploading, uploadError, uploadResult, onUpload }) {
           <input
             ref={fileInputRef}
             type="file"
-            onChange={e => setFile(e.target.files?.[0] || null)}
+            onChange={e => {
+              const nextFile = e.target.files?.[0] || null
+              setFile(nextFile)
+              if (nextFile?.type?.startsWith('image/')) {
+                setMediaKind(mediaKind || 'uploaded_image')
+              } else {
+                setMediaKind('')
+              }
+            }}
             disabled={uploading}
           />
         </label>
+        {isImageFile && (
+          <label className="artifact-upload-field">
+            <span>Media kind</span>
+            <select
+              value={mediaKind || 'uploaded_image'}
+              onChange={e => setMediaKind(e.target.value)}
+              disabled={uploading}
+            >
+              <option value="uploaded_image">Uploaded image</option>
+              <option value="screenshot">Screenshot</option>
+            </select>
+            <em>Media artifacts are saved with provenance metadata; raw image bytes are not content-indexed.</em>
+          </label>
+        )}
         <div className="artifact-upload-row">
           <label className="artifact-upload-field">
             <span>Title</span>

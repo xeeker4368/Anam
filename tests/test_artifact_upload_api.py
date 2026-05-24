@@ -185,6 +185,64 @@ def test_unsupported_binary_upload_is_metadata_only(upload_env):
     assert rows[0]["chunk_id"].endswith("_event")
 
 
+def test_image_upload_accepts_media_metadata_fields(upload_env):
+    with patch("tir.memory.artifact_indexing.upsert_chunk") as upsert_chunk:
+        source_response = _post_upload(
+            upload_env["client"],
+            filename="source.png",
+            content=b"\x89PNG source",
+            data={"user_id": upload_env["user"]["id"]},
+        )
+        response = _post_upload(
+            upload_env["client"],
+            filename="screen.png",
+            content=b"\x89PNG screenshot raw marker",
+            data={
+                "user_id": upload_env["user"]["id"],
+                "title": "Screenshot",
+                "description": "Operator supplied screenshot context.",
+                "media_kind": "screenshot",
+                "source_artifact_id": source_response.json()["artifact"]["artifact_id"],
+                "prompt": "future generated image prompt",
+                "negative_prompt": "no avatar identity",
+                "generation_backend": "test-backend",
+                "generation_model": "test-model",
+                "generation_params": '{"seed": 12}',
+                "observed_description": "A screenshot with a settings panel.",
+                "human_confirmed": "true",
+                "uncertainty_label": "human_confirmed_description",
+                "interpretation_source": "human",
+                "intended_use": "reference",
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    metadata = data["artifact"]["metadata"]
+    assert data["artifact"]["artifact_type"] == "image"
+    assert metadata["media_kind"] == "screenshot"
+    assert metadata["media_foundation_version"] == "image_media_foundation_v1"
+    assert metadata["source_user_id"] == upload_env["user"]["id"]
+    assert metadata["source_artifact_id"] == source_response.json()["artifact"]["artifact_id"]
+    assert metadata["prompt"] == "future generated image prompt"
+    assert metadata["negative_prompt"] == "no avatar identity"
+    assert metadata["generation_backend"] == "test-backend"
+    assert metadata["generation_model"] == "test-model"
+    assert metadata["generation_params"] == {"seed": 12}
+    assert metadata["observed_description"] == "A screenshot with a settings panel."
+    assert metadata["human_confirmed"] is True
+    assert metadata["uncertainty_label"] == "human_confirmed_description"
+    assert metadata["interpretation_source"] == "human"
+    assert metadata["intended_use"] == "reference"
+    assert data["indexing"]["status"] == "metadata_only"
+    assert data["indexing"]["content_chunks_written"] == 0
+
+    event_text = upsert_chunk.call_args_list[-1].kwargs["text"]
+    assert "Generation prompt (provenance metadata): future generated image prompt" in event_text
+    assert "visual interpretation, not verified fact" in event_text
+    assert "screenshot raw marker" not in event_text
+
+
 def test_oversized_file_is_rejected(upload_env):
     response = _post_upload(
         upload_env["client"],

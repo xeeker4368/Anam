@@ -84,7 +84,9 @@ def _event_text(
     size_bytes: int,
     sha256: str,
     description: str | None,
+    media_metadata: dict | None = None,
 ) -> str:
+    media_metadata = media_metadata or {}
     lines = [
         f"Artifact source: {title}",
         f"Artifact ID: {artifact_id}",
@@ -97,8 +99,45 @@ def _event_text(
         f"Size: {size_bytes} bytes",
         f"SHA256: {sha256}",
     ]
-    if description:
+    media_kind = media_metadata.get("media_kind")
+    if media_kind:
+        lines.append(f"Media kind: {media_kind}")
+        if description:
+            lines.append(
+                "Description (artifact metadata, not raw image content): "
+                f"{description}"
+            )
+    elif description:
         lines.append(f"Description: {description}")
+
+    observed_description = media_metadata.get("observed_description")
+    if observed_description:
+        uncertainty = (
+            media_metadata.get("uncertainty_label")
+            or "unverified_visual_interpretation"
+        )
+        lines.append(
+            "Observed description "
+            f"({uncertainty}; visual interpretation, not verified fact): "
+            f"{observed_description}"
+        )
+    prompt = media_metadata.get("prompt")
+    if prompt:
+        lines.append(f"Generation prompt (provenance metadata): {prompt}")
+    negative_prompt = media_metadata.get("negative_prompt")
+    if negative_prompt:
+        lines.append(f"Negative prompt (provenance metadata): {negative_prompt}")
+    generation_backend = media_metadata.get("generation_backend")
+    generation_model = media_metadata.get("generation_model")
+    if generation_backend:
+        lines.append(f"Generation backend: {generation_backend}")
+    if generation_model:
+        lines.append(f"Generation model: {generation_model}")
+    interpretation_source = media_metadata.get("interpretation_source")
+    if interpretation_source:
+        lines.append(f"Interpretation source: {interpretation_source}")
+    if "human_confirmed" in media_metadata:
+        lines.append(f"Human confirmed: {bool(media_metadata.get('human_confirmed'))}")
     return "\n".join(lines)
 
 
@@ -165,6 +204,7 @@ def index_artifact_file(
     source_message_id: str | None = None,
     user_id: str | None = None,
     description: str | None = None,
+    media_metadata: dict | None = None,
 ) -> dict:
     """Write a retrievable artifact event chunk and optional content chunks."""
     created_at = datetime.now(timezone.utc).isoformat()
@@ -184,6 +224,8 @@ def index_artifact_file(
         "user_id": user_id or "",
         "created_at": created_at,
     }
+    if media_metadata:
+        base_metadata.update(media_metadata)
 
     summary = {
         "status": "metadata_only",
@@ -212,6 +254,7 @@ def index_artifact_file(
                 size_bytes=size_bytes,
                 sha256=sha256,
                 description=description,
+                media_metadata=media_metadata,
             ),
             source_conversation_id=source_conversation_id,
             user_id=user_id,
