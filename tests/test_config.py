@@ -11,6 +11,16 @@ CONFIG_ENV_VARS = [
     "ANAM_CHAT_MODEL",
     "ANAM_CHAT_MODEL_THINK",
     "ANAM_EMBED_MODEL",
+    "ANAM_COMFYUI_BASE_URL",
+    "ANAM_COMFYUI_POLL_INTERVAL_SECONDS",
+    "ANAM_COMFYUI_TIMEOUT_SECONDS",
+    "ANAM_COMFYUI_WORKFLOW_PATH",
+    "ANAM_IMAGE_GENERATION_ALLOW_AGENT_TOOL",
+    "ANAM_IMAGE_GENERATION_DEFAULT_BACKEND",
+    "ANAM_IMAGE_GENERATION_ENABLED",
+    "ANAM_IMAGE_GENERATION_MAX_HEIGHT",
+    "ANAM_IMAGE_GENERATION_MAX_PROMPT_CHARS",
+    "ANAM_IMAGE_GENERATION_MAX_WIDTH",
     "ANAM_MODEL_TEMPERATURE",
     "ANAM_MODEL_THINK",
     "ANAM_OLLAMA_HOST",
@@ -49,6 +59,13 @@ def test_missing_config_files_use_code_fallbacks(tmp_path, monkeypatch):
     assert config.EMBED_MODEL == "nomic-embed-text"
     assert config.OLLAMA_HOST == "http://localhost:11434"
     assert config.OLLAMA_TIMEOUT_SECONDS == 300
+    assert config.IMAGE_GENERATION_ENABLED is False
+    assert config.IMAGE_GENERATION_DEFAULT_BACKEND == "comfyui"
+    assert config.IMAGE_GENERATION_MAX_PROMPT_CHARS == 2000
+    assert config.IMAGE_GENERATION_MAX_WIDTH == 2048
+    assert config.IMAGE_GENERATION_MAX_HEIGHT == 2048
+    assert config.IMAGE_GENERATION_ALLOW_AGENT_TOOL is False
+    assert config.COMFYUI_BASE_URL == "http://127.0.0.1:8188"
     assert config.get_model_options("chat")["think"] is False
     assert config.get_model_options("chat")["temperature"] == 0.35
 
@@ -126,6 +143,20 @@ port = 8000
 [web_search]
 searxng_url = "http://defaults:8080"
 timeout_seconds = 10
+
+[image_generation]
+enabled = false
+default_backend = "comfyui"
+max_prompt_chars = 1000
+max_width = 1024
+max_height = 1024
+allow_agent_tool = false
+
+[image_generation.comfyui]
+base_url = "http://127.0.0.1:8188"
+workflow_path = "config/comfyui/default.json"
+timeout_seconds = 100
+poll_interval_seconds = 1
 """,
         encoding="utf-8",
     )
@@ -144,6 +175,15 @@ timeout_seconds = 10
     monkeypatch.setenv("ANAM_API_PORT", "8123")
     monkeypatch.setenv("ANAM_SEARXNG_URL", "http://env:8080")
     monkeypatch.setenv("ANAM_WEB_SEARCH_TIMEOUT_SECONDS", "4.5")
+    monkeypatch.setenv("ANAM_IMAGE_GENERATION_ENABLED", "true")
+    monkeypatch.setenv("ANAM_IMAGE_GENERATION_MAX_PROMPT_CHARS", "111")
+    monkeypatch.setenv("ANAM_IMAGE_GENERATION_MAX_WIDTH", "222")
+    monkeypatch.setenv("ANAM_IMAGE_GENERATION_MAX_HEIGHT", "333")
+    monkeypatch.setenv("ANAM_IMAGE_GENERATION_ALLOW_AGENT_TOOL", "false")
+    monkeypatch.setenv("ANAM_COMFYUI_BASE_URL", "http://localhost:8188")
+    monkeypatch.setenv("ANAM_COMFYUI_WORKFLOW_PATH", "config/comfyui/env.json")
+    monkeypatch.setenv("ANAM_COMFYUI_TIMEOUT_SECONDS", "44")
+    monkeypatch.setenv("ANAM_COMFYUI_POLL_INTERVAL_SECONDS", "0.5")
     import tir.config as config
 
     config = importlib.reload(config)
@@ -162,6 +202,15 @@ timeout_seconds = 10
     assert config.WEB_PORT == 8123
     assert config.SEARXNG_URL == "http://env:8080"
     assert config.WEB_SEARCH_TIMEOUT_SECONDS == 4.5
+    assert config.IMAGE_GENERATION_ENABLED is True
+    assert config.IMAGE_GENERATION_MAX_PROMPT_CHARS == 111
+    assert config.IMAGE_GENERATION_MAX_WIDTH == 222
+    assert config.IMAGE_GENERATION_MAX_HEIGHT == 333
+    assert config.IMAGE_GENERATION_ALLOW_AGENT_TOOL is False
+    assert config.COMFYUI_BASE_URL == "http://localhost:8188"
+    assert config.COMFYUI_WORKFLOW_PATH == "config/comfyui/env.json"
+    assert config.COMFYUI_TIMEOUT_SECONDS == 44
+    assert config.COMFYUI_POLL_INTERVAL_SECONDS == 0.5
 
 
 def test_legacy_tir_environment_variables_still_work(tmp_path, monkeypatch):

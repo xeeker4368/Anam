@@ -58,3 +58,17 @@ port = 8000
 [web_search]
 searxng_url = "http://127.0.0.1:8080"
 timeout_seconds = 10
+
+[image_generation]
+enabled = false
+default_backend = "comfyui"
+max_prompt_chars = 2000
+max_width = 2048
+max_height = 2048
+allow_agent_tool = false
+
+[image_generation.comfyui]
+base_url = "http://127.0.0.1:8188"
+workflow_path = "config/comfyui/workflows/default_text_to_image.json"
+timeout_seconds = 300
+poll_interval_seconds = 1

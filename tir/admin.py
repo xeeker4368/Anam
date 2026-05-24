@@ -49,6 +49,7 @@ Commands:
                     Plan and run the next eligible bounded research open loop
     moltbook-source-preview
                     Preview compact read-only Moltbook source traces
+    image-generate  Generate one image through configured backend and register artifact
 """
 
 import argparse
@@ -129,6 +130,7 @@ from tir.research.moltbook_sources import (
     MoltbookSourcePreviewError,
     collect_moltbook_source_preview,
 )
+from tir.media.image_generation import ImageGenerationError, generate_image
 
 
 def cmd_init_db(args):
@@ -1269,6 +1271,53 @@ def cmd_moltbook_source_preview(args):
     print(json.dumps(trace, indent=2, sort_keys=True))
 
 
+def cmd_image_generate(args):
+    """Generate one image through a configured backend."""
+    generation_params = None
+    if args.generation_params_json:
+        try:
+            generation_params = json.loads(args.generation_params_json)
+        except json.JSONDecodeError as exc:
+            print(f"Image generation failed: generation params JSON is invalid: {exc}")
+            sys.exit(1)
+        if not isinstance(generation_params, dict):
+            print("Image generation failed: generation params JSON must be an object")
+            sys.exit(1)
+
+    try:
+        result = generate_image(
+            prompt=args.prompt,
+            negative_prompt=args.negative_prompt,
+            backend=args.backend,
+            dry_run=args.dry_run,
+            write=args.write,
+            width=args.width,
+            height=args.height,
+            seed=args.seed,
+            title=args.title,
+            user_id=args.user_id,
+            source_conversation_id=args.source_conversation_id,
+            source_message_id=args.source_message_id,
+            source_artifact_id=args.source_artifact_id,
+            revision_of=args.revision_of,
+            intended_use=args.intended_use,
+            generation_model=args.generation_model,
+            workflow_name=args.workflow_name,
+            workflow_id=args.workflow_id,
+            generation_params=generation_params,
+        )
+    except ImageGenerationError as exc:
+        print(f"Image generation failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Image generation failed: {exc}")
+        sys.exit(1)
+
+    print(json.dumps(result, indent=2, sort_keys=True))
+    if result.get("generation_error"):
+        sys.exit(1)
+
+
 def _add_bounded_research_run_options(parser, *, include_open_loop_id: bool) -> None:
     if include_open_loop_id:
         parser.add_argument("--open-loop-id", required=True, help="Open loop ID to research")
@@ -1605,6 +1654,41 @@ def main():
         help="Write compact trace JSON under workspace/research/source-traces",
     )
 
+    # image-generate
+    p = sub.add_parser(
+        "image-generate",
+        help="Generate one image through a configured backend and register artifact",
+    )
+    p.add_argument("--prompt", required=True, help="Image generation prompt")
+    p.add_argument("--negative-prompt", default=None, help="Optional negative prompt")
+    p.add_argument("--backend", default=None, help="Image backend, default from config")
+    mode = p.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true", help="Validate without generating")
+    mode.add_argument("--write", action="store_true", help="Generate and register artifact")
+    p.add_argument("--width", type=int, default=None, help="Requested output width")
+    p.add_argument("--height", type=int, default=None, help="Requested output height")
+    p.add_argument("--seed", type=int, default=None, help="Optional generation seed")
+    p.add_argument("--title", default=None, help="Optional artifact title")
+    p.add_argument("--user-id", default=None, help="Optional source user ID")
+    p.add_argument("--source-conversation-id", default=None, help="Optional source conversation ID")
+    p.add_argument("--source-message-id", default=None, help="Optional source message ID")
+    p.add_argument("--source-artifact-id", default=None, help="Optional source artifact ID")
+    p.add_argument("--revision-of", default=None, help="Optional artifact revision target")
+    p.add_argument(
+        "--intended-use",
+        choices=["general", "reference"],
+        default="general",
+        help="Ordinary media intended use",
+    )
+    p.add_argument("--generation-model", default=None, help="Optional backend model label")
+    p.add_argument("--workflow-name", default=None, help="Optional workflow label")
+    p.add_argument("--workflow-id", default=None, help="Optional workflow ID label")
+    p.add_argument(
+        "--generation-params-json",
+        default=None,
+        help="Optional generation parameter JSON object",
+    )
+
     # behavioral-guidance-review-conversation
     p = sub.add_parser(
         "behavioral-guidance-review-conversation",
@@ -1703,8 +1787,11 @@ def main():
         "backup-restore-verify",
         "research-run",
         "moltbook-source-preview",
+        "image-generate",
     } or (
         args.command == "research-run" and args.register_artifact
+    ) or (
+        args.command == "image-generate" and args.write
     ):
         init_databases()
 
@@ -1741,6 +1828,7 @@ def main():
         "research-open-loop-run": cmd_research_open_loop_run,
         "research-open-loop-run-next": cmd_research_open_loop_run_next,
         "moltbook-source-preview": cmd_moltbook_source_preview,
+        "image-generate": cmd_image_generate,
     }
 
     commands[args.command](args)

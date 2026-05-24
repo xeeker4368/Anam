@@ -1376,6 +1376,144 @@ def test_moltbook_source_preview_main_does_not_init_databases(capsys, monkeypatc
     assert trace["query"] == "agents"
 
 
+def test_image_generate_admin_prints_structured_json(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_generate(**kwargs):
+        assert kwargs["prompt"] == "test image"
+        assert kwargs["negative_prompt"] == "no blur"
+        assert kwargs["backend"] == "comfyui"
+        assert kwargs["dry_run"] is True
+        assert kwargs["write"] is False
+        assert kwargs["width"] == 512
+        assert kwargs["height"] == 256
+        assert kwargs["seed"] == 9
+        assert kwargs["intended_use"] == "reference"
+        assert kwargs["generation_model"] == "model-a"
+        assert kwargs["workflow_name"] == "workflow-a"
+        assert kwargs["workflow_id"] == "workflow-id"
+        assert kwargs["generation_params"] == {"steps": 5}
+        return {
+            "ok": True,
+            "generation_error": False,
+            "backend": "comfyui",
+            "dry_run": True,
+        }
+
+    monkeypatch.setattr(admin_mod, "generate_image", fake_generate)
+
+    admin_mod.cmd_image_generate(
+        SimpleNamespace(
+            prompt="test image",
+            negative_prompt="no blur",
+            backend="comfyui",
+            dry_run=True,
+            write=False,
+            width=512,
+            height=256,
+            seed=9,
+            title=None,
+            user_id=None,
+            source_conversation_id=None,
+            source_message_id=None,
+            source_artifact_id=None,
+            revision_of=None,
+            intended_use="reference",
+            generation_model="model-a",
+            workflow_name="workflow-a",
+            workflow_id="workflow-id",
+            generation_params_json='{"steps": 5}',
+        )
+    )
+
+    output = capsys.readouterr().out
+    data = json.loads(output)
+    assert data["ok"] is True
+    assert data["dry_run"] is True
+
+
+def test_image_generate_admin_failure_exits_after_printing_json(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+    monkeypatch.setattr(
+        admin_mod,
+        "generate_image",
+        lambda **_kwargs: {
+            "ok": False,
+            "generation_error": True,
+            "error_type": "backend_unavailable",
+            "error": "offline",
+        },
+    )
+
+    with pytest.raises(SystemExit):
+        admin_mod.cmd_image_generate(
+            SimpleNamespace(
+                prompt="test image",
+                negative_prompt=None,
+                backend="comfyui",
+                dry_run=False,
+                write=True,
+                width=None,
+                height=None,
+                seed=None,
+                title=None,
+                user_id=None,
+                source_conversation_id=None,
+                source_message_id=None,
+                source_artifact_id=None,
+                revision_of=None,
+                intended_use="general",
+                generation_model=None,
+                workflow_name=None,
+                workflow_id=None,
+                generation_params_json=None,
+            )
+        )
+
+    output = capsys.readouterr().out
+    assert "backend_unavailable" in output
+    assert "offline" in output
+
+
+def test_image_generate_admin_rejects_non_object_generation_params(
+    temp_admin,
+    capsys,
+):
+    _db_mod, admin_mod = temp_admin
+
+    with pytest.raises(SystemExit):
+        admin_mod.cmd_image_generate(
+            SimpleNamespace(
+                prompt="test image",
+                negative_prompt=None,
+                backend="comfyui",
+                dry_run=True,
+                write=False,
+                width=None,
+                height=None,
+                seed=None,
+                title=None,
+                user_id=None,
+                source_conversation_id=None,
+                source_message_id=None,
+                source_artifact_id=None,
+                revision_of=None,
+                intended_use="general",
+                generation_model=None,
+                workflow_name=None,
+                workflow_id=None,
+                generation_params_json='["bad"]',
+            )
+        )
+
+    output = capsys.readouterr().out
+    assert "generation params JSON must be an object" in output
+
+
 def test_reflection_journal_day_admin_passes_include_memory(temp_admin, capsys, monkeypatch):
     _db_mod, admin_mod = temp_admin
 

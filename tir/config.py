@@ -74,6 +74,20 @@ _FALLBACK_CONFIG = {
         "searxng_url": "http://127.0.0.1:8080",
         "timeout_seconds": 10,
     },
+    "image_generation": {
+        "enabled": False,
+        "default_backend": "comfyui",
+        "max_prompt_chars": 2000,
+        "max_width": 2048,
+        "max_height": 2048,
+        "allow_agent_tool": False,
+        "comfyui": {
+            "base_url": "http://127.0.0.1:8188",
+            "workflow_path": "config/comfyui/workflows/default_text_to_image.json",
+            "timeout_seconds": 300,
+            "poll_interval_seconds": 1,
+        },
+    },
 }
 
 
@@ -106,6 +120,11 @@ _CONFIG = _load_config()
 
 def _config_value(section: str, key: str, default=None):
     return _CONFIG.get(section, {}).get(key, default)
+
+
+def _config_section(section: str) -> dict:
+    value = _CONFIG.get(section, {})
+    return value if isinstance(value, dict) else {}
 
 
 def _env_text(name: str, current):
@@ -300,4 +319,54 @@ WEB_SEARCH_TIMEOUT_SECONDS = float(
             float(_config_value("web_search", "timeout_seconds")),
         ),
     )
+)
+
+# --- Image generation ---
+_IMAGE_GENERATION_CONFIG = _config_section("image_generation")
+_COMFYUI_CONFIG = _IMAGE_GENERATION_CONFIG.get("comfyui", {})
+if not isinstance(_COMFYUI_CONFIG, dict):
+    _COMFYUI_CONFIG = {}
+
+IMAGE_GENERATION_ENABLED = _env_bool(
+    "ANAM_IMAGE_GENERATION_ENABLED",
+    bool(_IMAGE_GENERATION_CONFIG.get("enabled", False)),
+)
+IMAGE_GENERATION_DEFAULT_BACKEND = _env_text(
+    "ANAM_IMAGE_GENERATION_DEFAULT_BACKEND",
+    _IMAGE_GENERATION_CONFIG.get("default_backend", "comfyui"),
+)
+IMAGE_GENERATION_MAX_PROMPT_CHARS = _env_int(
+    "ANAM_IMAGE_GENERATION_MAX_PROMPT_CHARS",
+    int(_IMAGE_GENERATION_CONFIG.get("max_prompt_chars", 2000)),
+)
+IMAGE_GENERATION_MAX_WIDTH = _env_int(
+    "ANAM_IMAGE_GENERATION_MAX_WIDTH",
+    int(_IMAGE_GENERATION_CONFIG.get("max_width", 2048)),
+)
+IMAGE_GENERATION_MAX_HEIGHT = _env_int(
+    "ANAM_IMAGE_GENERATION_MAX_HEIGHT",
+    int(_IMAGE_GENERATION_CONFIG.get("max_height", 2048)),
+)
+IMAGE_GENERATION_ALLOW_AGENT_TOOL = _env_bool(
+    "ANAM_IMAGE_GENERATION_ALLOW_AGENT_TOOL",
+    bool(_IMAGE_GENERATION_CONFIG.get("allow_agent_tool", False)),
+)
+COMFYUI_BASE_URL = _env_text(
+    "ANAM_COMFYUI_BASE_URL",
+    _COMFYUI_CONFIG.get("base_url", "http://127.0.0.1:8188"),
+)
+COMFYUI_WORKFLOW_PATH = _env_text(
+    "ANAM_COMFYUI_WORKFLOW_PATH",
+    _COMFYUI_CONFIG.get(
+        "workflow_path",
+        "config/comfyui/workflows/default_text_to_image.json",
+    ),
+)
+COMFYUI_TIMEOUT_SECONDS = _env_int(
+    "ANAM_COMFYUI_TIMEOUT_SECONDS",
+    int(_COMFYUI_CONFIG.get("timeout_seconds", 300)),
+)
+COMFYUI_POLL_INTERVAL_SECONDS = _env_float(
+    "ANAM_COMFYUI_POLL_INTERVAL_SECONDS",
+    float(_COMFYUI_CONFIG.get("poll_interval_seconds", 1)),
 )

@@ -129,10 +129,23 @@ def _event_text(
         lines.append(f"Negative prompt (provenance metadata): {negative_prompt}")
     generation_backend = media_metadata.get("generation_backend")
     generation_model = media_metadata.get("generation_model")
+    workflow_name = media_metadata.get("workflow_name")
+    workflow_id = media_metadata.get("workflow_id")
     if generation_backend:
         lines.append(f"Generation backend: {generation_backend}")
     if generation_model:
         lines.append(f"Generation model: {generation_model}")
+    if workflow_name:
+        lines.append(f"Generation workflow: {workflow_name}")
+    if workflow_id:
+        lines.append(f"Generation workflow ID: {workflow_id}")
+    if media_metadata.get("seed") not in {None, ""}:
+        lines.append(f"Generation seed: {media_metadata.get('seed')}")
+    if media_metadata.get("width") and media_metadata.get("height"):
+        lines.append(
+            "Generation dimensions: "
+            f"{media_metadata.get('width')}x{media_metadata.get('height')}"
+        )
     interpretation_source = media_metadata.get("interpretation_source")
     if interpretation_source:
         lines.append(f"Interpretation source: {interpretation_source}")
