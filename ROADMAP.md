@@ -152,6 +152,12 @@ This is a model/configuration selection and baseline protocol. It is not runtime
 
 Interpretation traces are provisional, source-linked artifact content. They are not hidden chain-of-thought, raw scratchpad reasoning, behavioral guidance, self-understanding, project decisions, runtime instructions, personality, or identity.
 
+### Research Provenance — Temporal Awareness Design v1
+
+- [x] Temporal awareness design — define visible temporal context labels for memory, retrieval, research notes, journals, open loops, source traces, and future working theories.
+
+Temporal labels are computed context aids, not truth, identity, personality, or hidden ranking. V1 design keeps temporal framing visible and debug-visible without deleting, hiding, or downranking older records.
+
 ### Pre-Go-Live — Trusted Household User Mode v1
 
 - [ ] Support Lyle and Lyle's wife as known household users.
