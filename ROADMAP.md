@@ -146,6 +146,12 @@ This is a human/project evaluation aid only. It is not `soul.md`, behavioral gui
 
 This is a model/configuration selection and baseline protocol. It is not runtime guidance, a prompt change, or a personality script.
 
+### Research Provenance — Interpretation Trace Design v1
+
+- [x] Interpretation trace design — define visible, structured summaries of what research notes considered, discounted, interpreted, remained uncertain about, and would revise later.
+
+Interpretation traces are provisional, source-linked artifact content. They are not hidden chain-of-thought, raw scratchpad reasoning, behavioral guidance, self-understanding, project decisions, runtime instructions, personality, or identity.
+
 ### Pre-Go-Live — Trusted Household User Mode v1
 
 - [ ] Support Lyle and Lyle's wife as known household users.
