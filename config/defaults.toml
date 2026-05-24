@@ -31,6 +31,9 @@ results = 20
 retrieved_context_budget_chars = 14000
 prompt_budget_warning_chars = 30000
 
+[embedding]
+expected_dimension = 768
+
 [journals]
 transcript_budget_chars = 24000
 activity_packet_budget_chars = 12000

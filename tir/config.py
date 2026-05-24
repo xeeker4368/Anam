@@ -46,6 +46,9 @@ _FALLBACK_CONFIG = {
         "retrieved_context_budget_chars": 14000,
         "prompt_budget_warning_chars": 30000,
     },
+    "embedding": {
+        "expected_dimension": 768,
+    },
     "journals": {
         "transcript_budget_chars": 24000,
         "activity_packet_budget_chars": 12000,
@@ -154,6 +157,7 @@ OPERATIONAL_REFLECTION_MODEL = _env_text(
     _config_value("models", "operational_reflection"),
 )
 EMBED_MODEL = _env_text("ANAM_EMBED_MODEL", _config_value("models", "embedding"))
+EXPECTED_EMBEDDING_DIM = int(_config_value("embedding", "expected_dimension", 768))
 
 
 _ROLE_THINK_ENV = {

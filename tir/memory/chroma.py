@@ -17,7 +17,7 @@ import logging
 import requests
 import chromadb
 
-from tir.config import CHROMA_DIR, EMBED_MODEL, OLLAMA_HOST
+from tir.config import CHROMA_DIR, EMBED_MODEL, EXPECTED_EMBEDDING_DIM, OLLAMA_HOST
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 
 _client = None
 _collection = None
+
+
+class EmbeddingDimensionError(ValueError):
+    """Raised when an embedding cannot be safely stored in ChromaDB."""
 
 
 def _get_collection(chroma_path: str = CHROMA_DIR) -> chromadb.Collection:
@@ -99,6 +103,34 @@ def embed_text(
 
 
 # ---------------------------------------------------------------------------
+# Embedding validation
+# ---------------------------------------------------------------------------
+
+def _validate_embedding_dimension(
+    embedding,
+    *,
+    model_name: str | None = EMBED_MODEL,
+    expected_dim: int = EXPECTED_EMBEDDING_DIM,
+) -> None:
+    """Fail before Chroma storage if an embedding has the wrong dimension."""
+    try:
+        actual_dim = len(embedding)
+    except TypeError as exc:
+        model_suffix = f" for model {model_name}" if model_name else ""
+        raise EmbeddingDimensionError(
+            f"Embedding dimension mismatch: expected {expected_dim}, "
+            f"got unknown{model_suffix}"
+        ) from exc
+
+    if actual_dim != expected_dim:
+        model_suffix = f" for model {model_name}" if model_name else ""
+        raise EmbeddingDimensionError(
+            f"Embedding dimension mismatch: expected {expected_dim}, "
+            f"got {actual_dim}{model_suffix}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Storage
 # ---------------------------------------------------------------------------
 
@@ -125,10 +157,12 @@ def upsert_chunk(
         chroma_path: Path to ChromaDB persistent store.
         ollama_host: Ollama server URL.
     """
-    collection = _get_collection(chroma_path)
-
     if embedding is None:
         embedding = embed_text(text, ollama_host=ollama_host)
+
+    _validate_embedding_dimension(embedding)
+
+    collection = _get_collection(chroma_path)
 
     collection.upsert(
         ids=[chunk_id],
