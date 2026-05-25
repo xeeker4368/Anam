@@ -40,6 +40,65 @@ class LoopResult:
     error: str | None = None        # Error message if terminated_reason == "error"
 
 
+def _format_iteration_limit_response(
+    tool_trace: list[dict],
+    *,
+    iteration_limit: int,
+) -> str:
+    """Build a bounded, user-visible response when the tool loop exhausts."""
+    lines = [
+        (
+            f"I reached the tool iteration limit for this turn "
+            f"({iteration_limit} iterations), so I am stopping cleanly."
+        ),
+        "",
+        "Partial progress:",
+    ]
+
+    summaries = []
+    for trace in tool_trace:
+        iteration = trace.get("iteration")
+        calls = trace.get("tool_calls") or []
+        results = trace.get("tool_results") or []
+        for index, call in enumerate(calls):
+            tool_name = call.get("name", "unknown_tool")
+            result = results[index] if index < len(results) else {}
+            rendered = str(result.get("rendered") or "").strip()
+            ok = result.get("ok")
+            status = "succeeded" if ok else "failed" if ok is False else "finished"
+            if rendered:
+                rendered = rendered.replace("\n", " ")
+                if len(rendered) > 220:
+                    rendered = rendered[:217].rstrip() + "..."
+                summaries.append(
+                    f"- Iteration {iteration + 1 if isinstance(iteration, int) else '?'}: "
+                    f"`{tool_name}` {status}; result preview: {rendered}"
+                )
+            else:
+                summaries.append(
+                    f"- Iteration {iteration + 1 if isinstance(iteration, int) else '?'}: "
+                    f"`{tool_name}` {status}."
+                )
+
+    if summaries:
+        lines.extend(summaries[:8])
+        omitted = len(summaries) - 8
+        if omitted > 0:
+            lines.append(f"- {omitted} additional tool result(s) omitted from this summary.")
+    else:
+        lines.append("- No usable tool results were available before the limit.")
+
+    lines.extend([
+        "",
+        "No further tool calls will be made in this turn.",
+        (
+            "A smaller bounded next step would be to pick one specific question, "
+            "source, or tool action to run next."
+        ),
+    ])
+    return "\n".join(lines)
+
+
 def run_agent_loop(
     system_prompt: str,
     messages: list[dict],
@@ -211,7 +270,10 @@ def run_agent_loop(
 
     # --- Exhausted iteration limit ---
     result = LoopResult(
-        final_content=None,
+        final_content=_format_iteration_limit_response(
+            tool_trace,
+            iteration_limit=iteration_limit,
+        ),
         tool_trace=tool_trace,
         terminated_reason="iteration_limit",
         iterations=iteration_limit,

@@ -763,8 +763,19 @@ def stream_chat(req: ChatRequest):
                 logger.warning("Agent loop completed with empty assistant content")
                 yield json.dumps({"type": "error", "message": empty_message}) + "\n"
         elif loop_result.terminated_reason == "iteration_limit":
-            error_message = "I hit the tool iteration limit before I could finish responding."
-            yield json.dumps({"type": "error", "message": error_message}) + "\n"
+            assistant_content = loop_result.final_content or (
+                "I reached the tool iteration limit for this turn, so I am stopping cleanly.\n\n"
+                "Partial progress:\n"
+                "- No usable tool results were available before the limit.\n\n"
+                "No further tool calls will be made in this turn.\n"
+                "A smaller bounded next step would be to pick one specific question, "
+                "source, or tool action to run next."
+            )
+            should_persist_assistant = bool(assistant_content.strip())
+            combined_tool_trace = prefetch_tool_trace + (loop_result.tool_trace or [])
+            if should_persist_assistant and combined_tool_trace:
+                tool_trace = json.dumps(combined_tool_trace)
+            yield json.dumps({"type": "token", "content": assistant_content}) + "\n"
         else:
             error_message = (
                 "Something went wrong when I tried to respond: "

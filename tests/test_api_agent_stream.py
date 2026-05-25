@@ -1430,7 +1430,7 @@ def test_stream_chat_agent_loop_exception_does_not_save_synthetic_assistant_mess
 @patch("tir.api.routes.retrieve")
 @patch("tir.api.routes._resolve_user")
 @patch("tir.api.routes.run_agent_loop")
-def test_stream_chat_iteration_limit_does_not_save_synthetic_assistant_message(
+def test_stream_chat_iteration_limit_saves_bounded_assistant_message(
     mock_loop,
     mock_resolve_user,
     mock_retrieve,
@@ -1444,14 +1444,39 @@ def test_stream_chat_iteration_limit_does_not_save_synthetic_assistant_message(
     mock_resolve_user.return_value = _fake_user()
     mock_start_conversation.return_value = "conv-1"
     mock_retrieve.return_value = []
-    mock_save_message.return_value = _fake_message("user", "Loop", "msg-user")
+    bounded_message = (
+        "I reached the tool iteration limit for this turn (5 iterations), so I am stopping cleanly.\n\n"
+        "Partial progress:\n"
+        "- Iteration 1: `memory_search` succeeded; result preview: Found one prior note.\n\n"
+        "No further tool calls will be made in this turn.\n"
+        "A smaller bounded next step would be to pick one specific question, source, or tool action to run next."
+    )
+    mock_save_message.side_effect = [
+        _fake_message("user", "Loop", "msg-user"),
+        _fake_message("assistant", bounded_message, "msg-assistant"),
+    ]
     mock_get_messages.return_value = [_fake_message("user", "Loop", "msg-user")]
+    tool_trace = [
+        {
+            "iteration": 0,
+            "tool_calls": [
+                {"name": "memory_search", "arguments": {"query": "project anam"}}
+            ],
+            "tool_results": [
+                {
+                    "tool_name": "memory_search",
+                    "ok": True,
+                    "rendered": "Found one prior note.",
+                }
+            ],
+        }
+    ]
     mock_loop.return_value = iter([
         {
             "type": "done",
             "result": FakeLoopResult(
-                final_content=None,
-                tool_trace=[{"iteration": 0, "tool_calls": []}],
+                final_content=bounded_message,
+                tool_trace=tool_trace,
                 terminated_reason="iteration_limit",
                 iterations=5,
             ),
@@ -1462,10 +1487,23 @@ def test_stream_chat_iteration_limit_does_not_save_synthetic_assistant_message(
     response = client.post("/api/chat/stream", json={"text": "Loop"})
     events = _stream_lines(response)
 
-    assert [event["type"] for event in events] == ["debug", "error", "debug_update", "done"]
-    assert events[-1]["message_id"] is None
-    assert mock_save_message.call_count == 1
-    mock_checkpoint_conversation.assert_not_called()
+    assert [event["type"] for event in events] == ["debug", "token", "debug_update", "done"]
+    assert "I reached the tool iteration limit" in events[1]["content"]
+    assert "Found one prior note" in events[1]["content"]
+    assert "No further tool calls will be made in this turn." in events[1]["content"]
+    assert "smaller bounded next step" in events[1]["content"]
+    assert events[-1]["message_id"] == "msg-assistant"
+    assert mock_save_message.call_count == 2
+    assistant_call = mock_save_message.call_args_list[-1]
+    assert assistant_call.args[:4] == (
+        "conv-1",
+        "user-1",
+        "assistant",
+        bounded_message,
+    )
+    persisted_trace = json.loads(assistant_call.kwargs["tool_trace"])
+    assert persisted_trace[0]["tool_calls"][0]["name"] == "memory_search"
+    mock_checkpoint_conversation.assert_called_once_with("conv-1", "user-1")
 
 
 @patch("tir.api.routes.checkpoint_conversation")

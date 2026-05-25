@@ -183,24 +183,61 @@ Excerpt:
 
 ## Chat / agent loop
 
-No prompt-like strings found.
+### 1. `tir/engine/agent_loop.py:74` — `_format_iteration_limit_response`
 
-## Tool-use prompts
-
-### 1. `tir/api/routes.py:766` — `generate`
-
-- Name: `error_message`
-- Category: Tool-use prompts
+- Name: `append_arg`
+- Category: Chat / agent loop
 - Risk flags: none
 - Audit note: `needs discussion`
 
 Excerpt:
 
 ```text
-I hit the tool iteration limit before I could finish responding.
+- Iteration {...}: `{...}` {...}; result preview: {...}
 ```
 
-### 2. `tir/reflection/operational.py:392` — `build_operational_reflection_messages`
+### 2. `tir/engine/agent_loop.py:79` — `_format_iteration_limit_response`
+
+- Name: `append_arg`
+- Category: Chat / agent loop
+- Risk flags: none
+- Audit note: `needs discussion`
+
+Excerpt:
+
+```text
+- Iteration {...}: `{...}` {...}.
+```
+
+### 3. `tir/engine/agent_loop.py:87` — `_format_iteration_limit_response`
+
+- Name: `append_arg`
+- Category: Chat / agent loop
+- Risk flags: none
+- Audit note: `needs discussion`
+
+Excerpt:
+
+```text
+- {...} additional tool result(s) omitted from this summary.
+```
+
+### 4. `tir/engine/agent_loop.py:89` — `_format_iteration_limit_response`
+
+- Name: `append_arg`
+- Category: Chat / agent loop
+- Risk flags: none
+- Audit note: `needs discussion`
+
+Excerpt:
+
+```text
+- No usable tool results were available before the limit.
+```
+
+## Tool-use prompts
+
+### 1. `tir/reflection/operational.py:392` — `build_operational_reflection_messages`
 
 - Name: `user_prompt`
 - Category: Tool-use prompts
@@ -262,7 +299,7 @@ Rules:
 ...[truncated]
 ```
 
-### 3. `tir/tools/registry.py:232` — `_freshness_marker`
+### 2. `tir/tools/registry.py:232` — `_freshness_marker`
 
 - Name: `append_arg`
 - Category: Tool-use prompts
@@ -703,7 +740,7 @@ Excerpt:
 I received your message but couldn't generate a response.
 ```
 
-### 2. `tir/api/routes.py:770` — `generate`
+### 2. `tir/api/routes.py:781` — `generate`
 
 - Name: `error_message`
 - Category: Other prompt-like strings

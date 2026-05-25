@@ -633,7 +633,12 @@ class TestAgentLoopEdgeCases:
 
         result = events[-1]["result"]
         assert result.terminated_reason == "iteration_limit"
-        assert result.final_content is None
+        assert "I reached the tool iteration limit" in result.final_content
+        assert "Partial progress:" in result.final_content
+        assert "`echo` succeeded" in result.final_content
+        assert "Echo: 0" in result.final_content
+        assert "No further tool calls will be made in this turn." in result.final_content
+        assert "smaller bounded next step" in result.final_content
         assert result.iterations == 3
         assert len(result.tool_trace) == 3
 
