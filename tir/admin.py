@@ -47,6 +47,7 @@ Commands:
                     Run one bounded research iteration for an open loop
     research-open-loop-run-next
                     Plan and run the next eligible bounded research open loop
+    nightly-tick    Run one disabled-by-default bounded scheduler heartbeat
     moltbook-source-preview
                     Preview compact read-only Moltbook source traces
     image-generate  Generate one image through configured backend and register artifact
@@ -131,6 +132,7 @@ from tir.research.moltbook_sources import (
     collect_moltbook_source_preview,
 )
 from tir.media.image_generation import ImageGenerationError, generate_image
+from tir.scheduler.nightly import NightlyTickError, run_nightly_tick
 
 
 def cmd_init_db(args):
@@ -1250,6 +1252,62 @@ def cmd_research_open_loop_run_next(args):
     _print_bounded_research_run_result(result, open_loop_id=selected["open_loop_id"])
 
 
+def _print_nightly_tick_result(result: dict) -> None:
+    print("Nightly tick complete")
+    print(f"tick_version={result['tick_version']}")
+    print(f"mode={result['mode']}")
+    print(f"status={result['status']}")
+    print(f"scheduler_enabled={result['scheduler_enabled']}")
+    print(f"nightly_tick_enabled={result['nightly_tick_enabled']}")
+    print(f"current_local_date={result['current_local_date']}")
+    print(f"pre_live_or_live={result['pre_live_or_live']}")
+    print(f"no_external_write_confirmed={result['no_external_write_confirmed']}")
+    print(f"no_mutation_confirmed={result['no_mutation_confirmed']}")
+    if result.get("tick_id"):
+        print(f"tick_id={result['tick_id']}")
+    print(f"action_count={result['action_count']}")
+    if result.get("reason"):
+        print(f"reason={result['reason']}")
+    if result.get("error_type"):
+        print(f"error_type={result['error_type']}")
+        print(f"error_message={result['error_message']}")
+    print("actions_allowed:")
+    for action in result.get("actions_allowed") or []:
+        print(f"  - {action}")
+    if not result.get("actions_allowed"):
+        print("  none")
+    print("actions_planned:")
+    for action in result.get("actions_planned") or []:
+        print(f"  - {json.dumps(action, sort_keys=True)}")
+    if not result.get("actions_planned"):
+        print("  none")
+    print("actions_run:")
+    for action in result.get("actions_run") or []:
+        print(f"  - {json.dumps(action, sort_keys=True)}")
+    if not result.get("actions_run"):
+        print("  none")
+
+
+def cmd_nightly_tick(args):
+    """Run one bounded scheduler heartbeat."""
+    try:
+        result = run_nightly_tick(
+            dry_run=args.dry_run,
+            write=args.write,
+            allow_bounded_research=args.allow_bounded_research,
+            register_artifact=args.register_artifact,
+            model=args.model,
+        )
+    except NightlyTickError as exc:
+        print(f"Nightly tick failed: {exc}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"Nightly tick failed: {exc}")
+        sys.exit(1)
+
+    _print_nightly_tick_result(result)
+
+
 def cmd_moltbook_source_preview(args):
     """Preview compact read-only Moltbook source traces."""
     try:
@@ -1628,6 +1686,26 @@ def main():
     )
     _add_bounded_research_run_options(p, include_open_loop_id=False)
 
+    # nightly-tick
+    p = sub.add_parser(
+        "nightly-tick",
+        help="Run one disabled-by-default bounded scheduler heartbeat",
+    )
+    mode = p.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true", help="Plan without writing")
+    mode.add_argument("--write", action="store_true", help="Write one audit tick")
+    p.add_argument(
+        "--allow-bounded-research",
+        action="store_true",
+        help="Allow one model-only bounded research run-next action if config also allows it",
+    )
+    p.add_argument(
+        "--register-artifact",
+        action="store_true",
+        help="When bounded research runs, register/index the research note",
+    )
+    p.add_argument("--model", default=None, help="Optional Ollama model override")
+
     # moltbook-source-preview
     p = sub.add_parser(
         "moltbook-source-preview",
@@ -1777,6 +1855,9 @@ def main():
             )
         if args.use_moltbook and args.moltbook_query and args.moltbook_sort is not None:
             parser.error(f"{args.command} --moltbook-sort requires --moltbook-feed")
+    if args.command == "nightly-tick":
+        if args.register_artifact and not args.allow_bounded_research:
+            parser.error("nightly-tick --register-artifact requires --allow-bounded-research")
 
     # Ensure databases exist for DB-facing commands. Backup/restore must not
     # create or mutate runtime state before their own safety checks run.
@@ -1827,6 +1908,7 @@ def main():
         "research-open-loop-next": cmd_research_open_loop_next,
         "research-open-loop-run": cmd_research_open_loop_run,
         "research-open-loop-run-next": cmd_research_open_loop_run_next,
+        "nightly-tick": cmd_nightly_tick,
         "moltbook-source-preview": cmd_moltbook_source_preview,
         "image-generate": cmd_image_generate,
     }

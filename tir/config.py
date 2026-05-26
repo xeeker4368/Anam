@@ -74,6 +74,15 @@ _FALLBACK_CONFIG = {
         "searxng_url": "http://127.0.0.1:8080",
         "timeout_seconds": 10,
     },
+    "scheduler": {
+        "enabled": False,
+        "nightly_tick_enabled": False,
+        "max_actions_per_tick": 1,
+        "allow_bounded_research": False,
+        "allow_moltbook": False,
+        "allow_web": False,
+        "allow_image_generation": False,
+    },
     "image_generation": {
         "enabled": False,
         "default_backend": "comfyui",
@@ -319,6 +328,38 @@ WEB_SEARCH_TIMEOUT_SECONDS = float(
             float(_config_value("web_search", "timeout_seconds")),
         ),
     )
+)
+
+# --- Scheduler / nightly tick ---
+_SCHEDULER_CONFIG = _config_section("scheduler")
+
+SCHEDULER_ENABLED = _env_bool(
+    "ANAM_SCHEDULER_ENABLED",
+    bool(_SCHEDULER_CONFIG.get("enabled", False)),
+)
+SCHEDULER_NIGHTLY_TICK_ENABLED = _env_bool(
+    "ANAM_SCHEDULER_NIGHTLY_TICK_ENABLED",
+    bool(_SCHEDULER_CONFIG.get("nightly_tick_enabled", False)),
+)
+SCHEDULER_MAX_ACTIONS_PER_TICK = _env_int(
+    "ANAM_SCHEDULER_MAX_ACTIONS_PER_TICK",
+    int(_SCHEDULER_CONFIG.get("max_actions_per_tick", 1)),
+)
+SCHEDULER_ALLOW_BOUNDED_RESEARCH = _env_bool(
+    "ANAM_SCHEDULER_ALLOW_BOUNDED_RESEARCH",
+    bool(_SCHEDULER_CONFIG.get("allow_bounded_research", False)),
+)
+SCHEDULER_ALLOW_MOLTBOOK = _env_bool(
+    "ANAM_SCHEDULER_ALLOW_MOLTBOOK",
+    bool(_SCHEDULER_CONFIG.get("allow_moltbook", False)),
+)
+SCHEDULER_ALLOW_WEB = _env_bool(
+    "ANAM_SCHEDULER_ALLOW_WEB",
+    bool(_SCHEDULER_CONFIG.get("allow_web", False)),
+)
+SCHEDULER_ALLOW_IMAGE_GENERATION = _env_bool(
+    "ANAM_SCHEDULER_ALLOW_IMAGE_GENERATION",
+    bool(_SCHEDULER_CONFIG.get("allow_image_generation", False)),
 )
 
 # --- Image generation ---

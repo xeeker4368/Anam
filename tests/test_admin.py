@@ -860,6 +860,146 @@ def test_research_open_loop_run_next_admin_passes_moltbook_options(
     assert "artifact_id=artifact-1" in output
 
 
+def test_nightly_tick_admin_prints_dry_run_plan(temp_admin, capsys, monkeypatch):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_tick(**kwargs):
+        assert kwargs["dry_run"] is True
+        assert kwargs["write"] is False
+        assert kwargs["allow_bounded_research"] is False
+        return {
+            "tick_version": "nightly_tick_v1",
+            "mode": "dry-run",
+            "status": "planned",
+            "scheduler_enabled": True,
+            "nightly_tick_enabled": True,
+            "current_local_date": "2026-05-25",
+            "pre_live_or_live": "pre_live",
+            "no_external_write_confirmed": True,
+            "no_mutation_confirmed": True,
+            "tick_id": None,
+            "action_count": 0,
+            "reason": None,
+            "error_type": None,
+            "error_message": None,
+            "actions_allowed": ["heartbeat"],
+            "actions_planned": [{"action": "heartbeat", "status": "planned"}],
+            "actions_run": [],
+        }
+
+    monkeypatch.setattr(admin_mod, "run_nightly_tick", fake_tick)
+
+    admin_mod.cmd_nightly_tick(
+        SimpleNamespace(
+            dry_run=True,
+            write=False,
+            allow_bounded_research=False,
+            register_artifact=False,
+            model=None,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "Nightly tick complete" in output
+    assert "tick_version=nightly_tick_v1" in output
+    assert "mode=dry-run" in output
+    assert "status=planned" in output
+    assert "no_mutation_confirmed=True" in output
+    assert '"action": "heartbeat"' in output
+
+
+def test_nightly_tick_admin_passes_bounded_research_options(
+    temp_admin,
+    capsys,
+    monkeypatch,
+):
+    _db_mod, admin_mod = temp_admin
+
+    def fake_tick(**kwargs):
+        assert kwargs["write"] is True
+        assert kwargs["dry_run"] is False
+        assert kwargs["allow_bounded_research"] is True
+        assert kwargs["register_artifact"] is True
+        assert kwargs["model"] == "test-model"
+        return {
+            "tick_version": "nightly_tick_v1",
+            "mode": "write",
+            "status": "completed",
+            "scheduler_enabled": True,
+            "nightly_tick_enabled": True,
+            "current_local_date": "2026-05-25",
+            "pre_live_or_live": "pre_live",
+            "no_external_write_confirmed": True,
+            "no_mutation_confirmed": False,
+            "tick_id": "tick-1",
+            "action_count": 1,
+            "reason": None,
+            "error_type": None,
+            "error_message": None,
+            "actions_allowed": ["heartbeat", "bounded_research"],
+            "actions_planned": [{"action": "bounded_research", "status": "planned"}],
+            "actions_run": [
+                {"action": "heartbeat", "status": "recorded"},
+                {
+                    "action": "bounded_research",
+                    "status": "completed",
+                    "open_loop_id": "loop-1",
+                    "research_path": "research/loop.md",
+                    "artifact_id": "artifact-1",
+                },
+            ],
+        }
+
+    monkeypatch.setattr(admin_mod, "run_nightly_tick", fake_tick)
+
+    admin_mod.cmd_nightly_tick(
+        SimpleNamespace(
+            dry_run=False,
+            write=True,
+            allow_bounded_research=True,
+            register_artifact=True,
+            model="test-model",
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert "tick_id=tick-1" in output
+    assert "action_count=1" in output
+    assert "bounded_research" in output
+    assert "artifact-1" in output
+
+
+def test_nightly_tick_register_without_bounded_research_fails_cleanly(capsys):
+    import tir.admin as admin_mod
+
+    with patch(
+        "sys.argv",
+        [
+            "tir.admin",
+            "nightly-tick",
+            "--write",
+            "--register-artifact",
+        ],
+    ):
+        with pytest.raises(SystemExit) as exc:
+            admin_mod.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "nightly-tick --register-artifact requires --allow-bounded-research" in captured.err
+
+
+def test_nightly_tick_rejects_moltbook_web_and_image_flags(capsys):
+    import tir.admin as admin_mod
+
+    for flag in ("--moltbook-feed", "--use-web", "--allow-image-generation"):
+        with patch("sys.argv", ["tir.admin", "nightly-tick", "--dry-run", flag]):
+            with pytest.raises(SystemExit) as exc:
+                admin_mod.main()
+        assert exc.value.code == 2
+        assert "unrecognized arguments" in capsys.readouterr().err
+
+
 def test_research_open_loop_run_next_register_without_write_fails_cleanly(capsys):
     import tir.admin as admin_mod
 

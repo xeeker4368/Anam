@@ -30,6 +30,13 @@ CONFIG_ENV_VARS = [
     "ANAM_REFLECTION_JOURNAL_MODEL",
     "ANAM_REFLECTION_JOURNAL_MODEL_THINK",
     "ANAM_REFLECTION_JOURNAL_TIMEOUT_SECONDS",
+    "ANAM_SCHEDULER_ALLOW_BOUNDED_RESEARCH",
+    "ANAM_SCHEDULER_ALLOW_IMAGE_GENERATION",
+    "ANAM_SCHEDULER_ALLOW_MOLTBOOK",
+    "ANAM_SCHEDULER_ALLOW_WEB",
+    "ANAM_SCHEDULER_ENABLED",
+    "ANAM_SCHEDULER_MAX_ACTIONS_PER_TICK",
+    "ANAM_SCHEDULER_NIGHTLY_TICK_ENABLED",
     "ANAM_SEARXNG_URL",
     "ANAM_WEB_SEARCH_TIMEOUT_SECONDS",
     "TIR_SEARXNG_URL",
@@ -66,6 +73,13 @@ def test_missing_config_files_use_code_fallbacks(tmp_path, monkeypatch):
     assert config.IMAGE_GENERATION_MAX_HEIGHT == 2048
     assert config.IMAGE_GENERATION_ALLOW_AGENT_TOOL is False
     assert config.COMFYUI_BASE_URL == "http://127.0.0.1:8188"
+    assert config.SCHEDULER_ENABLED is False
+    assert config.SCHEDULER_NIGHTLY_TICK_ENABLED is False
+    assert config.SCHEDULER_MAX_ACTIONS_PER_TICK == 1
+    assert config.SCHEDULER_ALLOW_BOUNDED_RESEARCH is False
+    assert config.SCHEDULER_ALLOW_MOLTBOOK is False
+    assert config.SCHEDULER_ALLOW_WEB is False
+    assert config.SCHEDULER_ALLOW_IMAGE_GENERATION is False
     assert config.get_model_options("chat")["think"] is False
     assert config.get_model_options("chat")["temperature"] == 0.35
 

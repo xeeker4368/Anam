@@ -59,6 +59,15 @@ port = 8000
 searxng_url = "http://127.0.0.1:8080"
 timeout_seconds = 10
 
+[scheduler]
+enabled = false
+nightly_tick_enabled = false
+max_actions_per_tick = 1
+allow_bounded_research = false
+allow_moltbook = false
+allow_web = false
+allow_image_generation = false
+
 [image_generation]
 enabled = false
 default_backend = "comfyui"

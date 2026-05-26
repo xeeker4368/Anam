@@ -1030,6 +1030,7 @@ def save_overnight_run(run_data: dict):
             ),
         )
         conn.commit()
+    return run_id
 
 
 # ---------------------------------------------------------------------------
