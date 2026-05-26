@@ -50,7 +50,7 @@ function App() {
   const [viewingConversation, setViewingConversation] = useState(null)
   const [viewingMessages, setViewingMessages] = useState([])
   const [debugData, setDebugData] = useState(null)
-  const [showDebug, setShowDebug] = useState(true)
+  const [showDebug, setShowDebug] = useState(false)
   const [health, setHealth] = useState(null)
   const [users, setUsers] = useState([])
   const [activeUserId, setActiveUserId] = useState(null)
@@ -188,7 +188,7 @@ function App() {
       setOpenLoops(openLoopData)
     } catch (e) {
       console.warn('Failed to fetch registry records:', e)
-      setRegistryError(e.message || 'Failed to fetch registry records')
+      setRegistryError(e.message || 'Failed to fetch media and artifact records')
     } finally {
       setRegistryLoading(false)
     }
@@ -610,7 +610,7 @@ function App() {
   const sidebarContent = (
     <>
       <div className="sidebar-header">
-        <h1>Tír</h1>
+        <h1>Project Anam</h1>
         {users.length > 1 && (
           <select
             value={activeUserId || ''}
@@ -667,7 +667,7 @@ function App() {
           onClick={() => setShowDashboard(!showDashboard)}
           className="btn btn-small"
         >
-          {showDashboard ? 'Hide Stats' : 'System Stats'}
+          {showDashboard ? 'Hide Status' : 'Status'}
         </button>
         {showDashboard && health && (
           <div className="health-stats">
@@ -710,7 +710,7 @@ function App() {
         {viewingMessages.map((msg, i) => (
           <div key={i} className={`message message-${msg.role}`}>
             <div className="message-role">
-              {msg.role === 'user' ? viewingConversation.user_name : 'A'}
+              {msg.role === 'user' ? viewingConversation.user_name : 'Assistant'}
             </div>
             <div className="message-content">{msg.content}</div>
           </div>
@@ -736,8 +736,23 @@ function App() {
       <div className="app-mobile">
         <div className="m-header">
           <div className="m-title-group">
-            <span className="m-title">Tír</span>
-            <span className="m-active-user">User: {activeUserName}</span>
+            <span className="m-title">Project Anam</span>
+            {users.length > 1 ? (
+              <label className="m-user-switch">
+                <span>Household user</span>
+                <select
+                  value={activeUserId || ''}
+                  onChange={e => setActiveUserId(e.target.value)}
+                  aria-label="Active household user"
+                >
+                  {users.map(user => (
+                    <option key={user.id} value={user.id}>{user.name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span className="m-active-user">User: {activeUserName}</span>
+            )}
           </div>
           {activeConversationId && (
             <button onClick={handleCloseConversation} className="btn btn-small">
@@ -808,25 +823,25 @@ function App() {
         </div>
         <div className="m-tabs">
           <button
-            className={`m-tab ${activeTab === 'conversations' ? 'active' : ''}`}
-            onClick={() => setActiveTab('conversations')}
-          >Convos</button>
-          <button
             className={`m-tab ${activeTab === 'chat' ? 'active' : ''}`}
             onClick={() => setActiveTab('chat')}
           >Chat</button>
           <button
-            className={`m-tab ${activeTab === 'debug' ? 'active' : ''}`}
-            onClick={() => setActiveTab('debug')}
-          >Debug</button>
+            className={`m-tab ${activeTab === 'conversations' ? 'active' : ''}`}
+            onClick={() => setActiveTab('conversations')}
+          >History</button>
           <button
             className={`m-tab ${activeTab === 'registry' ? 'active' : ''}`}
             onClick={() => setActiveTab('registry')}
-          >Registry</button>
+          >Media</button>
           <button
             className={`m-tab ${activeTab === 'system' ? 'active' : ''}`}
             onClick={openSystemTab}
-          >System</button>
+          >Status</button>
+          <button
+            className={`m-tab ${activeTab === 'debug' ? 'active' : ''}`}
+            onClick={() => setActiveTab('debug')}
+          >Debug</button>
         </div>
       </div>
     )
@@ -855,14 +870,14 @@ function App() {
               className={`right-panel-tab ${rightPanelView === 'registry' ? 'active' : ''}`}
               onClick={() => setRightPanelView('registry')}
             >
-              Registry
+              Media
             </button>
             <button
               type="button"
               className={`right-panel-tab ${rightPanelView === 'system' ? 'active' : ''}`}
               onClick={openSystemPanel}
             >
-              System
+              Status
             </button>
           </div>
           {rightPanelView === 'debug' && (

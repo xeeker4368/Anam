@@ -45,7 +45,8 @@ body {
 
 .user-select {
   width: 100%;
-  padding: 6px 8px;
+  min-height: 36px;
+  padding: 7px 8px;
   background: #1a1a2e;
   color: #e0e0e0;
   border: 1px solid #2a2a4a;
@@ -172,7 +173,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 20px;
+  padding: 10px 20px;
   background: #182642;
   border-bottom: 1px solid #2a2a4a;
   color: #b8c7d8;
@@ -191,6 +192,7 @@ body {
 .chat-user-select {
   max-width: 220px;
   min-width: 140px;
+  min-height: 36px;
   background: #111827;
   color: #e0e0e0;
   border: 1px solid #2a2a4a;
@@ -277,6 +279,7 @@ body {
 
 .input-area textarea {
   flex: 1;
+  min-height: 44px;
   padding: 10px 14px;
   background: #1a1a2e;
   color: #e0e0e0;
@@ -297,6 +300,8 @@ body {
 }
 
 .input-area button {
+  min-width: 76px;
+  min-height: 44px;
   padding: 10px 20px;
   background: #7faacc;
   color: #1a1a2e;
@@ -1664,6 +1669,7 @@ body {
 
 /* --- Buttons --- */
 .btn {
+  min-height: 40px;
   padding: 8px 14px;
   border: none;
   border-radius: 6px;
@@ -1682,6 +1688,7 @@ body {
 }
 
 .btn-small {
+  min-height: 36px;
   padding: 5px 10px;
   font-size: 12px;
   background: #2a2a4a;
@@ -1739,7 +1746,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 12px;
+  min-height: 66px;
+  padding: 9px 12px;
   background: #16213e;
   border-bottom: 1px solid #2a2a4a;
   flex-shrink: 0;
@@ -1748,7 +1756,9 @@ body {
 .m-title-group {
   display: flex;
   flex-direction: column;
+  gap: 3px;
   min-width: 0;
+  flex: 1;
 }
 
 .m-title {
@@ -1764,6 +1774,31 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.m-user-switch {
+  display: grid;
+  gap: 3px;
+  max-width: 220px;
+}
+
+.m-user-switch span {
+  color: #8fa6ba;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.m-user-switch select {
+  min-height: 34px;
+  width: 100%;
+  background: #111827;
+  color: #e0e0e0;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
 }
 
 .m-body {
@@ -1813,6 +1848,10 @@ body {
   max-width: 100%;
 }
 
+.m-body .chat-active-user {
+  display: none;
+}
+
 .m-scroll {
   flex: 1;
   overflow-y: auto;
@@ -1824,20 +1863,65 @@ body {
   background: #16213e;
   border-top: 1px solid #2a2a4a;
   flex-shrink: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 .m-tab {
   flex: 1;
-  padding: 10px 0;
+  min-height: 50px;
+  padding: 10px 2px;
   background: transparent;
   color: #888;
   border: none;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .m-tab.active {
   color: #7faacc;
   border-top: 2px solid #7faacc;
+}
+
+@media (max-width: 560px) {
+  .chat-active-user {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px;
+  }
+
+  .chat-user-select {
+    max-width: none;
+    width: 100%;
+  }
+
+  .input-area {
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .input-area button {
+    padding-inline: 14px;
+  }
+
+  .artifact-upload-header,
+  .artifact-upload-result-title,
+  .registry-title-row,
+  .registry-card-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .image-generation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .m-header .btn-small {
+    flex: 0 0 auto;
+  }
+
+  .m-tab {
+    font-size: 11px;
+  }
 }

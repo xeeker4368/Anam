@@ -536,7 +536,7 @@ function ImageGenerationPanel({
             {generating ? 'Generating...' : 'Generate'}
           </button>
           <button type="button" className="btn btn-small" onClick={onRefresh}>
-            Refresh Registry
+            Refresh Media
           </button>
         </div>
       </form>
@@ -681,13 +681,13 @@ function RegistryPanel({
   return (
     <div className="registry-content">
       <div className="registry-title-row">
-        <h2>Registry</h2>
+        <h2>Media & Artifacts</h2>
         <button type="button" className="btn btn-small" onClick={onRefresh}>
           Refresh
         </button>
       </div>
 
-      {loading && <p className="debug-note">Loading registry records...</p>}
+      {loading && <p className="debug-note">Loading media and artifact records...</p>}
       {error && <p className="registry-error">{error}</p>}
 
       <ImageGenerationPanel

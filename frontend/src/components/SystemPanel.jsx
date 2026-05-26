@@ -750,7 +750,7 @@ function SystemPanel({
   return (
     <div className="system-content">
       <div className="system-title-row">
-        <h2>System</h2>
+        <h2>Status</h2>
         <button type="button" className="btn btn-small" onClick={onRefresh}>
           Refresh
         </button>

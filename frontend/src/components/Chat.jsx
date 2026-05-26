@@ -436,7 +436,7 @@ function Chat({
             className={`message message-${msg.role} ${msg.error ? 'message-error' : ''}`}
           >
             <div className="message-role">
-              {msg.role === 'user' ? 'You' : 'A'}
+              {msg.role === 'user' ? 'You' : 'Assistant'}
             </div>
             <div className="message-content">
               {msg.content}
