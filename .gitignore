@@ -7,7 +7,14 @@ __pycache__/
 .pytest_cache/
 .venv/
 .pyanam/
+
+# Local tool/model checkouts
+ComfyUI/
+config/comfyui/
+
+# Local backups and restore outputs
 backups/
+wiped_runtime/
 
 # Node / frontend build output
 node_modules/
@@ -23,11 +30,18 @@ data/prod/
 
 # Logs
 logs/
+*.log
 
 # Environment
 .env
 .env.*
 config/local.toml
-wiped_runtime/
+
+# Local workspace/runtime artifacts
 workspace/uploads/
 workspace/generated/
+workspace/research/
+workspace/journals/
+
+# Local review notes
+docs/reviews/
