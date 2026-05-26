@@ -16,12 +16,13 @@ Endpoints:
 import json
 import logging
 import time
+from pathlib import Path
 
 import requests as http_requests
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
@@ -38,6 +39,7 @@ from tir.config import (
     FRONTEND_DIR,
     OLLAMA_HOST,
     SKILLS_DIR,
+    WORKSPACE_DIR,
 )
 from tir.memory.db import (
     init_databases,
@@ -84,11 +86,18 @@ from tir.artifacts.service import (
     get_artifact,
     list_artifacts,
 )
+from tir.artifacts.governance_blocklist import (
+    GOVERNANCE_FILE_REJECTION_MESSAGE,
+    SOURCE_TRACE_REJECTION_MESSAGE,
+    is_governance_file_name,
+    is_source_trace_path,
+)
 from tir.artifacts.ingestion import (
     ArtifactIngestionError,
     MAX_INGEST_BYTES,
     ingest_artifact_file,
 )
+from tir.media.image_generation import ImageGenerationError, generate_image
 from tir.open_loops.service import (
     OpenLoopValidationError,
     get_open_loop,
@@ -105,6 +114,7 @@ from tir.review.service import (
     list_review_items,
     update_review_item_status,
 )
+from tir.workspace.service import WorkspacePathError, resolve_workspace_path
 from tir.behavioral_guidance.service import (
     BehavioralGuidanceValidationError,
     list_behavioral_guidance_proposals,
@@ -214,6 +224,22 @@ class BehavioralGuidanceProposalUpdateRequest(BaseModel):
     review_decision_reason: str | None = None
 
 
+class ImageGenerationRequest(BaseModel):
+    prompt: str
+    negative_prompt: str | None = None
+    backend: str | None = None
+    width: int | None = None
+    height: int | None = None
+    seed: int | None = None
+    intended_use: str = "general"
+    user_id: str | None = None
+    title: str | None = None
+    source_conversation_id: str | None = None
+    source_message_id: str | None = None
+    source_artifact_id: str | None = None
+    revision_of: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Greeting detection (matches context.py)
 # ---------------------------------------------------------------------------
@@ -262,6 +288,17 @@ def _error_response(status_code: int, error: str) -> JSONResponse:
             "error": error,
         },
     )
+
+
+def _generation_error_status(error_type: str | None) -> int:
+    mapping = {
+        "backend_unavailable": 503,
+        "timeout": 504,
+        "config_error": 400,
+        "no_output": 502,
+        "tool_error": 500,
+    }
+    return mapping.get(error_type or "", 500)
 
 
 def _validate_artifact_upload_provenance(
@@ -1082,6 +1119,126 @@ def api_get_artifact(artifact_id: str):
     if not artifact:
         raise HTTPException(status_code=404, detail="Artifact not found")
     return artifact
+
+
+_SAFE_IMAGE_PREVIEW_MIME_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "image/bmp",
+    "image/avif",
+}
+
+
+@app.get("/api/artifacts/{artifact_id}/file")
+def api_get_artifact_file(artifact_id: str):
+    """Serve a narrow preview stream for safe image/media artifacts only."""
+    artifact = get_artifact(artifact_id)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+    path = artifact.get("path")
+    if not path:
+        raise HTTPException(status_code=404, detail="Artifact has no workspace file")
+    if is_source_trace_path(path):
+        raise HTTPException(status_code=403, detail=SOURCE_TRACE_REJECTION_MESSAGE)
+    if is_governance_file_name(Path(path).name):
+        raise HTTPException(status_code=403, detail=GOVERNANCE_FILE_REJECTION_MESSAGE)
+
+    metadata = artifact.get("metadata") or {}
+    mime_type = metadata.get("mime_type") if isinstance(metadata, dict) else None
+    media_kind = metadata.get("media_kind") if isinstance(metadata, dict) else None
+    if not media_kind or mime_type not in _SAFE_IMAGE_PREVIEW_MIME_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Artifact preview is available only for safe image media artifacts",
+        )
+
+    try:
+        target = resolve_workspace_path(path, WORKSPACE_DIR)
+    except WorkspacePathError as exc:
+        raise HTTPException(status_code=403, detail="Artifact path is outside workspace") from exc
+
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Artifact file not found")
+
+    return FileResponse(
+        target,
+        media_type=mime_type,
+        filename=metadata.get("safe_filename") or Path(path).name,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Image generation
+# ---------------------------------------------------------------------------
+
+@app.post("/api/image-generation/generate")
+def api_generate_image(req: ImageGenerationRequest):
+    """Generate one user-requested image and store it as a generated media artifact."""
+    try:
+        user = _resolve_user(req.user_id)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "User resolution failed"
+        return _error_response(exc.status_code, detail)
+
+    provenance = _validate_artifact_upload_provenance(
+        user_id=user["id"],
+        source_conversation_id=req.source_conversation_id,
+        source_message_id=req.source_message_id,
+    )
+    if isinstance(provenance, JSONResponse):
+        return provenance
+    source_conversation_id, source_message_id = provenance
+
+    source_artifact_target = _validate_artifact_source_target(
+        user_id=user["id"],
+        source_artifact_id=req.source_artifact_id,
+    )
+    if isinstance(source_artifact_target, JSONResponse):
+        return source_artifact_target
+
+    revision_target = _validate_artifact_revision_target(
+        user_id=user["id"],
+        revision_of=req.revision_of,
+    )
+    if isinstance(revision_target, JSONResponse):
+        return revision_target
+
+    try:
+        result = generate_image(
+            prompt=req.prompt,
+            negative_prompt=req.negative_prompt,
+            backend=req.backend,
+            write=True,
+            dry_run=False,
+            width=req.width,
+            height=req.height,
+            seed=req.seed,
+            title=req.title,
+            user_id=user["id"],
+            source_conversation_id=source_conversation_id,
+            source_message_id=source_message_id,
+            source_artifact_id=source_artifact_target,
+            revision_of=revision_target,
+            intended_use=req.intended_use,
+        )
+    except ImageGenerationError as exc:
+        return _error_response(400, str(exc))
+    except (ArtifactIngestionError, ArtifactValidationError, ValueError) as exc:
+        return _error_response(400, str(exc))
+    except Exception:
+        logger.exception("Image generation API failed")
+        return _error_response(500, "Image generation failed")
+
+    if result.get("generation_error"):
+        return JSONResponse(
+            status_code=_generation_error_status(result.get("error_type")),
+            content=result,
+        )
+
+    return result
 
 
 # ---------------------------------------------------------------------------

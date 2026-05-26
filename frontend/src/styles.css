@@ -188,6 +188,17 @@ body {
   font-weight: 600;
 }
 
+.chat-user-select {
+  max-width: 220px;
+  min-width: 140px;
+  background: #111827;
+  color: #e0e0e0;
+  border: 1px solid #2a2a4a;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
 .messages-container {
   flex: 1;
   overflow-y: auto;
@@ -851,6 +862,44 @@ body {
   background: #4a2028;
   border: 1px solid #6a3038;
   color: #e8a0a0;
+}
+
+.image-generation-panel {
+  background: #131a2a;
+}
+
+.image-generation-status {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  color: #888;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.image-generation-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.image-generation-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.generated-media-result {
+  display: grid;
+  gap: 8px;
+}
+
+.generated-media-preview {
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border: 1px solid #244d38;
+  border-radius: 6px;
+  background: #0c111c;
 }
 
 .registry-section {

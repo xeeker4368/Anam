@@ -163,7 +163,6 @@ def test_reflection_journal_reports_manual_available_capability():
 def test_future_capabilities_report_disabled_not_implemented():
     capabilities = build_capabilities_status(FakeRegistry())["capabilities"]
     future_keys = {
-        "image_generation",
         "autonomous_research",
         "review_queue",
         "code_sandbox",
@@ -177,6 +176,49 @@ def test_future_capabilities_report_disabled_not_implemented():
         assert capabilities[key]["available"] is False
         assert capabilities[key]["mode"] == "disabled"
         assert capabilities[key]["status"] == "not_implemented"
+
+
+def test_image_generation_reports_manual_disabled_by_default(monkeypatch, tmp_path):
+    monkeypatch.setattr("tir.config.IMAGE_GENERATION_ENABLED", False)
+    monkeypatch.setattr("tir.config.IMAGE_GENERATION_DEFAULT_BACKEND", "comfyui")
+    monkeypatch.setattr("tir.config.IMAGE_GENERATION_ALLOW_AGENT_TOOL", False)
+    monkeypatch.setattr("tir.config.COMFYUI_BASE_URL", "http://127.0.0.1:8188")
+    monkeypatch.setattr("tir.config.COMFYUI_WORKFLOW_PATH", str(tmp_path / "missing.json"))
+
+    capability = build_capabilities_status(FakeRegistry())["capabilities"]["image_generation"]
+
+    assert capability["implemented"] is True
+    assert capability["mode"] == "manual"
+    assert capability["enabled"] is False
+    assert capability["available"] is False
+    assert capability["configured"] is False
+    assert capability["status"] == "disabled"
+    assert capability["reason"] == "disabled"
+    assert capability["agent_tool_allowed"] is False
+    assert capability["workflow_configured"] is False
+    assert capability["comfyui_base_url"] == "http://127.0.0.1:8188"
+
+
+def test_image_generation_reports_available_when_enabled_and_workflow_exists(
+    monkeypatch,
+    tmp_path,
+):
+    workflow = tmp_path / "workflow.json"
+    workflow.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("tir.config.IMAGE_GENERATION_ENABLED", True)
+    monkeypatch.setattr("tir.config.IMAGE_GENERATION_DEFAULT_BACKEND", "comfyui")
+    monkeypatch.setattr("tir.config.IMAGE_GENERATION_ALLOW_AGENT_TOOL", False)
+    monkeypatch.setattr("tir.config.COMFYUI_BASE_URL", "http://127.0.0.1:8188")
+    monkeypatch.setattr("tir.config.COMFYUI_WORKFLOW_PATH", str(workflow))
+
+    capability = build_capabilities_status(FakeRegistry())["capabilities"]["image_generation"]
+
+    assert capability["enabled"] is True
+    assert capability["available"] is True
+    assert capability["configured"] is True
+    assert capability["status"] == "available"
+    assert capability["reason"] is None
+    assert capability["workflow_configured"] is True
 
 
 def test_write_actions_and_self_modification_require_approval():

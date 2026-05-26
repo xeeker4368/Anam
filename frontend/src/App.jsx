@@ -64,6 +64,9 @@ function App() {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
   const [uploadResult, setUploadResult] = useState(null)
+  const [imageGenerating, setImageGenerating] = useState(false)
+  const [imageGenerationError, setImageGenerationError] = useState(null)
+  const [imageGenerationResult, setImageGenerationResult] = useState(null)
   const [systemHealth, setSystemHealth] = useState(null)
   const [systemMemory, setSystemMemory] = useState(null)
   const [systemCapabilities, setSystemCapabilities] = useState(null)
@@ -226,6 +229,51 @@ function App() {
       throw e
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function generateImage(form) {
+    setImageGenerating(true)
+    setImageGenerationError(null)
+    setImageGenerationResult(null)
+    try {
+      const payload = {
+        prompt: form.prompt,
+        negative_prompt: form.negativePrompt || null,
+        backend: form.backend || 'comfyui',
+        width: form.width,
+        height: form.height,
+        seed: form.seed,
+        intended_use: form.intendedUse || 'general',
+        user_id: activeUserId || null,
+      }
+
+      const resp = await apiFetch('/api/image-generation/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const data = await resp.json().catch(() => null)
+      if (!resp.ok || !data || data.generation_error) {
+        const message = data?.error || data?.detail || `Image generation failed (${resp.status})`
+        throw new Error(message)
+      }
+      if (!data || typeof data !== 'object' || data.ok !== true || !data.artifact) {
+        throw new Error('Image generation returned an invalid response')
+      }
+
+      setImageGenerationResult(data)
+      await fetchRegistries()
+      return data
+    } catch (e) {
+      const message = e.message || 'Image generation failed'
+      setImageGenerationError(message)
+      throw e
+    } finally {
+      setImageGenerating(false)
     }
   }
 
@@ -537,6 +585,7 @@ function App() {
   function handleRegistryRefresh() {
     setUploadResult(null)
     setUploadError(null)
+    setImageGenerationError(null)
     fetchRegistries()
   }
 
@@ -673,6 +722,8 @@ function App() {
       conversationId={activeConversationId}
       userId={activeUserId}
       userName={activeUserName}
+      users={users}
+      onUserChange={setActiveUserId}
       onConversationCreated={handleConversationCreated}
       onDebugData={handleDebugData}
       onRefresh={handleRefresh}
@@ -713,6 +764,11 @@ function App() {
                 uploadError={uploadError}
                 uploadResult={uploadResult}
                 onUpload={uploadArtifact}
+                imageGenerating={imageGenerating}
+                imageGenerationError={imageGenerationError}
+                imageGenerationResult={imageGenerationResult}
+                imageGenerationCapability={systemCapabilities?.capabilities?.image_generation}
+                onGenerateImage={generateImage}
                 onRefresh={handleRegistryRefresh}
               />
             </div>
@@ -822,6 +878,11 @@ function App() {
               uploadError={uploadError}
               uploadResult={uploadResult}
               onUpload={uploadArtifact}
+              imageGenerating={imageGenerating}
+              imageGenerationError={imageGenerationError}
+              imageGenerationResult={imageGenerationResult}
+              imageGenerationCapability={systemCapabilities?.capabilities?.image_generation}
+              onGenerateImage={generateImage}
               onRefresh={handleRegistryRefresh}
             />
           )}

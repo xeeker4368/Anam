@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { apiFetch, readErrorMessage } from '../api'
 
 function formatDate(value) {
   if (!value) return 'n/a'
@@ -291,6 +292,262 @@ function UploadSummary({ result }) {
   )
 }
 
+function GeneratedImageSummary({ result }) {
+  const [previewUrl, setPreviewUrl] = useState(null)
+  const [previewError, setPreviewError] = useState(null)
+  const artifact = result?.artifact || null
+  const file = result?.file || {}
+  const metadata = artifactMetadata(artifact)
+
+  useEffect(() => {
+    let cancelled = false
+    let objectUrl = null
+    const controller = new AbortController()
+
+    async function loadPreview() {
+      if (!artifact?.artifact_id) return
+      setPreviewError(null)
+      setPreviewUrl(null)
+      try {
+        const resp = await apiFetch(
+          `/api/artifacts/${encodeURIComponent(artifact.artifact_id)}/file`,
+          { signal: controller.signal }
+        )
+        if (!resp.ok) {
+          throw new Error(await readErrorMessage(resp, 'Image preview failed'))
+        }
+        const blob = await resp.blob()
+        objectUrl = URL.createObjectURL(blob)
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl)
+          return
+        }
+        setPreviewUrl(objectUrl)
+      } catch (e) {
+        if (e?.name === 'AbortError') return
+        if (!cancelled) setPreviewError(e.message || 'Image preview failed')
+      }
+    }
+
+    loadPreview()
+
+    return () => {
+      cancelled = true
+      controller.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [artifact?.artifact_id])
+
+  if (!result) return null
+
+  return (
+    <div className="artifact-upload-result generated-media-result">
+      <div className="artifact-upload-result-title">
+        <strong>{artifact?.title || 'Generated media artifact'}</strong>
+        <RegistryBadge tone="active">generated media</RegistryBadge>
+      </div>
+      {previewUrl ? (
+        <img
+          className="generated-media-preview"
+          src={previewUrl}
+          alt="Generated media artifact preview"
+        />
+      ) : (
+        <p className="artifact-upload-note">
+          {previewError || 'Loading generated media preview...'}
+        </p>
+      )}
+      <div className="artifact-upload-meta">
+        <RegistryMeta label="Artifact" value={artifact?.artifact_id} />
+        <RegistryMeta label="File" value={file.path || artifact?.path} />
+        <RegistryMeta
+          label="Media"
+          value={metadata.media_kind ? humanizeSourceValue(metadata.media_kind) : null}
+        />
+        <RegistryMeta label="Prompt" value={metadata.prompt} />
+        <RegistryMeta label="Backend" value={metadata.generation_backend} />
+        <RegistryMeta label="Seed" value={metadata.seed} />
+        <RegistryMeta
+          label="Size"
+          value={
+            metadata.width && metadata.height
+              ? `${metadata.width}x${metadata.height}`
+              : null
+          }
+        />
+      </div>
+    </div>
+  )
+}
+
+function ImageGenerationPanel({
+  generating,
+  generationError,
+  generationResult,
+  capability,
+  onGenerateImage,
+  onRefresh,
+}) {
+  const [prompt, setPrompt] = useState('')
+  const [negativePrompt, setNegativePrompt] = useState('')
+  const [backend, setBackend] = useState('comfyui')
+  const [width, setWidth] = useState('512')
+  const [height, setHeight] = useState('512')
+  const [seed, setSeed] = useState('')
+  const [intendedUse, setIntendedUse] = useState('general')
+  const [localError, setLocalError] = useState(null)
+  const enabled = capability ? Boolean(capability.enabled) : null
+  const statusLabel = capability
+    ? `${capability.status || 'unknown'}${capability.reason ? `: ${capability.reason}` : ''}`
+    : 'status not loaded'
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setLocalError(null)
+    const cleanedPrompt = prompt.trim()
+    if (!cleanedPrompt) {
+      setLocalError('Enter a prompt for the generated media artifact.')
+      return
+    }
+
+    const parsedWidth = Number(width)
+    const parsedHeight = Number(height)
+    const parsedSeed = seed.trim() ? Number(seed) : null
+    if (!Number.isInteger(parsedWidth) || parsedWidth < 1) {
+      setLocalError('Width must be a positive integer.')
+      return
+    }
+    if (!Number.isInteger(parsedHeight) || parsedHeight < 1) {
+      setLocalError('Height must be a positive integer.')
+      return
+    }
+    if (parsedSeed !== null && !Number.isInteger(parsedSeed)) {
+      setLocalError('Seed must be an integer when supplied.')
+      return
+    }
+
+    try {
+      await onGenerateImage({
+        prompt: cleanedPrompt,
+        negativePrompt: negativePrompt.trim(),
+        backend,
+        width: parsedWidth,
+        height: parsedHeight,
+        seed: parsedSeed,
+        intendedUse,
+      })
+    } catch {
+      // App-level generation state renders the backend error.
+    }
+  }
+
+  return (
+    <section className="artifact-upload image-generation-panel">
+      <div className="artifact-upload-header">
+        <h2>Generate Image</h2>
+        <span>Generated media artifact</span>
+      </div>
+      <div className="image-generation-status">
+        <RegistryBadge tone={enabled ? 'active' : 'draft'}>{statusLabel}</RegistryBadge>
+        <span>Operator-triggered only. Raw image bytes are not content-indexed.</span>
+      </div>
+      <form onSubmit={handleSubmit}>
+        <label className="artifact-upload-field">
+          <span>Prompt</span>
+          <textarea
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            disabled={generating}
+            rows={4}
+            placeholder="Describe the image to generate"
+          />
+        </label>
+        <label className="artifact-upload-field">
+          <span>Negative prompt</span>
+          <textarea
+            value={negativePrompt}
+            onChange={e => setNegativePrompt(e.target.value)}
+            disabled={generating}
+            rows={2}
+            placeholder="Optional"
+          />
+        </label>
+        <div className="artifact-upload-row image-generation-grid">
+          <label className="artifact-upload-field">
+            <span>Width</span>
+            <input
+              type="number"
+              min="1"
+              value={width}
+              onChange={e => setWidth(e.target.value)}
+              disabled={generating}
+            />
+          </label>
+          <label className="artifact-upload-field">
+            <span>Height</span>
+            <input
+              type="number"
+              min="1"
+              value={height}
+              onChange={e => setHeight(e.target.value)}
+              disabled={generating}
+            />
+          </label>
+          <label className="artifact-upload-field">
+            <span>Seed</span>
+            <input
+              type="number"
+              value={seed}
+              onChange={e => setSeed(e.target.value)}
+              disabled={generating}
+              placeholder="Optional"
+            />
+          </label>
+        </div>
+        <div className="artifact-upload-row image-generation-grid">
+          <label className="artifact-upload-field">
+            <span>Backend</span>
+            <select
+              value={backend}
+              onChange={e => setBackend(e.target.value)}
+              disabled={generating}
+            >
+              <option value="comfyui">ComfyUI</option>
+            </select>
+          </label>
+          <label className="artifact-upload-field">
+            <span>Intended use</span>
+            <select
+              value={intendedUse}
+              onChange={e => setIntendedUse(e.target.value)}
+              disabled={generating}
+            >
+              <option value="general">General</option>
+              <option value="reference">Reference</option>
+            </select>
+          </label>
+        </div>
+        <div className="image-generation-actions">
+          <button
+            type="submit"
+            className="btn btn-small"
+            disabled={generating || !prompt.trim()}
+          >
+            {generating ? 'Generating...' : 'Generate'}
+          </button>
+          <button type="button" className="btn btn-small" onClick={onRefresh}>
+            Refresh Registry
+          </button>
+        </div>
+      </form>
+      {(localError || generationError) && (
+        <p className="artifact-upload-error">{localError || generationError}</p>
+      )}
+      <GeneratedImageSummary result={generationResult} />
+    </section>
+  )
+}
+
 function ArtifactUpload({ uploading, uploadError, uploadResult, onUpload }) {
   const [file, setFile] = useState(null)
   const [title, setTitle] = useState('')
@@ -414,6 +671,11 @@ function RegistryPanel({
   uploadError,
   uploadResult,
   onUpload,
+  imageGenerating,
+  imageGenerationError,
+  imageGenerationResult,
+  imageGenerationCapability,
+  onGenerateImage,
   onRefresh,
 }) {
   return (
@@ -427,6 +689,15 @@ function RegistryPanel({
 
       {loading && <p className="debug-note">Loading registry records...</p>}
       {error && <p className="registry-error">{error}</p>}
+
+      <ImageGenerationPanel
+        generating={imageGenerating}
+        generationError={imageGenerationError}
+        generationResult={imageGenerationResult}
+        capability={imageGenerationCapability}
+        onGenerateImage={onGenerateImage}
+        onRefresh={onRefresh}
+      />
 
       <ArtifactUpload
         uploading={uploading}

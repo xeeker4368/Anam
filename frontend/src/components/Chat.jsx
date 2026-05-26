@@ -5,6 +5,8 @@ function Chat({
   conversationId,
   userId,
   userName,
+  users = [],
+  onUserChange,
   onConversationCreated,
   onDebugData,
   onRefresh,
@@ -407,7 +409,20 @@ function Chat({
     <div className="chat">
       <div className="chat-active-user" aria-live="polite">
         <span className="chat-active-user-label">Active household user</span>
-        <span className="chat-active-user-name">{userName || 'No user selected'}</span>
+        {users.length > 1 && onUserChange ? (
+          <select
+            className="chat-user-select"
+            value={userId || ''}
+            onChange={e => onUserChange(e.target.value)}
+            aria-label="Active household user"
+          >
+            {users.map(user => (
+              <option key={user.id} value={user.id}>{user.name}</option>
+            ))}
+          </select>
+        ) : (
+          <span className="chat-active-user-name">{userName || 'No user selected'}</span>
+        )}
       </div>
       <div className="messages-container">
         {messages.length === 0 && (

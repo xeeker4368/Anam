@@ -2,6 +2,8 @@
 
 import os
 from copy import deepcopy
+from pathlib import Path
+from urllib.parse import urlparse
 
 from tir import config
 
@@ -103,12 +105,15 @@ _CAPABILITY_DEFINITIONS = [
     {
         "key": "image_generation",
         "label": "Image Generation",
-        "implemented": False,
-        "mode": "disabled",
+        "implemented": True,
+        "mode": "manual",
         "requires_approval": False,
         "source_of_truth": False,
         "real_time": False,
-        "notes": "Not implemented.",
+        "notes": (
+            "Manual user/operator-triggered generated media artifacts. "
+            "Not agent-callable and not an avatar workflow."
+        ),
     },
     {
         "key": "autonomous_research",
@@ -253,6 +258,23 @@ def _base_runtime_state(definition: dict) -> dict:
     return capability
 
 
+def _configured_workflow_exists(path_value: str) -> bool:
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = Path(config.PROJECT_ROOT) / path
+    return path.exists() and path.is_file()
+
+
+def _safe_local_url(url_value: str) -> str | None:
+    parsed = urlparse(url_value or "")
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        return None
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.scheme}://{parsed.hostname}{port}"
+
+
 def _resolve_capability(definition: dict, tool_names: set[str]) -> dict:
     capability = _base_runtime_state(definition)
     key = capability["key"]
@@ -306,6 +328,33 @@ def _resolve_capability(definition: dict, tool_names: set[str]) -> dict:
             enabled=True,
             status="available",
             reason=None,
+        )
+    elif key == "image_generation":
+        workflow_configured = _configured_workflow_exists(config.COMFYUI_WORKFLOW_PATH)
+        backend_configured = config.IMAGE_GENERATION_DEFAULT_BACKEND == "comfyui"
+        configured = backend_configured and workflow_configured
+        enabled = bool(config.IMAGE_GENERATION_ENABLED)
+        available = enabled and configured
+        reason = None
+        status = "available"
+        if not enabled:
+            status = "disabled"
+            reason = "disabled"
+        elif not configured:
+            status = "not_configured"
+            reason = "workflow_not_configured" if backend_configured else "backend_not_configured"
+        capability.update(
+            available=available,
+            configured=configured,
+            enabled=enabled,
+            status=status,
+            reason=reason,
+            default_backend=config.IMAGE_GENERATION_DEFAULT_BACKEND,
+            agent_tool_allowed=bool(config.IMAGE_GENERATION_ALLOW_AGENT_TOOL),
+            workflow_configured=workflow_configured,
+            comfyui_base_url=_safe_local_url(config.COMFYUI_BASE_URL),
+            max_width=config.IMAGE_GENERATION_MAX_WIDTH,
+            max_height=config.IMAGE_GENERATION_MAX_HEIGHT,
         )
 
     if capability["mode"] not in ALLOWED_MODES:

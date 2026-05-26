@@ -36,6 +36,11 @@ def _load_routes_with_temp_paths(tmp_path, monkeypatch):
     monkeypatch.setattr("tir.config.CHROMA_DIR", str(tmp_path / "data" / "prod" / "chromadb"))
     monkeypatch.setattr("tir.config.WORKSPACE_DIR", tmp_path / "workspace")
     monkeypatch.setattr("tir.config.BACKUP_DIR", tmp_path / "backups")
+    monkeypatch.setattr("tir.config.IMAGE_GENERATION_ENABLED", False)
+    monkeypatch.setattr("tir.config.IMAGE_GENERATION_DEFAULT_BACKEND", "comfyui")
+    monkeypatch.setattr("tir.config.IMAGE_GENERATION_ALLOW_AGENT_TOOL", False)
+    monkeypatch.setattr("tir.config.COMFYUI_BASE_URL", "http://127.0.0.1:8188")
+    monkeypatch.setattr("tir.config.COMFYUI_WORKFLOW_PATH", str(tmp_path / "missing-workflow.json"))
 
     import tir.memory.db as db_mod
     import tir.ops.status as status_mod
@@ -232,7 +237,12 @@ def test_system_capabilities_reports_available_and_disabled_features(
     assert capabilities["reflection_journal"]["available"] is True
     assert capabilities["reflection_journal"]["mode"] == "manual"
     assert capabilities["reflection_journal"]["status"] == "available"
-    assert capabilities["image_generation"]["status"] == "not_implemented"
+    assert capabilities["image_generation"]["implemented"] is True
+    assert capabilities["image_generation"]["mode"] == "manual"
+    assert capabilities["image_generation"]["enabled"] is False
+    assert capabilities["image_generation"]["status"] == "disabled"
+    assert capabilities["image_generation"]["agent_tool_allowed"] is False
+    assert capabilities["image_generation"]["workflow_configured"] is False
     assert capabilities["autonomous_research"]["status"] == "not_implemented"
     assert capabilities["review_queue"]["status"] == "not_implemented"
     assert capabilities["code_sandbox"]["status"] == "not_implemented"
