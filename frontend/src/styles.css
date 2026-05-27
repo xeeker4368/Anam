@@ -17,6 +17,13 @@ body {
   --anam-visual-viewport-height: 100dvh;
   --anam-visual-viewport-bottom-gap: 0px;
   --anam-mobile-composer-reserve: 92px;
+  --anam-composer-height: 76px;
+  --anam-composer-fixed-top: auto;
+  --anam-composer-occluded-bottom-space: 92px;
+  --vv-height: 100dvh;
+  --vv-offset-top: 0px;
+  --composer-height: 76px;
+  --composer-fixed-top: auto;
 }
 
 #root {
@@ -1874,13 +1881,13 @@ body {
 
 .m-body .chat.keyboard-active .messages-container {
   padding-bottom: calc(
-    var(--anam-mobile-composer-reserve) +
-    var(--anam-visual-viewport-bottom-gap, 0px) +
+    var(--anam-composer-occluded-bottom-space, var(--anam-mobile-composer-reserve)) +
+    12px +
     env(safe-area-inset-bottom, 0)
   );
   scroll-padding-bottom: calc(
-    var(--anam-mobile-composer-reserve) +
-    var(--anam-visual-viewport-bottom-gap, 0px) +
+    var(--anam-composer-occluded-bottom-space, var(--anam-mobile-composer-reserve)) +
+    12px +
     env(safe-area-inset-bottom, 0)
   );
 }
@@ -1889,8 +1896,10 @@ body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: var(--anam-visual-viewport-bottom-gap, 0px);
+  top: var(--anam-composer-fixed-top, auto);
+  bottom: auto;
   padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
+  transform: translateZ(0);
 }
 
 .m-body .input-area textarea {

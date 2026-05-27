@@ -43,6 +43,7 @@ function Chat({
   const debugRef = useRef(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const inputAreaRef = useRef(null)
   const viewportScrollTimerRef = useRef(null)
   const viewportRafRef = useRef(null)
   const viewportDelayTimersRef = useRef([])
@@ -105,9 +106,16 @@ function Chat({
   const updateVisualViewportVars = useCallback(() => {
     const root = document.documentElement
     const visualViewport = window.visualViewport
+    const composerHeight = Math.ceil(inputAreaRef.current?.getBoundingClientRect().height || 76)
+
     if (!visualViewport) {
+      const fixedTop = Math.max(0, window.innerHeight - composerHeight)
       root.style.setProperty('--anam-visual-viewport-height', `${window.innerHeight}px`)
+      root.style.setProperty('--anam-visual-viewport-offset-top', '0px')
       root.style.setProperty('--anam-visual-viewport-bottom-gap', '0px')
+      root.style.setProperty('--anam-composer-height', `${composerHeight}px`)
+      root.style.setProperty('--anam-composer-fixed-top', `${fixedTop}px`)
+      root.style.setProperty('--anam-composer-occluded-bottom-space', `${composerHeight}px`)
       return
     }
 
@@ -115,9 +123,22 @@ function Chat({
       0,
       window.innerHeight - visualViewport.height - visualViewport.offsetTop
     )
+    const fixedTop = Math.max(
+      visualViewport.offsetTop,
+      visualViewport.offsetTop + visualViewport.height - composerHeight
+    )
+    const occludedBottomSpace = Math.max(composerHeight, window.innerHeight - fixedTop)
+
+    root.style.setProperty('--vv-height', `${visualViewport.height}px`)
+    root.style.setProperty('--vv-offset-top', `${visualViewport.offsetTop}px`)
+    root.style.setProperty('--composer-height', `${composerHeight}px`)
+    root.style.setProperty('--composer-fixed-top', `${fixedTop}px`)
     root.style.setProperty('--anam-visual-viewport-height', `${visualViewport.height}px`)
     root.style.setProperty('--anam-visual-viewport-offset-top', `${visualViewport.offsetTop}px`)
     root.style.setProperty('--anam-visual-viewport-bottom-gap', `${bottomGap}px`)
+    root.style.setProperty('--anam-composer-height', `${composerHeight}px`)
+    root.style.setProperty('--anam-composer-fixed-top', `${fixedTop}px`)
+    root.style.setProperty('--anam-composer-occluded-bottom-space', `${occludedBottomSpace}px`)
   }, [])
 
   const scheduleViewportSync = useCallback((behavior = 'auto') => {
@@ -636,7 +657,7 @@ function Chat({
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="input-area">
+      <div className="input-area" ref={inputAreaRef}>
         <textarea
           ref={inputRef}
           value={input}
