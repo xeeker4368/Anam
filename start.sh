@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+set -m
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_PID=""
 FRONTEND_PID=""
 COMFYUI_PID=""
+COMFYUI_REUSED=false
 CLEANED_UP=false
 LAN_MODE=false
 WITH_COMFYUI=false
@@ -40,30 +42,129 @@ Default mode is local-only. LAN mode is for trusted household LAN/VPN use only.
 EOF
 }
 
+is_process_alive() {
+  local pid="$1"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+process_group_for_pid() {
+  local pid="$1"
+  ps -o pgid= -p "$pid" 2>/dev/null | tr -d '[:space:]' || true
+}
+
+collect_descendants() {
+  local parent="$1"
+  local child
+
+  if ! command -v pgrep >/dev/null 2>&1; then
+    return 0
+  fi
+
+  while IFS= read -r child; do
+    [ -z "$child" ] && continue
+    collect_descendants "$child"
+    echo "$child"
+  done < <(pgrep -P "$parent" 2>/dev/null || true)
+}
+
+wait_for_processes_to_exit() {
+  local attempts="${1:-20}"
+  shift
+  local pid
+
+  for _ in $(seq 1 "$attempts"); do
+    local any_alive=false
+    for pid in "$@"; do
+      if is_process_alive "$pid"; then
+        any_alive=true
+        break
+      fi
+    done
+
+    if [ "$any_alive" = false ]; then
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  return 1
+}
+
+stop_started_process_tree() {
+  local label="$1"
+  local root_pid="$2"
+
+  if [ -z "$root_pid" ]; then
+    return 0
+  fi
+
+  if ! is_process_alive "$root_pid"; then
+    echo "$label PID $root_pid is already stopped."
+    return 0
+  fi
+
+  echo "Stopping $label PID $root_pid..."
+
+  local pgid
+  pgid="$(process_group_for_pid "$root_pid")"
+
+  if [ -n "$pgid" ] && [ "$pgid" = "$root_pid" ]; then
+    kill -TERM "-$pgid" 2>/dev/null || true
+    if wait_for_processes_to_exit 20 "$root_pid"; then
+      wait "$root_pid" 2>/dev/null || true
+      echo "Stopped $label PID $root_pid."
+      return 0
+    fi
+
+    echo "$label PID $root_pid did not stop after TERM; sending KILL."
+    kill -KILL "-$pgid" 2>/dev/null || true
+    wait "$root_pid" 2>/dev/null || true
+    return 0
+  fi
+
+  local process_list
+  process_list="$(collect_descendants "$root_pid"; echo "$root_pid")"
+  # shellcheck disable=SC2086
+  kill -TERM $process_list 2>/dev/null || true
+
+  # shellcheck disable=SC2086
+  if wait_for_processes_to_exit 20 $process_list; then
+    wait "$root_pid" 2>/dev/null || true
+    echo "Stopped $label PID $root_pid."
+    return 0
+  fi
+
+  echo "$label PID $root_pid did not stop after TERM; sending KILL."
+  process_list="$(collect_descendants "$root_pid"; echo "$root_pid")"
+  # shellcheck disable=SC2086
+  kill -KILL $process_list 2>/dev/null || true
+  wait "$root_pid" 2>/dev/null || true
+}
+
 cleanup() {
   if [ "$CLEANED_UP" = true ]; then
     return 0
   fi
   CLEANED_UP=true
+  trap - INT TERM
 
   echo ""
   echo "Stopping Project Anam..."
 
-  if [ -n "$FRONTEND_PID" ]; then
-    kill "$FRONTEND_PID" 2>/dev/null || true
-  fi
-
-  if [ -n "$BACKEND_PID" ]; then
-    kill "$BACKEND_PID" 2>/dev/null || true
-  fi
-
+  stop_started_process_tree "frontend" "$FRONTEND_PID"
+  stop_started_process_tree "backend" "$BACKEND_PID"
   if [ -n "$COMFYUI_PID" ]; then
-    echo "Stopping ComfyUI started by this script..."
-    kill "$COMFYUI_PID" 2>/dev/null || true
+    stop_started_process_tree "ComfyUI" "$COMFYUI_PID"
+  elif [ "$COMFYUI_REUSED" = true ]; then
+    echo "Skipped pre-existing ComfyUI; it was not started by this script."
   fi
 
-  wait 2>/dev/null || true
   echo "Stopped."
+}
+
+handle_shutdown_signal() {
+  cleanup
+  exit 130
 }
 
 is_url_ready() {
@@ -166,6 +267,7 @@ start_comfyui_if_requested() {
 
   if is_url_ready "${COMFYUI_URL}/system_stats"; then
     echo "ComfyUI already running at ${COMFYUI_URL}; reusing it."
+    COMFYUI_REUSED=true
     return 0
   fi
 
@@ -218,7 +320,8 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap handle_shutdown_signal INT TERM
 
 cd "$ROOT_DIR"
 
