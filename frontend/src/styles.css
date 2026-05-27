@@ -1736,9 +1736,23 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 100%;
   width: 100%;
   background: #1a1a2e;
   overflow: hidden;
+}
+
+@supports (height: 100dvh) {
+  .app-mobile {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+}
+
+@supports (height: 100svh) {
+  .app-mobile {
+    min-height: 100svh;
+  }
 }
 
 .m-header {
@@ -1832,12 +1846,20 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
+  padding-bottom: calc(92px + env(safe-area-inset-bottom, 0));
   min-height: 0;
+  scroll-padding-bottom: calc(92px + env(safe-area-inset-bottom, 0));
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .m-body .input-area {
   flex-shrink: 0;
-  padding: 8px 12px;
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0));
+  box-shadow: 0 -12px 18px rgba(10, 14, 25, 0.18);
 }
 
 .m-body .input-area textarea {

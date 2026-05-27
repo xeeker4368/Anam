@@ -42,6 +42,7 @@ function Chat({
   const debugRef = useRef(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const viewportScrollTimerRef = useRef(null)
   const mountedRef = useRef(false)
   const streamAbortRef = useRef(null)
   const streamReaderRef = useRef(null)
@@ -58,6 +59,9 @@ function Chat({
       streamAbortRef.current?.abort()
       streamReaderRef.current?.cancel().catch(() => {})
       streamReaderRef.current = null
+      if (viewportScrollTimerRef.current) {
+        window.clearTimeout(viewportScrollTimerRef.current)
+      }
     }
   }, [])
 
@@ -85,6 +89,10 @@ function Chat({
   function isAbortError(error) {
     return error?.name === 'AbortError'
   }
+
+  const scrollToLatestMessage = useCallback((behavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
+  }, [])
 
   function updateMessageById(messageId, updater) {
     setMessages(prev => prev.map(message => (
@@ -294,8 +302,31 @@ function Chat({
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    scrollToLatestMessage('smooth')
+  }, [messages, scrollToLatestMessage])
+
+  useEffect(() => {
+    if (!window.visualViewport) return undefined
+
+    function handleVisualViewportChange() {
+      if (viewportScrollTimerRef.current) {
+        window.clearTimeout(viewportScrollTimerRef.current)
+      }
+      viewportScrollTimerRef.current = window.setTimeout(() => {
+        scrollToLatestMessage('auto')
+      }, 90)
+    }
+
+    window.visualViewport.addEventListener('resize', handleVisualViewportChange)
+    window.visualViewport.addEventListener('scroll', handleVisualViewportChange)
+    return () => {
+      window.visualViewport.removeEventListener('resize', handleVisualViewportChange)
+      window.visualViewport.removeEventListener('scroll', handleVisualViewportChange)
+      if (viewportScrollTimerRef.current) {
+        window.clearTimeout(viewportScrollTimerRef.current)
+      }
+    }
+  }, [scrollToLatestMessage])
 
   // Focus input
   useEffect(() => {
@@ -502,6 +533,11 @@ function Chat({
     }
   }
 
+  function handleInputFocus() {
+    window.setTimeout(() => scrollToLatestMessage('smooth'), 80)
+    window.setTimeout(() => scrollToLatestMessage('auto'), 280)
+  }
+
   return (
     <div className="chat">
       <div className="chat-active-user" aria-live="polite">
@@ -549,6 +585,7 @@ function Chat({
           ref={inputRef}
           value={input}
           onChange={e => setInput(e.target.value)}
+          onFocus={handleInputFocus}
           onKeyDown={handleKeyDown}
           disabled={isStreaming}
           placeholder="Type a message... (Enter to send)"
