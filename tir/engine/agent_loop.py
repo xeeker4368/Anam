@@ -38,6 +38,7 @@ class LoopResult:
     terminated_reason: str          # "complete" | "iteration_limit" | "error"
     iterations: int                 # How many iterations ran
     error: str | None = None        # Error message if terminated_reason == "error"
+    ollama_stats: dict | None = None # Final stream counters, if Ollama supplied them.
 
 
 def _format_iteration_limit_response(
@@ -132,11 +133,13 @@ def run_agent_loop(
 
     tools = registry.list_tools() if registry and registry.has_tools() else None
     tool_trace = []
+    ollama_stats = None
 
     for iteration in range(iteration_limit):
         # --- Stream from Ollama ---
         accumulated_content = []
         accumulated_tool_calls = []
+        iteration_stats = None
 
         try:
             for chunk in chat_completion_stream_with_tools(
@@ -161,6 +164,17 @@ def run_agent_loop(
                     accumulated_tool_calls.extend(chunk_tool_calls)
 
                 if chunk.get("done", False):
+                    iteration_stats = {
+                        key: chunk[key]
+                        for key in (
+                            "load_duration",
+                            "prompt_eval_count",
+                            "prompt_eval_duration",
+                            "eval_count",
+                            "eval_duration",
+                        )
+                        if key in chunk
+                    }
                     break
 
         except Exception as e:
@@ -174,6 +188,9 @@ def run_agent_loop(
             )
             yield {"type": "done", "result": result}
             return
+
+        if iteration_stats:
+            ollama_stats = iteration_stats
 
         full_content = "".join(accumulated_content)
 
@@ -264,6 +281,7 @@ def run_agent_loop(
             tool_trace=tool_trace,
             terminated_reason="complete",
             iterations=iteration + 1,
+            ollama_stats=ollama_stats,
         )
         yield {"type": "done", "result": result}
         return
@@ -277,5 +295,6 @@ def run_agent_loop(
         tool_trace=tool_trace,
         terminated_reason="iteration_limit",
         iterations=iteration_limit,
+        ollama_stats=ollama_stats,
     )
     yield {"type": "done", "result": result}

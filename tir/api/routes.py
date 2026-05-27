@@ -16,6 +16,8 @@ Endpoints:
 import json
 import logging
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests as http_requests
@@ -34,12 +36,14 @@ from tir.api.auth import (
     verify_api_secret,
 )
 from tir.config import (
+    CHAT_MODEL,
     CONVERSATION_ITERATION_LIMIT,
     DEFAULT_USER,
     FRONTEND_DIR,
     OLLAMA_HOST,
     SKILLS_DIR,
     WORKSPACE_DIR,
+    get_model_options,
 )
 from tir.memory.db import (
     init_databases,
@@ -107,6 +111,11 @@ from tir.ops.status import (
     build_capabilities_status,
     build_memory_status,
     build_system_health,
+)
+from tir.ops.chat_debug_trace import (
+    CHAT_DEBUG_TRACE_PATH,
+    safe_chat_model_options,
+    write_chat_debug_trace,
 )
 from tir.review.service import (
     ReviewValidationError,
@@ -381,6 +390,7 @@ def stream_chat(req: ChatRequest):
         {"type": "error", ...}      — if something goes wrong
     """
     user = _resolve_user(req.user_id)
+    request_id = uuid.uuid4().hex
     supplied_conversation = (
         get_conversation(req.conversation_id)
         if req.conversation_id is not None
@@ -858,6 +868,52 @@ def stream_chat(req: ChatRequest):
             post_model_timings["model_total_ms"] = agent_loop_total_ms
         if loop_result is not None:
             post_model_timings["tool_loop_iterations"] = loop_result.iterations
+
+        trace_timings = {**timings, **post_model_timings}
+        error_type = None
+        if loop_result is None:
+            error_type = "stream_exception"
+        elif loop_result.terminated_reason == "error":
+            error_type = "agent_loop_error"
+        elif not should_persist_assistant and loop_result.terminated_reason == "complete":
+            error_type = "empty_assistant_response"
+
+        trace_record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "request_id": request_id,
+            "conversation_id": conversation_id,
+            "user_id": user_id,
+            "model": CHAT_MODEL,
+            "model_options": safe_chat_model_options(get_model_options("chat")),
+            "prompt_chars": prompt_breakdown.get("total_chars"),
+            "retrieved_chunk_count": len(retrieved_chunks),
+            "history_message_count": len(model_messages),
+            "history_db_message_count": history_db_message_count,
+            "tool_call_count": tool_call_count,
+            "loop_iterations": (
+                loop_result.iterations
+                if loop_result is not None
+                else None
+            ),
+            "timings": trace_timings,
+            "result": {
+                "ok": error_type is None and should_persist_assistant,
+                "error_type": error_type,
+                "terminated_reason": (
+                    loop_result.terminated_reason
+                    if loop_result is not None
+                    else None
+                ),
+                "assistant_message_chars": len(assistant_content or ""),
+            },
+        }
+        ollama_stats = getattr(loop_result, "ollama_stats", None)
+        if ollama_stats:
+            trace_record["ollama"] = ollama_stats
+        try:
+            write_chat_debug_trace(trace_record, path=CHAT_DEBUG_TRACE_PATH)
+        except Exception as e:
+            logger.warning("Chat debug trace logging failed: %s", e)
 
         yield json.dumps({
             "type": "debug_update",

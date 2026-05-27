@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tir.api.routes import app
@@ -51,6 +52,18 @@ def _fake_message(role, content, message_id):
         "content": content,
         "timestamp": "2026-04-27T12:00:00+00:00",
     }
+
+
+@pytest.fixture
+def chat_debug_trace_path(tmp_path, monkeypatch):
+    path = tmp_path / "chat_debug.jsonl"
+    monkeypatch.setattr("tir.api.routes.CHAT_DEBUG_TRACE_PATH", path)
+    return path
+
+
+@pytest.fixture(autouse=True)
+def _redirect_chat_debug_trace(chat_debug_trace_path):
+    return None
 
 
 def _selection_trace():
@@ -181,6 +194,150 @@ def test_stream_chat_no_tool_path_preserves_basic_events(
     assistant_call = mock_save_message.call_args_list[-1]
     assert assistant_call.kwargs["tool_trace"] is None
     mock_checkpoint_conversation.assert_called_once_with("conv-1", "user-1")
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_writes_structured_debug_trace_without_message_bodies(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+    chat_debug_trace_path,
+):
+    app.state.registry = FakeRegistry(has_tools=False)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = [
+        {
+            "chunk_id": "chunk-1",
+            "text": "Retrieved source text should not appear in the JSONL trace.",
+            "source_type": "conversation",
+        }
+    ]
+    user_text = "Hello with Bearer SECRET_TRACE_TOKEN"
+    assistant_text = "Hello back with private response body"
+    mock_save_message.side_effect = [
+        _fake_message("user", user_text, "msg-user"),
+        _fake_message("assistant", assistant_text, "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", user_text, "msg-user")]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": assistant_text},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content=assistant_text,
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": user_text})
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    assert events[-1]["message_id"] == "msg-assistant"
+    lines = chat_debug_trace_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    raw_record = lines[0]
+    record = json.loads(raw_record)
+
+    assert record["conversation_id"] == "conv-1"
+    assert record["user_id"] == "user-1"
+    assert record["model"]
+    assert isinstance(record["model_options"]["temperature"], int | float)
+    assert isinstance(record["model_options"]["think"], bool)
+    assert record["prompt_chars"] > 0
+    assert record["retrieved_chunk_count"] == 1
+    assert record["history_message_count"] == 1
+    assert record["tool_call_count"] == 0
+    assert record["loop_iterations"] == 1
+    assert record["timings"]["retrieval_ms"] >= 0
+    assert record["timings"]["context_build_ms"] >= 0
+    assert record["timings"]["total_backend_ms"] >= 0
+    assert record["result"] == {
+        "ok": True,
+        "error_type": None,
+        "terminated_reason": "complete",
+        "assistant_message_chars": len(assistant_text),
+    }
+    assert user_text not in raw_record
+    assert assistant_text not in raw_record
+    assert "Retrieved source text should not appear" not in raw_record
+    assert "SECRET_TRACE_TOKEN" not in raw_record
+    assert "Bearer SECRET_TRACE_TOKEN" not in raw_record
+
+
+@patch("tir.api.routes.write_chat_debug_trace")
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_debug_trace_failure_does_not_fail_chat(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+    mock_write_chat_debug_trace,
+    caplog,
+):
+    app.state.registry = FakeRegistry(has_tools=False)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = []
+    mock_save_message.side_effect = [
+        _fake_message("user", "Hello", "msg-user"),
+        _fake_message("assistant", "Hello back", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", "Hello", "msg-user")]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "Hello back"},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="Hello back",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+    mock_write_chat_debug_trace.side_effect = OSError("disk full")
+
+    client = TestClient(app)
+    with caplog.at_level("WARNING"):
+        response = client.post("/api/chat/stream", json={"text": "Hello"})
+    events = _stream_lines(response)
+
+    assert response.status_code == 200
+    assert events[-1] == {
+        "type": "done",
+        "conversation_id": "conv-1",
+        "message_id": "msg-assistant",
+    }
+    assert "Chat debug trace logging failed" in caplog.text
 
 
 @patch("tir.api.routes.checkpoint_conversation")
