@@ -17,6 +17,43 @@ const DEFAULT_BEHAVIORAL_GUIDANCE_FILTERS = {
   proposalType: '',
 }
 
+const CLIENT_STATE_KEYS = {
+  activeUserId: 'anam.activeUserId',
+  activeConversationId: 'anam.activeConversationId',
+  activeTab: 'anam.activeTab',
+}
+
+const VALID_MOBILE_TABS = new Set(['chat', 'conversations', 'registry', 'system', 'debug'])
+
+function readClientState(key) {
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeClientState(key, value) {
+  try {
+    if (value) {
+      window.localStorage.setItem(key, value)
+    } else {
+      window.localStorage.removeItem(key)
+    }
+  } catch {
+    // Local storage may be unavailable in private browsing or restricted contexts.
+  }
+}
+
+function normalizeStoredTab(tab) {
+  return VALID_MOBILE_TABS.has(tab) ? tab : 'chat'
+}
+
+function conversationBelongsToUser(conversation, userId) {
+  if (!conversation || !userId) return true
+  return !conversation.user_id || conversation.user_id === userId
+}
+
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(window.innerWidth < breakpoint)
   useEffect(() => {
@@ -46,16 +83,22 @@ function useViewportHeight() {
 
 function App() {
   const [conversations, setConversations] = useState([])
-  const [activeConversationId, setActiveConversationId] = useState(null)
+  const [activeConversationId, setActiveConversationId] = useState(
+    () => readClientState(CLIENT_STATE_KEYS.activeConversationId) || null
+  )
   const [viewingConversation, setViewingConversation] = useState(null)
   const [viewingMessages, setViewingMessages] = useState([])
   const [debugData, setDebugData] = useState(null)
   const [showDebug, setShowDebug] = useState(false)
   const [health, setHealth] = useState(null)
   const [users, setUsers] = useState([])
-  const [activeUserId, setActiveUserId] = useState(null)
+  const [activeUserId, setActiveUserId] = useState(
+    () => readClientState(CLIENT_STATE_KEYS.activeUserId) || null
+  )
   const [showDashboard, setShowDashboard] = useState(false)
-  const [activeTab, setActiveTab] = useState('chat')
+  const [activeTab, setActiveTab] = useState(
+    () => normalizeStoredTab(readClientState(CLIENT_STATE_KEYS.activeTab))
+  )
   const [rightPanelView, setRightPanelView] = useState('debug')
   const [artifacts, setArtifacts] = useState([])
   const [openLoops, setOpenLoops] = useState([])
@@ -99,6 +142,42 @@ function App() {
     return () => clearInterval(healthInterval)
   }, [])
 
+  useEffect(() => {
+    writeClientState(CLIENT_STATE_KEYS.activeUserId, activeUserId)
+  }, [activeUserId])
+
+  useEffect(() => {
+    writeClientState(CLIENT_STATE_KEYS.activeConversationId, activeConversationId)
+  }, [activeConversationId])
+
+  useEffect(() => {
+    writeClientState(CLIENT_STATE_KEYS.activeTab, activeTab)
+  }, [activeTab])
+
+  useEffect(() => {
+    function refreshOnResume() {
+      if (document.visibilityState && document.visibilityState !== 'visible') return
+      fetchConversations()
+      fetchHealth()
+      fetchRegistries()
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        refreshOnResume()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', refreshOnResume)
+    window.addEventListener('pageshow', refreshOnResume)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', refreshOnResume)
+      window.removeEventListener('pageshow', refreshOnResume)
+    }
+  }, [])
+
   async function fetchConversations() {
     try {
       const resp = await apiFetch('/api/conversations')
@@ -112,6 +191,20 @@ function App() {
       }
 
       setConversations(data)
+      const storedConversationId = readClientState(CLIENT_STATE_KEYS.activeConversationId)
+      const storedUserId = readClientState(CLIENT_STATE_KEYS.activeUserId)
+      const candidateConversationId = activeConversationId || storedConversationId
+      const candidateUserId = storedUserId || activeUserId
+      if (candidateConversationId) {
+        const candidate = data.find(conv => conv.id === candidateConversationId)
+        if (!candidate) {
+          setActiveConversationId(null)
+        } else if (conversationBelongsToUser(candidate, candidateUserId)) {
+          setActiveConversationId(candidateConversationId)
+        } else {
+          setActiveConversationId(null)
+        }
+      }
     } catch (e) {
       console.error('Failed to fetch conversations:', e)
     }
@@ -151,8 +244,13 @@ function App() {
 
       setUsers(data)
       if (data.length > 0) {
-        const admin = data.find(u => u.role === 'admin') || data[0]
-        setActiveUserId(admin.id)
+        const storedUserId = readClientState(CLIENT_STATE_KEYS.activeUserId)
+        const selected =
+          data.find(u => u.id === activeUserId) ||
+          data.find(u => u.id === storedUserId) ||
+          data.find(u => u.role === 'admin') ||
+          data[0]
+        selectActiveUser(selected.id)
       }
     } catch (e) {
       console.error('Failed to fetch users:', e)
@@ -542,6 +640,18 @@ function App() {
     }
   }
 
+  function selectActiveUser(userId) {
+    writeClientState(CLIENT_STATE_KEYS.activeUserId, userId)
+    setActiveUserId(userId)
+    if (!activeConversationId || conversations.length === 0) return
+    const activeConversation = conversations.find(conv => conv.id === activeConversationId)
+    if (activeConversation && conversationBelongsToUser(activeConversation, userId)) return
+
+    setActiveConversationId(null)
+    setViewingConversation(null)
+    setViewingMessages([])
+  }
+
   async function handleViewConversation(conv) {
     try {
       const resp = await apiFetch(`/api/conversations/${conv.id}/messages`)
@@ -554,6 +664,7 @@ function App() {
         throw new Error('Messages response was not a list')
       }
 
+      setActiveConversationId(conv.id)
       setViewingConversation(conv)
       setViewingMessages(messages)
       setDebugData(null)
@@ -564,6 +675,17 @@ function App() {
   }
 
   function handleBackToChat() {
+    setViewingConversation(null)
+    setViewingMessages([])
+  }
+
+  function handleSelectConversation(conv) {
+    if (conv.ended_at) {
+      handleViewConversation(conv)
+      return
+    }
+
+    setActiveConversationId(conv.id)
     setViewingConversation(null)
     setViewingMessages([])
   }
@@ -614,7 +736,7 @@ function App() {
         {users.length > 1 && (
           <select
             value={activeUserId || ''}
-            onChange={e => setActiveUserId(e.target.value)}
+            onChange={e => selectActiveUser(e.target.value)}
             className="user-select"
           >
             {users.map(u => (
@@ -643,10 +765,7 @@ function App() {
             className={`conversation-item ${
               activeConversationId === conv.id ? 'active' : ''
             } ${conv.ended_at ? 'ended' : 'open'}`}
-            onClick={() => conv.ended_at
-              ? handleViewConversation(conv)
-              : setActiveConversationId(conv.id)
-            }
+            onClick={() => handleSelectConversation(conv)}
           >
             <div className="conv-meta">
               <span className="conv-user">{conv.user_name}</span>
@@ -723,7 +842,7 @@ function App() {
       userId={activeUserId}
       userName={activeUserName}
       users={users}
-      onUserChange={setActiveUserId}
+      onUserChange={selectActiveUser}
       onConversationCreated={handleConversationCreated}
       onDebugData={handleDebugData}
       onRefresh={handleRefresh}
@@ -742,7 +861,7 @@ function App() {
                 <span>Household user</span>
                 <select
                   value={activeUserId || ''}
-                  onChange={e => setActiveUserId(e.target.value)}
+                  onChange={e => selectActiveUser(e.target.value)}
                   aria-label="Active household user"
                 >
                   {users.map(user => (

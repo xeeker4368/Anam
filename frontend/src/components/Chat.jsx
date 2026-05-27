@@ -1,6 +1,30 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { apiFetch, readErrorMessage } from '../api'
 
+function draftStorageKey(userId, conversationId) {
+  return `anam.chatDraft.${userId || 'unknown'}.${conversationId || 'new'}`
+}
+
+function readDraft(key) {
+  try {
+    return window.localStorage.getItem(key) || ''
+  } catch {
+    return ''
+  }
+}
+
+function writeDraft(key, value) {
+  try {
+    if (value) {
+      window.localStorage.setItem(key, value)
+    } else {
+      window.localStorage.removeItem(key)
+    }
+  } catch {
+    // Local storage can be unavailable in private browsing or restricted contexts.
+  }
+}
+
 function Chat({
   conversationId,
   userId,
@@ -23,6 +47,9 @@ function Chat({
   const streamReaderRef = useRef(null)
   const streamIdRef = useRef(0)
   const messageIdCounterRef = useRef(0)
+  const draftStorageKeyRef = useRef(draftStorageKey(userId, conversationId))
+  const skipDraftPersistRef = useRef(false)
+  const wasHiddenRef = useRef(false)
 
   useEffect(() => {
     mountedRef.current = true
@@ -32,6 +59,18 @@ function Chat({
       streamReaderRef.current?.cancel().catch(() => {})
       streamReaderRef.current = null
     }
+  }, [])
+
+  const stopActiveStreamForResume = useCallback(() => {
+    streamAbortRef.current?.abort()
+    streamReaderRef.current?.cancel().catch(() => {})
+    streamReaderRef.current = null
+    streamAbortRef.current = null
+    isStreamingRef.current = false
+    setIsStreaming(false)
+    setMessages(prev => prev.map(message => (
+      message.streaming ? { ...message, streaming: false } : message
+    )))
   }, [])
 
   function nextMessageId(prefix) {
@@ -186,6 +225,21 @@ function Chat({
     }
   }, [messageIdFromServer])
 
+  useEffect(() => {
+    const key = draftStorageKey(userId, conversationId)
+    draftStorageKeyRef.current = key
+    skipDraftPersistRef.current = true
+    setInput(readDraft(key))
+  }, [userId, conversationId])
+
+  useEffect(() => {
+    if (skipDraftPersistRef.current) {
+      skipDraftPersistRef.current = false
+      return
+    }
+    writeDraft(draftStorageKeyRef.current, input)
+  }, [input])
+
   // Load existing messages when conversationId changes
   // Skip if we're mid-stream — streaming manages its own message state
   useEffect(() => {
@@ -195,6 +249,48 @@ function Chat({
       setMessages([])
     }
   }, [conversationId, fetchMessages])
+
+  useEffect(() => {
+    function refreshFromBackend(forceRecoverStream = false) {
+      if (!conversationId) return
+      if (forceRecoverStream && isStreamingRef.current) {
+        stopActiveStreamForResume()
+      }
+      if (!isStreamingRef.current) {
+        fetchMessages(conversationId)
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        wasHiddenRef.current = true
+        return
+      }
+      if (document.visibilityState === 'visible') {
+        refreshFromBackend(wasHiddenRef.current)
+        wasHiddenRef.current = false
+      }
+    }
+
+    function handleFocus() {
+      refreshFromBackend(wasHiddenRef.current)
+      wasHiddenRef.current = false
+    }
+
+    function handlePageShow(event) {
+      refreshFromBackend(Boolean(event.persisted) || wasHiddenRef.current)
+      wasHiddenRef.current = false
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('pageshow', handlePageShow)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('pageshow', handlePageShow)
+    }
+  }, [conversationId, fetchMessages, stopActiveStreamForResume])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -216,6 +312,7 @@ function Chat({
       return
     }
 
+    writeDraft(draftStorageKeyRef.current, '')
     setInput('')
     setIsStreaming(true)
     isStreamingRef.current = true
