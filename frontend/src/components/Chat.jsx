@@ -38,11 +38,14 @@ function Chat({
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [keyboardActive, setKeyboardActive] = useState(false)
   const isStreamingRef = useRef(false)
   const debugRef = useRef(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const viewportScrollTimerRef = useRef(null)
+  const viewportRafRef = useRef(null)
+  const viewportDelayTimersRef = useRef([])
   const mountedRef = useRef(false)
   const streamAbortRef = useRef(null)
   const streamReaderRef = useRef(null)
@@ -62,6 +65,11 @@ function Chat({
       if (viewportScrollTimerRef.current) {
         window.clearTimeout(viewportScrollTimerRef.current)
       }
+      if (viewportRafRef.current) {
+        window.cancelAnimationFrame(viewportRafRef.current)
+      }
+      viewportDelayTimersRef.current.forEach(timer => window.clearTimeout(timer))
+      viewportDelayTimersRef.current = []
     }
   }, [])
 
@@ -93,6 +101,46 @@ function Chat({
   const scrollToLatestMessage = useCallback((behavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
   }, [])
+
+  const updateVisualViewportVars = useCallback(() => {
+    const root = document.documentElement
+    const visualViewport = window.visualViewport
+    if (!visualViewport) {
+      root.style.setProperty('--anam-visual-viewport-height', `${window.innerHeight}px`)
+      root.style.setProperty('--anam-visual-viewport-bottom-gap', '0px')
+      return
+    }
+
+    const bottomGap = Math.max(
+      0,
+      window.innerHeight - visualViewport.height - visualViewport.offsetTop
+    )
+    root.style.setProperty('--anam-visual-viewport-height', `${visualViewport.height}px`)
+    root.style.setProperty('--anam-visual-viewport-offset-top', `${visualViewport.offsetTop}px`)
+    root.style.setProperty('--anam-visual-viewport-bottom-gap', `${bottomGap}px`)
+  }, [])
+
+  const scheduleViewportSync = useCallback((behavior = 'auto') => {
+    updateVisualViewportVars()
+
+    if (viewportRafRef.current) {
+      window.cancelAnimationFrame(viewportRafRef.current)
+    }
+    viewportDelayTimersRef.current.forEach(timer => window.clearTimeout(timer))
+    viewportDelayTimersRef.current = []
+
+    viewportRafRef.current = window.requestAnimationFrame(() => {
+      updateVisualViewportVars()
+      scrollToLatestMessage(behavior)
+    })
+
+    viewportDelayTimersRef.current = [60, 160, 320].map(delay => (
+      window.setTimeout(() => {
+        updateVisualViewportVars()
+        scrollToLatestMessage(behavior)
+      }, delay)
+    ))
+  }, [scrollToLatestMessage, updateVisualViewportVars])
 
   function updateMessageById(messageId, updater) {
     setMessages(prev => prev.map(message => (
@@ -313,10 +361,11 @@ function Chat({
         window.clearTimeout(viewportScrollTimerRef.current)
       }
       viewportScrollTimerRef.current = window.setTimeout(() => {
-        scrollToLatestMessage('auto')
+        scheduleViewportSync('auto')
       }, 90)
     }
 
+    updateVisualViewportVars()
     window.visualViewport.addEventListener('resize', handleVisualViewportChange)
     window.visualViewport.addEventListener('scroll', handleVisualViewportChange)
     return () => {
@@ -326,7 +375,7 @@ function Chat({
         window.clearTimeout(viewportScrollTimerRef.current)
       }
     }
-  }, [scrollToLatestMessage])
+  }, [scheduleViewportSync, updateVisualViewportVars])
 
   // Focus input
   useEffect(() => {
@@ -534,12 +583,19 @@ function Chat({
   }
 
   function handleInputFocus() {
-    window.setTimeout(() => scrollToLatestMessage('smooth'), 80)
-    window.setTimeout(() => scrollToLatestMessage('auto'), 280)
+    setKeyboardActive(true)
+    scheduleViewportSync('auto')
+  }
+
+  function handleInputBlur() {
+    window.setTimeout(() => {
+      setKeyboardActive(false)
+      scheduleViewportSync('auto')
+    }, 120)
   }
 
   return (
-    <div className="chat">
+    <div className={`chat ${keyboardActive ? 'keyboard-active' : ''}`}>
       <div className="chat-active-user" aria-live="polite">
         <span className="chat-active-user-label">Active household user</span>
         {users.length > 1 && onUserChange ? (
@@ -586,6 +642,7 @@ function Chat({
           value={input}
           onChange={e => setInput(e.target.value)}
           onFocus={handleInputFocus}
+          onBlur={handleInputBlur}
           onKeyDown={handleKeyDown}
           disabled={isStreaming}
           placeholder="Type a message... (Enter to send)"

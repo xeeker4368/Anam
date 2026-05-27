@@ -13,6 +13,12 @@ body {
   overflow: hidden;
 }
 
+:root {
+  --anam-visual-viewport-height: 100dvh;
+  --anam-visual-viewport-bottom-gap: 0px;
+  --anam-mobile-composer-reserve: 92px;
+}
+
 #root {
   height: 100%;
 }
@@ -1833,6 +1839,10 @@ body {
   overflow: hidden;
 }
 
+.m-body > .chat.keyboard-active {
+  height: min(100%, var(--anam-visual-viewport-height, 100dvh));
+}
+
 .m-body > .main-content > .chat {
   flex: 1;
   display: flex;
@@ -1846,9 +1856,9 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
-  padding-bottom: calc(92px + env(safe-area-inset-bottom, 0));
+  padding-bottom: calc(var(--anam-mobile-composer-reserve) + env(safe-area-inset-bottom, 0));
   min-height: 0;
-  scroll-padding-bottom: calc(92px + env(safe-area-inset-bottom, 0));
+  scroll-padding-bottom: calc(var(--anam-mobile-composer-reserve) + env(safe-area-inset-bottom, 0));
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
@@ -1860,6 +1870,27 @@ body {
   z-index: 3;
   padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0));
   box-shadow: 0 -12px 18px rgba(10, 14, 25, 0.18);
+}
+
+.m-body .chat.keyboard-active .messages-container {
+  padding-bottom: calc(
+    var(--anam-mobile-composer-reserve) +
+    var(--anam-visual-viewport-bottom-gap, 0px) +
+    env(safe-area-inset-bottom, 0)
+  );
+  scroll-padding-bottom: calc(
+    var(--anam-mobile-composer-reserve) +
+    var(--anam-visual-viewport-bottom-gap, 0px) +
+    env(safe-area-inset-bottom, 0)
+  );
+}
+
+.m-body .chat.keyboard-active .input-area {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--anam-visual-viewport-bottom-gap, 0px);
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
 }
 
 .m-body .input-area textarea {
