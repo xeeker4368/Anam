@@ -84,6 +84,7 @@ from tir.engine.tool_trace_context import build_moltbook_selection_context
 from tir.engine.url_prefetch import get_url_prefetch_candidate
 from tir.memory.chroma import get_collection_count
 from tir.tools.registry import SkillRegistry
+from tir.tools.context import ToolContext
 from tir.tools.rendering import render_tool_result
 from tir.artifacts.service import (
     ArtifactValidationError,
@@ -444,6 +445,12 @@ def stream_chat(req: ChatRequest):
         phase_start = time.perf_counter()
         user_msg = save_message(conversation_id, user_id, "user", req.text)
         timings["save_user_message_ms"] = elapsed_ms(phase_start)
+        tool_context = ToolContext(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            source_message_id=user_msg["id"],
+            request_id=request_id,
+        )
 
         # --- Retrieval ---
         phase_start = time.perf_counter()
@@ -756,6 +763,7 @@ def stream_chat(req: ChatRequest):
                 registry=registry,
                 iteration_limit=CONVERSATION_ITERATION_LIMIT,
                 ollama_host=OLLAMA_HOST,
+                tool_context=tool_context,
             ):
                 event_type = event.get("type")
 

@@ -193,6 +193,10 @@ def test_stream_chat_no_tool_path_preserves_basic_events(
     assert events[-1]["conversation_id"] == "conv-1"
     assistant_call = mock_save_message.call_args_list[-1]
     assert assistant_call.kwargs["tool_trace"] is None
+    tool_context = mock_loop.call_args.kwargs["tool_context"]
+    assert tool_context.user_id == "user-1"
+    assert tool_context.conversation_id == "conv-1"
+    assert tool_context.source_message_id == "msg-user"
     mock_checkpoint_conversation.assert_called_once_with("conv-1", "user-1")
 
 

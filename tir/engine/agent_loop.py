@@ -107,6 +107,7 @@ def run_agent_loop(
     iteration_limit: int,
     ollama_host: str,
     model: str | None = None,
+    tool_context=None,
 ):
     """
     Run the agent loop. Generator that yields events.
@@ -224,7 +225,11 @@ def run_agent_loop(
                 }
 
                 # Dispatch through registry
-                envelope = registry.dispatch(tool_name, arguments)
+                envelope = registry.dispatch(
+                    tool_name,
+                    arguments,
+                    _context=tool_context,
+                )
                 trace_arguments = (
                     envelope.get("normalized_args", arguments)
                     if envelope["ok"]

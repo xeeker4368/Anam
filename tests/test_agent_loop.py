@@ -318,6 +318,44 @@ class TestAgentLoopToolCalling:
         assert result.tool_trace[0]["tool_calls"][0]["name"] == "echo"
 
     @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_tool_context_is_passed_to_dispatch(self, mock_stream):
+        """Runtime context reaches Python tools that accept _context."""
+        context = object()
+
+        def context_tool(_context=None):
+            return {"has_context": _context is context}
+
+        registry = SkillRegistry()
+        from tir.tools.registry import ToolDefinition
+
+        registry._tools["context_probe"] = ToolDefinition(
+            name="context_probe",
+            description="Checks context.",
+            args_schema={"type": "object", "properties": {}},
+            function=context_tool,
+            skill_name="test_context",
+        )
+        registry._tool_to_skill["context_probe"] = "test_context"
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("context_probe", {})),
+            iter(_make_text_chunks("Context received")),
+        ]
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=[{"role": "user", "content": "use context"}],
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+            tool_context=context,
+        ))
+
+        tool_result = [e for e in events if e["type"] == "tool_result"][0]
+        assert tool_result["ok"] is True
+        assert json.loads(tool_result["result"]) == {"has_context": True}
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
     def test_followup_model_call_receives_rendered_tool_result(self, mock_stream):
         """The post-tool model call receives assistant tool call and tool result."""
         captured_messages = []
