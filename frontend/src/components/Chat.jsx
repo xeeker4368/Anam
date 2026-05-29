@@ -114,6 +114,8 @@ function interruptedAssistantMessage(message) {
 
 const RECOVERY_POLL_INTERVAL_MS = 1500
 const RECOVERY_POLL_TIMEOUT_MS = 30000
+const RESUME_MESSAGE_REFRESH_DELAY_MS = 150
+const RESUME_MESSAGE_REFRESH_THROTTLE_MS = 2500
 
 function Chat({
   conversationId,
@@ -151,6 +153,8 @@ function Chat({
   const recoveryPollDeadlineRef = useRef(0)
   const recoveryConversationIdRef = useRef(null)
   const hasRecoveringPendingRef = useRef(false)
+  const resumeMessageRefreshTimerRef = useRef(null)
+  const lastResumeMessageRefreshRef = useRef(0)
 
   useEffect(() => {
     mountedRef.current = true
@@ -163,6 +167,10 @@ function Chat({
       if (recoveryPollTimerRef.current) {
         window.clearTimeout(recoveryPollTimerRef.current)
         recoveryPollTimerRef.current = null
+      }
+      if (resumeMessageRefreshTimerRef.current) {
+        window.clearTimeout(resumeMessageRefreshTimerRef.current)
+        resumeMessageRefreshTimerRef.current = null
       }
       if (viewportScrollTimerRef.current) {
         window.clearTimeout(viewportScrollTimerRef.current)
@@ -512,13 +520,23 @@ function Chat({
   }, [conversationId, fetchMessages, clearRecoveryPoll])
 
   useEffect(() => {
-    function refreshFromBackend(forceRecoverStream = false) {
+    function runResumeMessageRefresh() {
+      resumeMessageRefreshTimerRef.current = null
+      lastResumeMessageRefreshRef.current = Date.now()
       if (!conversationId) return
-      if (forceRecoverStream && isStreamingRef.current) {
-        fetchMessages(conversationId)
-        return
-      }
       fetchMessages(conversationId)
+    }
+
+    function scheduleResumeMessageRefresh() {
+      if (!conversationId) return
+      if (document.visibilityState && document.visibilityState !== 'visible') return
+      const now = Date.now()
+      if (now - lastResumeMessageRefreshRef.current < RESUME_MESSAGE_REFRESH_THROTTLE_MS) return
+      if (resumeMessageRefreshTimerRef.current) return
+      resumeMessageRefreshTimerRef.current = window.setTimeout(
+        runResumeMessageRefresh,
+        RESUME_MESSAGE_REFRESH_DELAY_MS
+      )
     }
 
     function handleVisibilityChange() {
@@ -527,18 +545,18 @@ function Chat({
         return
       }
       if (document.visibilityState === 'visible') {
-        refreshFromBackend(wasHiddenRef.current)
+        scheduleResumeMessageRefresh()
         wasHiddenRef.current = false
       }
     }
 
     function handleFocus() {
-      refreshFromBackend(wasHiddenRef.current)
+      scheduleResumeMessageRefresh()
       wasHiddenRef.current = false
     }
 
-    function handlePageShow(event) {
-      refreshFromBackend(Boolean(event.persisted) || wasHiddenRef.current)
+    function handlePageShow() {
+      scheduleResumeMessageRefresh()
       wasHiddenRef.current = false
     }
 
@@ -549,6 +567,10 @@ function Chat({
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('pageshow', handlePageShow)
+      if (resumeMessageRefreshTimerRef.current) {
+        window.clearTimeout(resumeMessageRefreshTimerRef.current)
+        resumeMessageRefreshTimerRef.current = null
+      }
     }
   }, [conversationId, fetchMessages])
 

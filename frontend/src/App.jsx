@@ -23,7 +23,8 @@ const CLIENT_STATE_KEYS = {
   activeTab: 'anam.activeTab',
 }
 
-const RESUME_REFRESH_THROTTLE_MS = 3000
+const RESUME_REFRESH_DELAY_MS = 150
+const RESUME_REFRESH_THROTTLE_MS = 15000
 
 const VALID_MOBILE_TABS = new Set(['chat', 'conversations', 'registry', 'system', 'debug'])
 
@@ -133,6 +134,7 @@ function App() {
   const [behavioralGuidanceUpdatingId, setBehavioralGuidanceUpdatingId] = useState(null)
   const healthWarnedRef = useRef(false)
   const lastResumeRefreshRef = useRef(0)
+  const resumeRefreshTimerRef = useRef(null)
   const isMobile = useIsMobile()
   useViewportHeight()
 
@@ -158,29 +160,39 @@ function App() {
   }, [activeTab])
 
   useEffect(() => {
-    function refreshOnResume() {
-      if (document.visibilityState && document.visibilityState !== 'visible') return
-      const now = Date.now()
-      if (now - lastResumeRefreshRef.current < RESUME_REFRESH_THROTTLE_MS) return
-      lastResumeRefreshRef.current = now
+    function runResumeRefresh() {
+      resumeRefreshTimerRef.current = null
+      lastResumeRefreshRef.current = Date.now()
       fetchConversations()
       fetchHealth()
       fetchRegistries()
     }
 
+    function scheduleResumeRefresh() {
+      if (document.visibilityState && document.visibilityState !== 'visible') return
+      const now = Date.now()
+      if (now - lastResumeRefreshRef.current < RESUME_REFRESH_THROTTLE_MS) return
+      if (resumeRefreshTimerRef.current) return
+      resumeRefreshTimerRef.current = window.setTimeout(runResumeRefresh, RESUME_REFRESH_DELAY_MS)
+    }
+
     function handleVisibilityChange() {
       if (document.visibilityState === 'visible') {
-        refreshOnResume()
+        scheduleResumeRefresh()
       }
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    window.addEventListener('focus', refreshOnResume)
-    window.addEventListener('pageshow', refreshOnResume)
+    window.addEventListener('focus', scheduleResumeRefresh)
+    window.addEventListener('pageshow', scheduleResumeRefresh)
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      window.removeEventListener('focus', refreshOnResume)
-      window.removeEventListener('pageshow', refreshOnResume)
+      window.removeEventListener('focus', scheduleResumeRefresh)
+      window.removeEventListener('pageshow', scheduleResumeRefresh)
+      if (resumeRefreshTimerRef.current) {
+        window.clearTimeout(resumeRefreshTimerRef.current)
+        resumeRefreshTimerRef.current = null
+      }
     }
   }, [])
 
