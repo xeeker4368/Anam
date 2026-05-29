@@ -25,6 +25,65 @@ function writeDraft(key, value) {
   }
 }
 
+function findLastMessageIndex(messages, predicate) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (predicate(messages[index], index)) return index
+  }
+  return -1
+}
+
+function hasPersistedMatchingUser(serverMessages, localMessage) {
+  return serverMessages.some(message => (
+    message.role === 'user' && message.content === localMessage.content
+  ))
+}
+
+function hasPersistedAssistantForPending(serverMessages, pendingMessage) {
+  const userContent = pendingMessage.pendingForUserContent
+  if (!userContent) return false
+
+  const userIndex = findLastMessageIndex(serverMessages, message => (
+    message.role === 'user' && message.content === userContent
+  ))
+  if (userIndex < 0) return false
+
+  return serverMessages
+    .slice(userIndex + 1)
+    .some(message => message.role === 'assistant' && (message.content || '').trim())
+}
+
+function mergeServerMessagesWithLocalPending(serverMessages, localMessages) {
+  const merged = [...serverMessages]
+
+  localMessages.forEach(localMessage => {
+    if (localMessage.optimistic && localMessage.role === 'user') {
+      if (!hasPersistedMatchingUser(serverMessages, localMessage)) {
+        merged.push(localMessage)
+      }
+      return
+    }
+
+    if (localMessage.localOnly && localMessage.role === 'assistant') {
+      if (!hasPersistedAssistantForPending(serverMessages, localMessage)) {
+        merged.push(localMessage)
+      }
+    }
+  })
+
+  return merged
+}
+
+function interruptedAssistantMessage(message) {
+  return {
+    ...message,
+    streaming: false,
+    pending: true,
+    interrupted: true,
+    localOnly: true,
+    interruptedAt: Date.now(),
+  }
+}
+
 function Chat({
   conversationId,
   userId,
@@ -55,6 +114,7 @@ function Chat({
   const draftStorageKeyRef = useRef(draftStorageKey(userId, conversationId))
   const skipDraftPersistRef = useRef(false)
   const wasHiddenRef = useRef(false)
+  const messagesConversationIdRef = useRef(conversationId)
 
   useEffect(() => {
     mountedRef.current = true
@@ -82,7 +142,7 @@ function Chat({
     isStreamingRef.current = false
     setIsStreaming(false)
     setMessages(prev => prev.map(message => (
-      message.streaming ? { ...message, streaming: false } : message
+      message.streaming ? interruptedAssistantMessage(message) : message
     )))
   }, [])
 
@@ -291,12 +351,20 @@ function Chat({
         throw new Error('Messages response was not a list')
       }
 
-      setMessages(data.map((m, index) => ({
+      const serverMessages = data.map((m, index) => ({
         id: messageIdFromServer(m, index),
         role: m.role,
         content: m.content,
         timestamp: m.timestamp,
-      })))
+        persisted: true,
+      }))
+      setMessages(prev => {
+        const shouldMergeLocal = messagesConversationIdRef.current === convId
+        messagesConversationIdRef.current = convId
+        return shouldMergeLocal
+          ? mergeServerMessagesWithLocalPending(serverMessages, prev)
+          : serverMessages
+      })
     } catch (e) {
       console.warn('Failed to fetch messages:', e)
     }
@@ -323,6 +391,7 @@ function Chat({
     if (conversationId && !isStreamingRef.current) {
       fetchMessages(conversationId)
     } else if (!conversationId) {
+      messagesConversationIdRef.current = null
       setMessages([])
     }
   }, [conversationId, fetchMessages])
@@ -429,9 +498,20 @@ function Chat({
     let streamDone = false
     const userMessageId = nextMessageId('user')
     const assistantMessageId = nextMessageId('assistant')
+    messagesConversationIdRef.current = conversationId
 
     // Add user message to display immediately
-    setMessages(prev => [...prev, { id: userMessageId, role: 'user', content: text }])
+    setMessages(prev => [
+      ...prev,
+      {
+        id: userMessageId,
+        role: 'user',
+        content: text,
+        optimistic: true,
+        localOnly: true,
+        createdAtClient: Date.now(),
+      },
+    ])
 
     // Add empty assistant message that will be filled by streaming
     setMessages(prev => [
@@ -441,6 +521,11 @@ function Chat({
         role: 'assistant',
         content: '',
         streaming: true,
+        pending: true,
+        localOnly: true,
+        pendingForUserMessageId: userMessageId,
+        pendingForUserContent: text,
+        createdAtClient: Date.now(),
       },
     ])
 
@@ -508,6 +593,7 @@ function Chat({
                 raw_events: [data],
               })
               if (data.conversation_id && data.conversation_id !== conversationId) {
+                messagesConversationIdRef.current = data.conversation_id
                 onConversationCreated(data.conversation_id)
               }
             } else if (data.type === 'debug_update') {
@@ -535,13 +621,19 @@ function Chat({
                 frontend_stream_total_ms: elapsedMs(requestStart, doneAt),
               }, data)
               // Mark streaming complete
-              updateMessageById(assistantMessageId, last => ({ ...last, streaming: false }))
+              updateMessageById(assistantMessageId, last => ({
+                ...last,
+                streaming: false,
+                pending: false,
+                interrupted: false,
+              }))
             } else if (data.type === 'error') {
               appendRawEvent(data)
               updateMessageById(assistantMessageId, last => ({
                 ...last,
                 content: data.message,
                 streaming: false,
+                pending: false,
                 error: true,
               }))
             } else {
@@ -561,6 +653,7 @@ function Chat({
         ...last,
         content: `Connection error: ${e.message}`,
         streaming: false,
+        pending: false,
         error: true,
       }))
     } finally {
@@ -588,7 +681,11 @@ function Chat({
         streamAbortRef.current = null
       }
       if (mountedRef.current && streamIdRef.current === streamId) {
-        updateMessageById(assistantMessageId, last => ({ ...last, streaming: false }))
+        updateMessageById(assistantMessageId, last => (
+          abortController.signal.aborted
+            ? interruptedAssistantMessage(last)
+            : { ...last, streaming: false }
+        ))
         setIsStreaming(false)
         isStreamingRef.current = false
         onRefresh()
@@ -649,7 +746,7 @@ function Chat({
               {msg.role === 'user' ? 'You' : 'Assistant'}
             </div>
             <div className="message-content">
-              {msg.content}
+              {msg.content || (msg.interrupted ? 'Response interrupted; send again if needed.' : '')}
               {msg.streaming && <span className="cursor">|</span>}
             </div>
           </div>
