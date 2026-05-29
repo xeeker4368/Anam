@@ -52,6 +52,21 @@ function hasPersistedAssistantForPending(serverMessages, pendingMessage) {
     .some(message => message.role === 'assistant' && (message.content || '').trim())
 }
 
+function hasLocalPendingMessages(localMessages) {
+  return localMessages.some(message => (
+    message.localOnly && (message.optimistic || message.pending) && message.role
+  ))
+}
+
+function hasAdoptablePendingMessages(serverMessages, localMessages) {
+  return localMessages.some(message => (
+    message.localOnly
+      && message.role === 'user'
+      && message.optimistic
+      && hasPersistedMatchingUser(serverMessages, message)
+  ))
+}
+
 function mergeServerMessagesWithLocalPending(serverMessages, localMessages) {
   const merged = [...serverMessages]
 
@@ -373,7 +388,13 @@ function Chat({
         persisted: true,
       }))
       setMessages(prev => {
-        const shouldMergeLocal = messagesConversationIdRef.current === convId
+        const sameConversation = messagesConversationIdRef.current === convId
+        const canAdoptNewConversationPending = (
+          messagesConversationIdRef.current === null
+            && hasLocalPendingMessages(prev)
+            && hasAdoptablePendingMessages(serverMessages, prev)
+        )
+        const shouldMergeLocal = sameConversation || canAdoptNewConversationPending
         messagesConversationIdRef.current = convId
         return shouldMergeLocal
           ? mergeServerMessagesWithLocalPending(serverMessages, prev)
@@ -604,6 +625,7 @@ function Chat({
         content: text,
         optimistic: true,
         localOnly: true,
+        conversationScope: conversationId || 'new',
         createdAtClient: Date.now(),
       },
     ])
@@ -618,6 +640,7 @@ function Chat({
         streaming: true,
         pending: true,
         localOnly: true,
+        conversationScope: conversationId || 'new',
         pendingForUserMessageId: userMessageId,
         pendingForUserContent: text,
         createdAtClient: Date.now(),
