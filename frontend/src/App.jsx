@@ -57,6 +57,19 @@ function conversationBelongsToUser(conversation, userId) {
   return !conversation.user_id || conversation.user_id === userId
 }
 
+async function fetchJsonList(path, fallbackMessage) {
+  const resp = await apiFetch(path)
+  if (!resp.ok) {
+    throw new Error(await readErrorMessage(resp, fallbackMessage))
+  }
+
+  const data = await resp.json()
+  if (!Array.isArray(data)) {
+    throw new Error(`${fallbackMessage} response was not a list`)
+  }
+  return data
+}
+
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(window.innerWidth < breakpoint)
   useEffect(() => {
@@ -136,17 +149,173 @@ function App() {
   const lastResumeRefreshRef = useRef(0)
   const resumeRefreshTimerRef = useRef(null)
   const chatStreamActiveRef = useRef(false)
+  const activeConversationIdRef = useRef(activeConversationId)
+  const activeUserIdRef = useRef(activeUserId)
+  const conversationsRef = useRef(conversations)
   const isMobile = useIsMobile()
   useViewportHeight()
 
   useEffect(() => {
-    fetchConversations()
-    fetchHealth()
-    fetchUsers()
-    fetchRegistries()
-    const healthInterval = setInterval(fetchHealth, 30000)
-    return () => clearInterval(healthInterval)
+    activeConversationIdRef.current = activeConversationId
+  }, [activeConversationId])
+
+  useEffect(() => {
+    activeUserIdRef.current = activeUserId
+  }, [activeUserId])
+
+  useEffect(() => {
+    conversationsRef.current = conversations
+  }, [conversations])
+
+  const selectActiveUser = useCallback((userId) => {
+    writeClientState(CLIENT_STATE_KEYS.activeUserId, userId)
+    activeUserIdRef.current = userId
+    setActiveUserId(userId)
+
+    const currentConversationId = activeConversationIdRef.current
+    const currentConversations = conversationsRef.current
+    if (!currentConversationId || currentConversations.length === 0) return
+
+    const activeConversation = currentConversations.find(
+      conv => conv.id === currentConversationId
+    )
+    if (activeConversation && conversationBelongsToUser(activeConversation, userId)) return
+
+    activeConversationIdRef.current = null
+    setActiveConversationId(null)
+    setViewingConversation(null)
+    setViewingMessages([])
   }, [])
+
+  const fetchConversations = useCallback(async () => {
+    try {
+      const data = await fetchJsonList('/api/conversations', 'Failed to fetch conversations')
+
+      conversationsRef.current = data
+      setConversations(data)
+      const storedConversationId = readClientState(CLIENT_STATE_KEYS.activeConversationId)
+      const storedUserId = readClientState(CLIENT_STATE_KEYS.activeUserId)
+      const candidateConversationId = activeConversationIdRef.current || storedConversationId
+      const candidateUserId = storedUserId || activeUserIdRef.current
+      if (candidateConversationId) {
+        const candidate = data.find(conv => conv.id === candidateConversationId)
+        if (!candidate) {
+          activeConversationIdRef.current = null
+          setActiveConversationId(null)
+        } else if (conversationBelongsToUser(candidate, candidateUserId)) {
+          activeConversationIdRef.current = candidateConversationId
+          setActiveConversationId(candidateConversationId)
+        } else {
+          activeConversationIdRef.current = null
+          setActiveConversationId(null)
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch conversations:', e)
+    }
+  }, [])
+
+  const fetchHealth = useCallback(async () => {
+    try {
+      const resp = await apiFetch('/api/health')
+      setHealth(await resp.json())
+      healthWarnedRef.current = false
+    } catch (e) {
+      setHealth({
+        backend: 'unreachable',
+        ollama: 'unreachable',
+        chromadb_chunks: -1,
+        conversations: -1,
+        messages: -1,
+      })
+      if (!healthWarnedRef.current) {
+        console.warn('Backend health check failed:', e)
+        healthWarnedRef.current = true
+      }
+    }
+  }, [])
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const data = await fetchJsonList('/api/users', 'Failed to fetch users')
+
+      setUsers(data)
+      if (data.length > 0) {
+        const storedUserId = readClientState(CLIENT_STATE_KEYS.activeUserId)
+        const selected =
+          data.find(u => u.id === activeUserIdRef.current) ||
+          data.find(u => u.id === storedUserId) ||
+          data.find(u => u.role === 'admin') ||
+          data[0]
+        selectActiveUser(selected.id)
+      }
+    } catch (e) {
+      console.error('Failed to fetch users:', e)
+    }
+  }, [selectActiveUser])
+
+  const fetchArtifacts = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) {
+      setRegistryLoading(true)
+      setRegistryError(null)
+    }
+    try {
+      const data = await fetchJsonList('/api/artifacts', 'Failed to fetch artifacts')
+      setArtifacts(data)
+      return data
+    } catch (e) {
+      console.warn('Failed to fetch artifacts:', e)
+      setRegistryError(e.message || 'Failed to fetch media and artifacts')
+      return []
+    } finally {
+      if (showLoading) setRegistryLoading(false)
+    }
+  }, [])
+
+  const fetchOpenLoops = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) {
+      setRegistryLoading(true)
+      setRegistryError(null)
+    }
+    try {
+      const data = await fetchJsonList('/api/open-loops', 'Failed to fetch open loops')
+      setOpenLoops(data)
+      return data
+    } catch (e) {
+      console.warn('Failed to fetch open loops:', e)
+      setRegistryError(e.message || 'Failed to fetch open loops')
+      return []
+    } finally {
+      if (showLoading) setRegistryLoading(false)
+    }
+  }, [])
+
+  const fetchRegistries = useCallback(async () => {
+    setRegistryLoading(true)
+    setRegistryError(null)
+    try {
+      await Promise.all([
+        fetchArtifacts({ showLoading: false }),
+        fetchOpenLoops({ showLoading: false }),
+      ])
+    } finally {
+      setRegistryLoading(false)
+    }
+  }, [fetchArtifacts, fetchOpenLoops])
+
+  useEffect(() => {
+    const initialRefreshTimer = window.setTimeout(() => {
+      fetchConversations()
+      fetchHealth()
+      fetchUsers()
+      fetchRegistries()
+    }, 0)
+    const healthInterval = setInterval(fetchHealth, 30000)
+    return () => {
+      window.clearTimeout(initialRefreshTimer)
+      clearInterval(healthInterval)
+    }
+  }, [fetchConversations, fetchHealth, fetchRegistries, fetchUsers])
 
   useEffect(() => {
     writeClientState(CLIENT_STATE_KEYS.activeUserId, activeUserId)
@@ -197,121 +366,7 @@ function App() {
         resumeRefreshTimerRef.current = null
       }
     }
-  }, [])
-
-  async function fetchConversations() {
-    try {
-      const resp = await apiFetch('/api/conversations')
-      if (!resp.ok) {
-        throw new Error(await readErrorMessage(resp, 'Failed to fetch conversations'))
-      }
-
-      const data = await resp.json()
-      if (!Array.isArray(data)) {
-        throw new Error('Conversations response was not a list')
-      }
-
-      setConversations(data)
-      const storedConversationId = readClientState(CLIENT_STATE_KEYS.activeConversationId)
-      const storedUserId = readClientState(CLIENT_STATE_KEYS.activeUserId)
-      const candidateConversationId = activeConversationId || storedConversationId
-      const candidateUserId = storedUserId || activeUserId
-      if (candidateConversationId) {
-        const candidate = data.find(conv => conv.id === candidateConversationId)
-        if (!candidate) {
-          setActiveConversationId(null)
-        } else if (conversationBelongsToUser(candidate, candidateUserId)) {
-          setActiveConversationId(candidateConversationId)
-        } else {
-          setActiveConversationId(null)
-        }
-      }
-    } catch (e) {
-      console.error('Failed to fetch conversations:', e)
-    }
-  }
-
-  async function fetchHealth() {
-    try {
-      const resp = await apiFetch('/api/health')
-      setHealth(await resp.json())
-      healthWarnedRef.current = false
-    } catch (e) {
-      setHealth({
-        backend: 'unreachable',
-        ollama: 'unreachable',
-        chromadb_chunks: -1,
-        conversations: -1,
-        messages: -1,
-      })
-      if (!healthWarnedRef.current) {
-        console.warn('Backend health check failed:', e)
-        healthWarnedRef.current = true
-      }
-    }
-  }
-
-  async function fetchUsers() {
-    try {
-      const resp = await apiFetch('/api/users')
-      if (!resp.ok) {
-        throw new Error(await readErrorMessage(resp, 'Failed to fetch users'))
-      }
-
-      const data = await resp.json()
-      if (!Array.isArray(data)) {
-        throw new Error('Users response was not a list')
-      }
-
-      setUsers(data)
-      if (data.length > 0) {
-        const storedUserId = readClientState(CLIENT_STATE_KEYS.activeUserId)
-        const selected =
-          data.find(u => u.id === activeUserId) ||
-          data.find(u => u.id === storedUserId) ||
-          data.find(u => u.role === 'admin') ||
-          data[0]
-        selectActiveUser(selected.id)
-      }
-    } catch (e) {
-      console.error('Failed to fetch users:', e)
-    }
-  }
-
-  async function fetchRegistries() {
-    setRegistryLoading(true)
-    setRegistryError(null)
-    try {
-      const [artifactResp, openLoopResp] = await Promise.all([
-        apiFetch('/api/artifacts'),
-        apiFetch('/api/open-loops'),
-      ])
-
-      if (!artifactResp.ok) {
-        throw new Error(await readErrorMessage(artifactResp, 'Failed to fetch artifacts'))
-      }
-      if (!openLoopResp.ok) {
-        throw new Error(await readErrorMessage(openLoopResp, 'Failed to fetch open loops'))
-      }
-
-      const artifactData = await artifactResp.json()
-      const openLoopData = await openLoopResp.json()
-      if (!Array.isArray(artifactData)) {
-        throw new Error('Artifacts response was not a list')
-      }
-      if (!Array.isArray(openLoopData)) {
-        throw new Error('Open loops response was not a list')
-      }
-
-      setArtifacts(artifactData)
-      setOpenLoops(openLoopData)
-    } catch (e) {
-      console.warn('Failed to fetch registry records:', e)
-      setRegistryError(e.message || 'Failed to fetch media and artifact records')
-    } finally {
-      setRegistryLoading(false)
-    }
-  }
+  }, [fetchConversations, fetchHealth, fetchRegistries])
 
   async function uploadArtifact(form) {
     setUploading(true)
@@ -340,7 +395,7 @@ function App() {
       }
 
       setUploadResult(data)
-      await fetchRegistries()
+      await fetchArtifacts()
       return data
     } catch (e) {
       const message = e.message || 'Artifact upload failed'
@@ -385,7 +440,7 @@ function App() {
       }
 
       setImageGenerationResult(data)
-      await fetchRegistries()
+      await fetchArtifacts()
       return data
     } catch (e) {
       const message = e.message || 'Image generation failed'
@@ -651,26 +706,14 @@ function App() {
         throw new Error(await readErrorMessage(resp, 'Failed to close conversation'))
       }
 
-      const data = await resp.json()
-      console.log('Closed:', data)
+      await resp.json().catch(() => null)
+      activeConversationIdRef.current = null
       setActiveConversationId(null)
       setDebugData(null)
       fetchConversations()
     } catch (e) {
       console.error('Failed to close conversation:', e)
     }
-  }
-
-  function selectActiveUser(userId) {
-    writeClientState(CLIENT_STATE_KEYS.activeUserId, userId)
-    setActiveUserId(userId)
-    if (!activeConversationId || conversations.length === 0) return
-    const activeConversation = conversations.find(conv => conv.id === activeConversationId)
-    if (activeConversation && conversationBelongsToUser(activeConversation, userId)) return
-
-    setActiveConversationId(null)
-    setViewingConversation(null)
-    setViewingMessages([])
   }
 
   async function handleViewConversation(conv) {
@@ -685,6 +728,7 @@ function App() {
         throw new Error('Messages response was not a list')
       }
 
+      activeConversationIdRef.current = conv.id
       setActiveConversationId(conv.id)
       setViewingConversation(conv)
       setViewingMessages(messages)
@@ -706,12 +750,14 @@ function App() {
       return
     }
 
+    activeConversationIdRef.current = conv.id
     setActiveConversationId(conv.id)
     setViewingConversation(null)
     setViewingMessages([])
   }
 
   const handleConversationCreated = useCallback((convId) => {
+    activeConversationIdRef.current = convId
     setActiveConversationId(convId)
   }, [])
 
@@ -721,7 +767,7 @@ function App() {
 
   const handleChatRefresh = useCallback(() => {
     fetchConversations()
-  }, [])
+  }, [fetchConversations])
 
   const handleChatStreamingStateChange = useCallback((isActive) => {
     chatStreamActiveRef.current = Boolean(isActive)
