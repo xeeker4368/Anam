@@ -126,6 +126,7 @@ function Chat({
   onConversationCreated,
   onDebugData,
   onRefresh,
+  onStreamingStateChange,
 }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -155,12 +156,28 @@ function Chat({
   const hasRecoveringPendingRef = useRef(false)
   const resumeMessageRefreshTimerRef = useRef(null)
   const lastResumeMessageRefreshRef = useRef(0)
+  const onStreamingStateChangeRef = useRef(onStreamingStateChange)
+
+  useEffect(() => {
+    onStreamingStateChangeRef.current = onStreamingStateChange
+  }, [onStreamingStateChange])
+
+  function setStreamingActive(isActive) {
+    setIsStreaming(isActive)
+    isStreamingRef.current = isActive
+    onStreamingStateChangeRef.current?.(isActive)
+    if (isActive && resumeMessageRefreshTimerRef.current) {
+      window.clearTimeout(resumeMessageRefreshTimerRef.current)
+      resumeMessageRefreshTimerRef.current = null
+    }
+  }
 
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
       streamAbortReasonRef.current = 'unmount'
+      onStreamingStateChangeRef.current?.(false)
       streamAbortRef.current?.abort()
       streamReaderRef.current?.cancel().catch(() => {})
       streamReaderRef.current = null
@@ -522,6 +539,7 @@ function Chat({
   useEffect(() => {
     function runResumeMessageRefresh() {
       resumeMessageRefreshTimerRef.current = null
+      if (isStreamingRef.current) return
       lastResumeMessageRefreshRef.current = Date.now()
       if (!conversationId) return
       fetchMessages(conversationId)
@@ -530,6 +548,7 @@ function Chat({
     function scheduleResumeMessageRefresh() {
       if (!conversationId) return
       if (document.visibilityState && document.visibilityState !== 'visible') return
+      if (isStreamingRef.current) return
       const now = Date.now()
       if (now - lastResumeMessageRefreshRef.current < RESUME_MESSAGE_REFRESH_THROTTLE_MS) return
       if (resumeMessageRefreshTimerRef.current) return
@@ -621,8 +640,7 @@ function Chat({
 
     writeDraft(draftStorageKeyRef.current, '')
     setInput('')
-    setIsStreaming(true)
-    isStreamingRef.current = true
+    setStreamingActive(true)
     debugRef.current = null
     streamAbortRef.current?.abort()
     streamAbortReasonRef.current = null
@@ -843,8 +861,7 @@ function Chat({
           hasRecoveringPendingRef.current = true
           startRecoveryPolling(messagesConversationIdRef.current)
         }
-        setIsStreaming(false)
-        isStreamingRef.current = false
+        setStreamingActive(false)
         streamAbortReasonRef.current = null
         if (abortReason !== 'resume_recovery') {
           onRefresh()

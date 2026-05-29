@@ -135,6 +135,7 @@ function App() {
   const healthWarnedRef = useRef(false)
   const lastResumeRefreshRef = useRef(0)
   const resumeRefreshTimerRef = useRef(null)
+  const chatStreamActiveRef = useRef(false)
   const isMobile = useIsMobile()
   useViewportHeight()
 
@@ -162,6 +163,7 @@ function App() {
   useEffect(() => {
     function runResumeRefresh() {
       resumeRefreshTimerRef.current = null
+      if (chatStreamActiveRef.current) return
       lastResumeRefreshRef.current = Date.now()
       fetchConversations()
       fetchHealth()
@@ -170,6 +172,7 @@ function App() {
 
     function scheduleResumeRefresh() {
       if (document.visibilityState && document.visibilityState !== 'visible') return
+      if (chatStreamActiveRef.current) return
       const now = Date.now()
       if (now - lastResumeRefreshRef.current < RESUME_REFRESH_THROTTLE_MS) return
       if (resumeRefreshTimerRef.current) return
@@ -720,6 +723,14 @@ function App() {
     fetchConversations()
   }, [])
 
+  const handleChatStreamingStateChange = useCallback((isActive) => {
+    chatStreamActiveRef.current = Boolean(isActive)
+    if (isActive && resumeRefreshTimerRef.current) {
+      window.clearTimeout(resumeRefreshTimerRef.current)
+      resumeRefreshTimerRef.current = null
+    }
+  }, [])
+
   function handleRegistryRefresh() {
     setUploadResult(null)
     setUploadError(null)
@@ -862,6 +873,7 @@ function App() {
       onConversationCreated={handleConversationCreated}
       onDebugData={handleDebugData}
       onRefresh={handleChatRefresh}
+      onStreamingStateChange={handleChatStreamingStateChange}
     />
   )
 
