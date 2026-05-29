@@ -23,6 +23,8 @@ const CLIENT_STATE_KEYS = {
   activeTab: 'anam.activeTab',
 }
 
+const RESUME_REFRESH_THROTTLE_MS = 3000
+
 const VALID_MOBILE_TABS = new Set(['chat', 'conversations', 'registry', 'system', 'debug'])
 
 function readClientState(key) {
@@ -130,6 +132,7 @@ function App() {
   const [behavioralGuidanceError, setBehavioralGuidanceError] = useState(null)
   const [behavioralGuidanceUpdatingId, setBehavioralGuidanceUpdatingId] = useState(null)
   const healthWarnedRef = useRef(false)
+  const lastResumeRefreshRef = useRef(0)
   const isMobile = useIsMobile()
   useViewportHeight()
 
@@ -157,6 +160,9 @@ function App() {
   useEffect(() => {
     function refreshOnResume() {
       if (document.visibilityState && document.visibilityState !== 'visible') return
+      const now = Date.now()
+      if (now - lastResumeRefreshRef.current < RESUME_REFRESH_THROTTLE_MS) return
+      lastResumeRefreshRef.current = now
       fetchConversations()
       fetchHealth()
       fetchRegistries()

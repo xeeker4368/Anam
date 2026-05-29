@@ -428,6 +428,13 @@ function Chat({
   const startRecoveryPolling = useCallback((convId) => {
     if (!convId) return
 
+    if (
+      recoveryConversationIdRef.current === convId
+        && recoveryPollTimerRef.current
+    ) {
+      return
+    }
+
     if (recoveryPollTimerRef.current) {
       window.clearTimeout(recoveryPollTimerRef.current)
     }
@@ -503,13 +510,21 @@ function Chat({
   // Load existing messages when conversationId changes
   // Skip if we're mid-stream — streaming manages its own message state
   useEffect(() => {
+    if (
+      recoveryConversationIdRef.current
+        && recoveryConversationIdRef.current !== conversationId
+    ) {
+      clearRecoveryPoll()
+    }
+
     if (conversationId && !isStreamingRef.current) {
       fetchMessages(conversationId)
     } else if (!conversationId) {
+      clearRecoveryPoll()
       messagesConversationIdRef.current = null
       setMessages([])
     }
-  }, [conversationId, fetchMessages])
+  }, [conversationId, fetchMessages, clearRecoveryPoll])
 
   useEffect(() => {
     function refreshFromBackend(forceRecoverStream = false) {
@@ -824,7 +839,9 @@ function Chat({
         setIsStreaming(false)
         isStreamingRef.current = false
         streamAbortReasonRef.current = null
-        onRefresh()
+        if (abortReason !== 'resume_recovery') {
+          onRefresh()
+        }
       }
     }
   }
