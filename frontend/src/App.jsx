@@ -704,10 +704,8 @@ function App() {
     setDebugData(data)
   }, [])
 
-  const handleRefresh = useCallback(() => {
+  const handleChatRefresh = useCallback(() => {
     fetchConversations()
-    fetchHealth()
-    fetchRegistries()
   }, [])
 
   function handleRegistryRefresh() {
@@ -851,7 +849,7 @@ function App() {
       onUserChange={selectActiveUser}
       onConversationCreated={handleConversationCreated}
       onDebugData={handleDebugData}
-      onRefresh={handleRefresh}
+      onRefresh={handleChatRefresh}
     />
   )
 
