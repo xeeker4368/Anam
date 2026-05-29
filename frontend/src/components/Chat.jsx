@@ -467,21 +467,6 @@ function Chat({
     recoveryPollTimerRef.current = window.setTimeout(poll, 0)
   }, [clearRecoveryPoll, fetchMessages, markRecoveryTimedOut])
 
-  const recoverActiveStreamForResume = useCallback((convId) => {
-    streamAbortReasonRef.current = 'resume_recovery'
-    streamAbortRef.current?.abort()
-    streamReaderRef.current?.cancel().catch(() => {})
-    streamReaderRef.current = null
-    streamAbortRef.current = null
-    isStreamingRef.current = false
-    setIsStreaming(false)
-    setMessages(prev => prev.map(message => (
-      message.streaming ? recoveringAssistantMessage(message) : message
-    )))
-    hasRecoveringPendingRef.current = true
-    startRecoveryPolling(convId)
-  }, [startRecoveryPolling])
-
   useEffect(() => {
     const hasRecovering = messages.some(message => (
       message.localOnly && message.role === 'assistant' && message.recovering
@@ -530,7 +515,7 @@ function Chat({
     function refreshFromBackend(forceRecoverStream = false) {
       if (!conversationId) return
       if (forceRecoverStream && isStreamingRef.current) {
-        recoverActiveStreamForResume(conversationId)
+        fetchMessages(conversationId)
         return
       }
       fetchMessages(conversationId)
@@ -565,7 +550,7 @@ function Chat({
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('pageshow', handlePageShow)
     }
-  }, [conversationId, fetchMessages, recoverActiveStreamForResume])
+  }, [conversationId, fetchMessages])
 
   // Auto-scroll to bottom
   useEffect(() => {
