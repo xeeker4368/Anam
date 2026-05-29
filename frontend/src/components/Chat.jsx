@@ -73,16 +73,32 @@ function mergeServerMessagesWithLocalPending(serverMessages, localMessages) {
   return merged
 }
 
+function recoveringAssistantMessage(message) {
+  return {
+    ...message,
+    streaming: false,
+    pending: true,
+    recovering: true,
+    interrupted: false,
+    localOnly: true,
+    recoveringStartedAt: message.recoveringStartedAt || Date.now(),
+  }
+}
+
 function interruptedAssistantMessage(message) {
   return {
     ...message,
     streaming: false,
     pending: true,
+    recovering: false,
     interrupted: true,
     localOnly: true,
     interruptedAt: Date.now(),
   }
 }
+
+const RECOVERY_POLL_INTERVAL_MS = 1500
+const RECOVERY_POLL_TIMEOUT_MS = 30000
 
 function Chat({
   conversationId,
@@ -108,6 +124,7 @@ function Chat({
   const viewportDelayTimersRef = useRef([])
   const mountedRef = useRef(false)
   const streamAbortRef = useRef(null)
+  const streamAbortReasonRef = useRef(null)
   const streamReaderRef = useRef(null)
   const streamIdRef = useRef(0)
   const messageIdCounterRef = useRef(0)
@@ -115,14 +132,23 @@ function Chat({
   const skipDraftPersistRef = useRef(false)
   const wasHiddenRef = useRef(false)
   const messagesConversationIdRef = useRef(conversationId)
+  const recoveryPollTimerRef = useRef(null)
+  const recoveryPollDeadlineRef = useRef(0)
+  const recoveryConversationIdRef = useRef(null)
+  const hasRecoveringPendingRef = useRef(false)
 
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      streamAbortReasonRef.current = 'unmount'
       streamAbortRef.current?.abort()
       streamReaderRef.current?.cancel().catch(() => {})
       streamReaderRef.current = null
+      if (recoveryPollTimerRef.current) {
+        window.clearTimeout(recoveryPollTimerRef.current)
+        recoveryPollTimerRef.current = null
+      }
       if (viewportScrollTimerRef.current) {
         window.clearTimeout(viewportScrollTimerRef.current)
       }
@@ -132,18 +158,6 @@ function Chat({
       viewportDelayTimersRef.current.forEach(timer => window.clearTimeout(timer))
       viewportDelayTimersRef.current = []
     }
-  }, [])
-
-  const stopActiveStreamForResume = useCallback(() => {
-    streamAbortRef.current?.abort()
-    streamReaderRef.current?.cancel().catch(() => {})
-    streamReaderRef.current = null
-    streamAbortRef.current = null
-    isStreamingRef.current = false
-    setIsStreaming(false)
-    setMessages(prev => prev.map(message => (
-      message.streaming ? interruptedAssistantMessage(message) : message
-    )))
   }, [])
 
   function nextMessageId(prefix) {
@@ -370,6 +384,86 @@ function Chat({
     }
   }, [messageIdFromServer])
 
+  const clearRecoveryPoll = useCallback(() => {
+    if (recoveryPollTimerRef.current) {
+      window.clearTimeout(recoveryPollTimerRef.current)
+      recoveryPollTimerRef.current = null
+    }
+    recoveryConversationIdRef.current = null
+    recoveryPollDeadlineRef.current = 0
+  }, [])
+
+  const markRecoveryTimedOut = useCallback((convId) => {
+    setMessages(prev => {
+      if (messagesConversationIdRef.current !== convId) return prev
+      return prev.map(message => (
+        message.localOnly && message.role === 'assistant' && message.recovering
+          ? interruptedAssistantMessage(message)
+          : message
+      ))
+    })
+  }, [])
+
+  const startRecoveryPolling = useCallback((convId) => {
+    if (!convId) return
+
+    if (recoveryPollTimerRef.current) {
+      window.clearTimeout(recoveryPollTimerRef.current)
+    }
+
+    recoveryConversationIdRef.current = convId
+    recoveryPollDeadlineRef.current = Date.now() + RECOVERY_POLL_TIMEOUT_MS
+
+    const poll = async () => {
+      if (!mountedRef.current || recoveryConversationIdRef.current !== convId) {
+        clearRecoveryPoll()
+        return
+      }
+
+      if (!hasRecoveringPendingRef.current) {
+        clearRecoveryPoll()
+        return
+      }
+
+      await fetchMessages(convId)
+
+      if (Date.now() >= recoveryPollDeadlineRef.current) {
+        markRecoveryTimedOut(convId)
+        clearRecoveryPoll()
+        return
+      }
+
+      recoveryPollTimerRef.current = window.setTimeout(poll, RECOVERY_POLL_INTERVAL_MS)
+    }
+
+    recoveryPollTimerRef.current = window.setTimeout(poll, 0)
+  }, [clearRecoveryPoll, fetchMessages, markRecoveryTimedOut])
+
+  const recoverActiveStreamForResume = useCallback((convId) => {
+    streamAbortReasonRef.current = 'resume_recovery'
+    streamAbortRef.current?.abort()
+    streamReaderRef.current?.cancel().catch(() => {})
+    streamReaderRef.current = null
+    streamAbortRef.current = null
+    isStreamingRef.current = false
+    setIsStreaming(false)
+    setMessages(prev => prev.map(message => (
+      message.streaming ? recoveringAssistantMessage(message) : message
+    )))
+    hasRecoveringPendingRef.current = true
+    startRecoveryPolling(convId)
+  }, [startRecoveryPolling])
+
+  useEffect(() => {
+    const hasRecovering = messages.some(message => (
+      message.localOnly && message.role === 'assistant' && message.recovering
+    ))
+    hasRecoveringPendingRef.current = hasRecovering
+    if (!hasRecovering && recoveryPollTimerRef.current) {
+      clearRecoveryPoll()
+    }
+  }, [messages, clearRecoveryPoll])
+
   useEffect(() => {
     const key = draftStorageKey(userId, conversationId)
     draftStorageKeyRef.current = key
@@ -400,11 +494,10 @@ function Chat({
     function refreshFromBackend(forceRecoverStream = false) {
       if (!conversationId) return
       if (forceRecoverStream && isStreamingRef.current) {
-        stopActiveStreamForResume()
+        recoverActiveStreamForResume(conversationId)
+        return
       }
-      if (!isStreamingRef.current) {
-        fetchMessages(conversationId)
-      }
+      fetchMessages(conversationId)
     }
 
     function handleVisibilityChange() {
@@ -436,7 +529,7 @@ function Chat({
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('pageshow', handlePageShow)
     }
-  }, [conversationId, fetchMessages, stopActiveStreamForResume])
+  }, [conversationId, fetchMessages, recoverActiveStreamForResume])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -478,6 +571,7 @@ function Chat({
     const text = input.trim()
     if (!text) return
     if (isStreamingRef.current) {
+      streamAbortReasonRef.current = 'user_abort'
       streamAbortRef.current?.abort()
       return
     }
@@ -488,6 +582,7 @@ function Chat({
     isStreamingRef.current = true
     debugRef.current = null
     streamAbortRef.current?.abort()
+    streamAbortReasonRef.current = null
     const streamId = streamIdRef.current + 1
     streamIdRef.current = streamId
     const abortController = new AbortController()
@@ -553,6 +648,8 @@ function Chat({
           ...last,
           content: message,
           streaming: false,
+          pending: false,
+          recovering: false,
           error: true,
         }))
         return
@@ -625,6 +722,7 @@ function Chat({
                 ...last,
                 streaming: false,
                 pending: false,
+                recovering: false,
                 interrupted: false,
               }))
             } else if (data.type === 'error') {
@@ -634,6 +732,7 @@ function Chat({
                 content: data.message,
                 streaming: false,
                 pending: false,
+                recovering: false,
                 error: true,
               }))
             } else {
@@ -646,6 +745,9 @@ function Chat({
       }
     } catch (e) {
       if (isAbortError(e) || abortController.signal.aborted) {
+        if (!abortController.signal.aborted && wasHiddenRef.current) {
+          streamAbortReasonRef.current = 'resume_recovery'
+        }
         return
       }
       console.error('Stream failed:', e)
@@ -654,6 +756,7 @@ function Chat({
         content: `Connection error: ${e.message}`,
         streaming: false,
         pending: false,
+        recovering: false,
         error: true,
       }))
     } finally {
@@ -681,13 +784,23 @@ function Chat({
         streamAbortRef.current = null
       }
       if (mountedRef.current && streamIdRef.current === streamId) {
-        updateMessageById(assistantMessageId, last => (
-          abortController.signal.aborted
-            ? interruptedAssistantMessage(last)
-            : { ...last, streaming: false }
-        ))
+        const abortReason = streamAbortReasonRef.current
+        updateMessageById(assistantMessageId, last => {
+          if (abortReason === 'resume_recovery') {
+            return recoveringAssistantMessage(last)
+          }
+          if (abortController.signal.aborted || abortReason) {
+            return interruptedAssistantMessage(last)
+          }
+          return { ...last, streaming: false }
+        })
+        if (abortReason === 'resume_recovery') {
+          hasRecoveringPendingRef.current = true
+          startRecoveryPolling(messagesConversationIdRef.current)
+        }
         setIsStreaming(false)
         isStreamingRef.current = false
+        streamAbortReasonRef.current = null
         onRefresh()
       }
     }
@@ -746,7 +859,9 @@ function Chat({
               {msg.role === 'user' ? 'You' : 'Assistant'}
             </div>
             <div className="message-content">
-              {msg.content || (msg.interrupted ? 'Response interrupted; send again if needed.' : '')}
+              {msg.content
+                || (msg.recovering ? 'Response still finishing...' : '')
+                || (msg.interrupted ? 'Response interrupted; send again if needed.' : '')}
               {msg.streaming && <span className="cursor">|</span>}
             </div>
           </div>
