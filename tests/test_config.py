@@ -21,6 +21,7 @@ CONFIG_ENV_VARS = [
     "ANAM_IMAGE_GENERATION_MAX_HEIGHT",
     "ANAM_IMAGE_GENERATION_MAX_PROMPT_CHARS",
     "ANAM_IMAGE_GENERATION_MAX_WIDTH",
+    "ANAM_MODEL_NUM_CTX",
     "ANAM_MODEL_TEMPERATURE",
     "ANAM_MODEL_THINK",
     "ANAM_OLLAMA_HOST",
@@ -82,6 +83,12 @@ def test_missing_config_files_use_code_fallbacks(tmp_path, monkeypatch):
     assert config.SCHEDULER_ALLOW_IMAGE_GENERATION is False
     assert config.get_model_options("chat")["think"] is False
     assert config.get_model_options("chat")["temperature"] == 0.35
+
+
+def test_chat_model_options_pin_num_ctx(tmp_path, monkeypatch):
+    config = _reload_config(monkeypatch, tmp_path)
+
+    assert config.get_model_options("chat")["num_ctx"] == 32768
 
 
 def test_defaults_and_local_config_precedence(tmp_path, monkeypatch):

@@ -35,7 +35,7 @@ _FALLBACK_CONFIG = {
         "timeout_seconds": 300,
     },
     "model_options": {
-        "default": {"think": False, "temperature": 0.35},
+        "default": {"think": False, "temperature": 0.35, "num_ctx": 32768},
         "chat": {"think": False},
         "reflection_journal": {"think": False, "timeout_seconds": 600},
         "behavioral_guidance_review": {"think": False},
@@ -222,6 +222,11 @@ def get_model_options(role: str) -> dict:
             "ANAM_MODEL_TEMPERATURE",
             float(options.get("temperature", 0.35)),
         )
+    if os.getenv("ANAM_MODEL_NUM_CTX") is not None:
+        options["num_ctx"] = _env_int(
+            "ANAM_MODEL_NUM_CTX",
+            int(options.get("num_ctx", 32768)),
+        )
     think_env = _ROLE_THINK_ENV.get(role)
     if think_env and os.getenv(think_env) is not None:
         options["think"] = _env_bool(think_env, bool(options.get("think", False)))
@@ -253,7 +258,7 @@ TRUST_WEIGHTS = {
 }
 
 # --- Context budget ---
-CONTEXT_WINDOW = 131072      # gemma4:26b with num_ctx=128K
+CONTEXT_WINDOW = 32768       # gemma4:26b pinned num_ctx=32K
 OUTPUT_RESERVE = 4096        # Tokens reserved for response
 RETRIEVAL_FLOOR = 3          # Minimum chunks to surface
 RETRIEVAL_CEILING = 15       # Maximum chunks to surface

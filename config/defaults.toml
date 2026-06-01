@@ -12,6 +12,7 @@ timeout_seconds = 300
 [model_options.default]
 think = false
 temperature = 0.35
+num_ctx = 32768
 
 [model_options.chat]
 think = false
@@ -69,12 +70,12 @@ allow_web = false
 allow_image_generation = false
 
 [image_generation]
-enabled = false
+enabled = true
 default_backend = "comfyui"
 max_prompt_chars = 2000
 max_width = 2048
 max_height = 2048
-allow_agent_tool = false
+allow_agent_tool = true
 
 [image_generation.comfyui]
 base_url = "http://127.0.0.1:8188"
