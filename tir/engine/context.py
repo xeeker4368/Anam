@@ -106,7 +106,7 @@ _GREETING_PATTERNS = {
 }
 
 
-def _is_greeting(text: str) -> bool:
+def is_greeting(text: str) -> bool:
     """Check if a message is a simple greeting that doesn't need retrieval."""
     cleaned = text.strip().lower().rstrip("!?.,'\"")
     return cleaned in _GREETING_PATTERNS
@@ -207,7 +207,7 @@ def build_system_prompt_with_debug(
         section_counts["tool_descriptions_chars"] = len(tool_descriptions)
 
     # Section 5: Retrieved memories
-    if retrieved_chunks is None and user_message and not _is_greeting(user_message):
+    if retrieved_chunks is None and user_message and not is_greeting(user_message):
         # Automatic retrieval
         try:
             retrieved_chunks = retrieve(

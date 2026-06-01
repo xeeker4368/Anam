@@ -61,7 +61,10 @@ from tir.memory.db import (
 )
 from tir.memory.retrieval import retrieve
 from tir.memory.chunking import checkpoint_conversation, chunk_conversation_final
-from tir.engine.context import build_system_prompt_with_debug
+from tir.engine.context import (
+    build_system_prompt_with_debug,
+    is_greeting,
+)
 from tir.engine.agent_loop import run_agent_loop
 from tir.engine.context_budget import (
     AUTO_RETRIEVAL_RESULTS,
@@ -248,23 +251,6 @@ class ImageGenerationRequest(BaseModel):
     source_message_id: str | None = None
     source_artifact_id: str | None = None
     revision_of: str | None = None
-
-
-# ---------------------------------------------------------------------------
-# Greeting detection (matches context.py)
-# ---------------------------------------------------------------------------
-
-_GREETING_PATTERNS = {
-    "hi", "hello", "hey", "yo", "sup", "hiya", "heya",
-    "good morning", "good afternoon", "good evening",
-    "morning", "evening", "afternoon",
-    "what's up", "whats up", "howdy",
-}
-
-
-def _is_greeting(text: str) -> bool:
-    cleaned = text.strip().lower().rstrip("!?.,'\"")
-    return cleaned in _GREETING_PATTERNS
 
 
 # ---------------------------------------------------------------------------
@@ -468,7 +454,7 @@ def stream_chat(req: ChatRequest):
         retrieval_policy = classify_retrieval_policy(req.text)
         artifact_intent = has_recent_artifact_intent(req.text)
         retrieval_skipped = (
-            _is_greeting(req.text)
+            is_greeting(req.text)
             or retrieval_policy["mode"] == "skip_memory"
         )
 
@@ -806,7 +792,9 @@ def stream_chat(req: ChatRequest):
         assistant_content = ""
         should_persist_assistant = False
         if loop_result is None:
-            pass
+            logger.warning(
+                "Agent loop returned no result; no assistant message was persisted"
+            )
         elif loop_result.terminated_reason == "complete":
             assistant_content = loop_result.final_content or ""
             should_persist_assistant = bool(assistant_content.strip())
