@@ -16,6 +16,7 @@ from tir.config import (
     SCHEDULER_ALLOW_MOLTBOOK,
     SCHEDULER_ALLOW_WEB,
     SCHEDULER_ENABLED,
+    SCHEDULER_GO_LIVE,
     SCHEDULER_MAX_ACTIONS_PER_TICK,
     SCHEDULER_NIGHTLY_TICK_ENABLED,
     WORKSPACE_DIR,
@@ -55,9 +56,12 @@ def _scheduler_config() -> dict:
         "nightly_tick_enabled": bool(SCHEDULER_NIGHTLY_TICK_ENABLED),
         "max_actions_per_tick": max_actions,
         "allow_bounded_research": bool(SCHEDULER_ALLOW_BOUNDED_RESEARCH),
+        # allow_moltbook / allow_image_generation are reserved for deferred
+        # capabilities and stay disabled for v1 (config-visible, not runnable).
         "allow_moltbook": bool(SCHEDULER_ALLOW_MOLTBOOK),
         "allow_web": bool(SCHEDULER_ALLOW_WEB),
         "allow_image_generation": bool(SCHEDULER_ALLOW_IMAGE_GENERATION),
+        "go_live": bool(SCHEDULER_GO_LIVE),
     }
 
 
@@ -84,7 +88,7 @@ def _base_result(
         "scheduler_enabled": config["enabled"],
         "nightly_tick_enabled": config["nightly_tick_enabled"],
         "current_local_date": current_local_date,
-        "pre_live_or_live": "pre_live",
+        "pre_live_or_live": "live" if config["go_live"] else "pre_live",
         "config": config,
         "actions_allowed": (
             _actions_allowed(config, cli_allow_bounded_research=cli_allow_bounded_research)
@@ -222,6 +226,9 @@ def run_nightly_tick(
 
     started = time.perf_counter()
     result["started_at"] = _now()
+    # Heartbeat-only tick: action_count stays 0 here and is only bumped if a
+    # bounded-research action actually runs below. A completed heartbeat with
+    # action_count == 0 is the expected baseline, not an error.
     result["actions_run"].append({"action": "heartbeat", "status": "recorded"})
     result["status"] = "completed"
 

@@ -68,6 +68,7 @@ allow_bounded_research = false
 allow_moltbook = false
 allow_web = false
 allow_image_generation = false
+go_live = false
 
 [image_generation]
 enabled = true

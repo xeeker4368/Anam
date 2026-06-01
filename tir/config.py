@@ -82,6 +82,7 @@ _FALLBACK_CONFIG = {
         "allow_moltbook": False,
         "allow_web": False,
         "allow_image_generation": False,
+        "go_live": False,
     },
     "image_generation": {
         "enabled": False,
@@ -365,6 +366,10 @@ SCHEDULER_ALLOW_WEB = _env_bool(
 SCHEDULER_ALLOW_IMAGE_GENERATION = _env_bool(
     "ANAM_SCHEDULER_ALLOW_IMAGE_GENERATION",
     bool(_SCHEDULER_CONFIG.get("allow_image_generation", False)),
+)
+SCHEDULER_GO_LIVE = _env_bool(
+    "ANAM_SCHEDULER_GO_LIVE",
+    bool(_SCHEDULER_CONFIG.get("go_live", False)),
 )
 
 # --- Image generation ---

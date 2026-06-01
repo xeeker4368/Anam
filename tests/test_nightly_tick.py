@@ -42,6 +42,7 @@ def _set_scheduler_config(
     allow_moltbook=False,
     allow_web=False,
     allow_image_generation=False,
+    go_live=False,
 ):
     monkeypatch.setattr(nightly_mod, "SCHEDULER_ENABLED", enabled)
     monkeypatch.setattr(nightly_mod, "SCHEDULER_NIGHTLY_TICK_ENABLED", nightly_tick_enabled)
@@ -50,6 +51,7 @@ def _set_scheduler_config(
     monkeypatch.setattr(nightly_mod, "SCHEDULER_ALLOW_MOLTBOOK", allow_moltbook)
     monkeypatch.setattr(nightly_mod, "SCHEDULER_ALLOW_WEB", allow_web)
     monkeypatch.setattr(nightly_mod, "SCHEDULER_ALLOW_IMAGE_GENERATION", allow_image_generation)
+    monkeypatch.setattr(nightly_mod, "SCHEDULER_GO_LIVE", go_live)
 
 
 def _overnight_rows(db_mod):
@@ -108,6 +110,32 @@ def test_enabled_write_records_one_overnight_audit_row(nightly_env, monkeypatch)
     assert summary["mode"] == "write"
     assert summary["actions_run"] == [{"action": "heartbeat", "status": "recorded"}]
     assert summary["no_external_write_confirmed"] is True
+
+
+def test_default_tick_records_pre_live(nightly_env, monkeypatch):
+    nightly = nightly_env["nightly"]
+    _set_scheduler_config(monkeypatch, nightly)
+
+    result = nightly.run_nightly_tick(write=True, current_local_date=TODAY)
+
+    assert result["config"]["go_live"] is False
+    assert result["pre_live_or_live"] == "pre_live"
+    rows = _overnight_rows(nightly_env["db"])
+    assert len(rows) == 1
+    assert _row_summary(rows[0])["pre_live"] is True
+
+
+def test_go_live_tick_records_live(nightly_env, monkeypatch):
+    nightly = nightly_env["nightly"]
+    _set_scheduler_config(monkeypatch, nightly, go_live=True)
+
+    result = nightly.run_nightly_tick(write=True, current_local_date=TODAY)
+
+    assert result["config"]["go_live"] is True
+    assert result["pre_live_or_live"] == "live"
+    rows = _overnight_rows(nightly_env["db"])
+    assert len(rows) == 1
+    assert _row_summary(rows[0])["pre_live"] is False
 
 
 def test_max_actions_per_tick_one_is_enforced(nightly_env, monkeypatch):
