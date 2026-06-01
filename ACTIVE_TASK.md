@@ -1,130 +1,102 @@
 # ACTIVE_TASK.md
 
-## Current Recommended Task
+## Current Active Area
 
-Model Behavior Smoke Test Baseline v1.
+Pre-go-live cleanup and stabilization.
 
-This is a human-run pre-go-live model/configuration baseline protocol. It must not implement an automated eval harness or change runtime prompts/model config.
+The project is no longer primarily adding features. Current work is reducing frontend refresh/state complexity, cleaning small correctness issues, and preparing for final go-live reset/config/smoke testing.
 
-## Task Goal
+## Just Completed
 
-Create a smoke test baseline protocol:
+Completed patch:
+- `Frontend Hook Stability + Refresh Narrowing v1`
+- Commit: `5407e2a`
 
-- compare current Gemma, lower-temperature Gemma, and Qwen candidate configurations
-- use a fixed human-run prompt set
-- score fabricated memory, theatrical overreach, tool honesty, source grounding, boundary respect, pushback, uncertainty, and usability
-- store transcripts as development/test artifacts outside live memory
-- support 30/60/90 day drift comparison after go-live
+Changes:
+- Stabilized App.jsx refresh callbacks.
+- Fixed App.jsx hook dependency warnings.
+- Split artifact/open-loop refresh paths.
+- Chat completion refreshes conversations only.
+- Upload/image generation refreshes artifacts only.
+- Removed leftover `console.log('Closed:', data)`.
+- Build/lint/diff-check passed.
 
-## Current Checkpoint
+Recent completed major features:
+- Web UI polish.
+- iPhone/mobile fixes.
+- LAN startup and cleanup hardening.
+- Chat-callable media tools.
+- Image generation UI/API/CLI.
+- Scheduler/nightly tick.
+- Local runtime tooling hygiene.
+- Backup/restore verification and restore hardening.
 
-Recent completed foundation and course-correction work:
+## Immediate Next Steps
 
-- Behavioral guidance runtime loading is dormant before go-live.
-- `BEHAVIORAL_GUIDANCE.md` is a dormant placeholder and contains no active `- Guidance:` lines.
-- Reflection journals no longer receive active behavioral guidance as entity context.
-- Retrieved context uses neutral source framing: `Retrieved context follows. Each item is labeled by source type.`
-- `OPERATIONAL_GUIDANCE.md` has been compressed to source/tool/action safety.
-- Journal and research prompts now allow quiet days, no useful findings, no open questions, no follow-ups, and no suggested review items where honest.
-- `memory_search` and real-time tool freshness wording now use indexed prior-record/source framing instead of broad self-memory framing.
-- `soul.md` was reviewed for minimality before go-live and was not changed.
-- Reflection journals can be written, registered, indexed, and retrieved.
-- Operational reflection review exists as a manual admin command.
-- Runtime configuration foundation exists with TOML/env overrides and Ollama model options.
-- Single-model global temperature calibration is complete.
-- External Review Checkpoint v1 exists as documentation/review prep.
-- Manual Research Foundation is complete for the first bounded CLI path.
-- Research Continuation Runtime v1 is complete for the manual CLI path.
-- Research Open-Loop Runtime v1 is complete for the first standalone manual path.
-- Bounded / Scheduled Research Design v1 exists in `docs/BOUNDED_SCHEDULED_RESEARCH_DESIGN.md`.
-- Manual Bounded Open-Loop Research Planner v1 is complete.
-- Manual Bounded Open-Loop Research Run v1 is complete.
-- Moltbook Source Collection Design v1 exists in `docs/MOLTBOOK_SOURCE_COLLECTION_DESIGN.md`.
-- Moltbook Source Preview Runtime v1 is complete.
-- Bounded Moltbook source trace support is complete.
-- Research Open-Loop Run-Next v1 is complete.
-- Web Source Collection Design v1 exists in `docs/WEB_SOURCE_COLLECTION_DESIGN.md`.
-- Pre-Go-Live Roadmap Correction clarified the image/avatar split and bounded scheduler candidate status.
-- Experiment Hypothesis / Observation Criteria v1 exists in `docs/EXPERIMENT_HYPOTHESIS_AND_OBSERVATION_CRITERIA.md`.
-- Trusted Household User Mode v1 exists in `docs/TRUSTED_HOUSEHOLD_USER_MODE.md`.
-- Backup / Restore Verification v1 is complete and committed.
-- Go-Live Reset Runbook v1 exists in `docs/GO_LIVE_RESET_RUNBOOK.md`.
+1. Manually verify latest frontend cleanup:
+   - one browser tab only
+   - send chat message
+   - confirm chat completion does not refresh health/artifacts/open-loops
+   - switch tabs idle and during stream
+   - verify no user-visible issue
 
-Research remains provisional and does not become truth, guidance, self-understanding, project decisions, review items, or working theories automatically.
+2. Run:
+   ```bash
+   cd "/Volumes/Dock Storage/Anam"
+   git status --short
+   git log --oneline -8
+   git push
+   ```
 
-## Current Documentation Scope
+3. Next recommended implementation patch:
+   - `Pre-Go-Live Small Correctness Cleanup v1`
 
-The current model behavior smoke test baseline patch should:
+   Scope:
+   - Deduplicate greeting detection.
+   - Fix scheduler `pre_live_or_live` hardcode.
+   - Add warning log for no assistant persistence.
+   - Add clarifying comments for scheduler future image/Moltbook settings.
 
-- add `docs/MODEL_BEHAVIOR_SMOKE_TEST_BASELINE.md`
-- update `ROADMAP.md` narrowly with the pre-go-live smoke test baseline checkpoint
-- define candidate configs, fixed prompt set, scoring categories, pass/fail guidance, and review cadence
-- keep outputs as development/test artifacts, not entity identity facts
-- add a changelog entry
+4. Then plan:
+   - `Runtime Tracked File Hygiene — PLAN ONLY`
 
-Pre-go-live candidates now include Image / Media Capability Foundation v1 and a tightly bounded scheduler/nightly tick v1, subject to separate approved implementation patches.
+5. Then:
+   - `Chat Pending Merge Identity Fix — PLAN ONLY`
 
-## Explicitly Deferred
+6. Then:
+   - `Chat Media Tool Result Rendering v1`
 
-- Avatar/self-representation creation before go-live.
-- Expanded autonomy/background research.
-- Broad autonomous web crawling.
-- Working-theory/synthesis records.
-- Review-item creation.
-- Automatic open-loop creation without explicit operator action.
-- Automatic review-item creation.
-- DB schema changes unless a separate approved implementation proves existing metadata fields are insufficient.
-- Chroma indexing changes.
-- Promotion to truth, behavioral guidance, self-understanding, or project decisions.
-- Value-density scoring.
-- Retrieval ranking changes.
-- Changes to `BEHAVIORAL_GUIDANCE.md`, `SELF_UNDERSTANDING.md`, `OPERATIONAL_GUIDANCE.md`, or `soul.md`.
-- Implementing household multi-user support.
-- Real login/session authentication.
-- Implementing image generation or scheduler runtime behavior.
-- Moltbook behavior changes beyond separately approved read-only/source-trace work.
-- Canary runtime harness.
-- UI redesign.
-- Go-live DB wipe/reset.
-- Real restore into active runtime state outside the existing explicit `restore --force` path.
-  Current pre-live runtime data remains useful test data until final launch preparation.
-- Automated model eval harnesses.
-- Model configuration changes.
+## Unresolved Questions
 
-## Design Constraints
+- Final Gemma temperature: 0.20 or 0.25.
+- Whether to modify `soul.md` wording before go-live.
+- Whether go-live uses image generation chat tool enabled by default or only manually via env.
+- Whether scheduler should be manual-only at launch or later launchd/cron.
+- Whether CORS should remain proxy-only or gain configurable LAN origins.
+- Whether to untrack `data/prod/*` before go-live.
 
-- Project Anam is the substrate/project, not the entity name.
-- The AI entity currently has no name.
-- The system must not assign a fixed personality.
-- Drift is not inherently bad.
-- Research conclusions are provisional working notes.
-- Open loops are unresolved questions, not conclusions or instructions.
-- Behavioral guidance runtime loading must remain dormant.
-- Research artifacts need a clear purpose and consumption path.
-- Live/external source material is context, not factual authority.
-- Source text must be separated from the entity's interpretation.
-- Absence of external results is not proof of absence.
-- No durable research state should update silently without an artifact once execution exists.
-- Future record creation must preserve source lineage.
-- The design must preserve the Project Anam/entity distinction.
+## Current Known Gotchas
 
-## Files/Subsystems To Inspect First
+- Do not re-run model smoke prompts inside current Anam memory and treat results as clean; memory is contaminated by prior tests.
+- `data/prod/*` is tracked and remains dirty; do not commit it accidentally.
+- `config/local.toml` is local-only; do not commit.
+- `ComfyUI/` and `config/comfyui/` are local; do not commit.
+- Chat/image generation requires:
+  ```bash
+  ANAM_IMAGE_GENERATION_ENABLED=true
+  ANAM_IMAGE_GENERATION_ALLOW_AGENT_TOOL=true
+  ```
+- `start.sh --with-comfyui` may need `COMFYUI_PYTHON` set to the correct ComfyUI environment.
+- Backend should remain localhost-only in LAN mode; iPhone reaches backend through Vite proxy.
+- Recent frontend resume/polling work was overcomplicated; avoid adding more recovery layers without diagnosis.
+- Normal `gemma4:26b` is preferred over MLX because image support matters.
+- Qwen/Mistral were slow due to prompt prefill on Anam-sized prompts.
 
-- `PROJECT_STATE.md`
-- `DECISIONS.md`
-- `ROADMAP.md`
-- `ACTIVE_TASK.md`
-- `CODING_ASSISTANT_RULES.md`
-- `changelog/`
+## Do Not Repeat These Mistakes
 
-## Success Criteria
-
-This model behavior smoke test baseline patch should:
-
-- document a human-run smoke test baseline protocol
-- define candidate model/configuration comparisons
-- define fixed prompt categories and observation/scoring categories
-- avoid turning the protocol into runtime guidance or a personality script
-- avoid importing transcripts into live memory by default
-- avoid runtime code, tests, prompts, guidance, `soul.md`, model config, DB schema, retrieval, research, Moltbook/web, auth, or UI changes
-- preserve the Project Anam/entity distinction
+- Do not assume tab switching means stream failure.
+- Do not add polling unless there is a real failure path.
+- Do not solve UI state bugs by adding broad refreshes.
+- Do not let Chat trigger broad App refreshes.
+- Do not change model because of philosophical discomfort without testing local performance.
+- Do not treat `soul.md` echoing as model hallucination.

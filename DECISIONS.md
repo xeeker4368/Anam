@@ -1,436 +1,529 @@
 # DECISIONS.md
 
-## Purpose
+## 1. Project Identity
 
-This file records active Project Anam decisions so future ChatGPT, Codex, Claude, Claude Code, or local AI sessions do not relitigate or accidentally undo them.
+### Decision
+The project/substrate is named Project Anam. The AI entity remains unnamed.
 
----
+### Alternatives Rejected
+- Assigning the entity a name now.
+- Treating “Anam” as the entity’s personal name.
 
-# Active Decisions
+### Why
+The experiment depends on observing whether identity emerges through continuity rather than being assigned.
 
-## Decision 001 — Project Anam is the substrate, not the entity name
-
-**Status:** Active
-
-Project Anam is the project/substrate/platform name. It is not the AI entity's name.
-
-Implications:
-
-- Do not write “You are Anam” in prompts.
-- Do not call the entity Anam in documentation.
-- Do not store Anam as `entity_name`.
-- Use “the entity” or “AI entity” unless/until the entity chooses a name.
-- Treat Tír as historical/previous naming context unless explicitly stated otherwise.
+### Status
+Locked for go-live. Revisit only through explicit later self-representation process.
 
 ---
 
-## Decision 002 — The entity currently has no name
+## 2. Entity Personality
 
-**Status:** Active
+### Decision
+Do not hardcode a personality. Observe behavior over time.
 
-The entity currently has no name.
+### Alternatives Rejected
+- Designing a fixed assistant persona.
+- Writing personality traits into runtime guidance.
 
-Reason: A name should emerge from experience if it becomes meaningful, not be assigned by a seed file, code, user profile, or assistant.
+### Why
+The project is testing emergent behavior under persistent context.
 
-Implications:
-
-- `soul.md` must not assign a name.
-- Code/config must not assign a name.
-- If a name is later chosen, store it as an identity event.
-- The entity may later revise or reject a chosen name.
-
----
-
-## Decision 003 — No assigned personality
-
-**Status:** Active
-
-The project will not give the entity a fixed personality.
-
-Reason: The project aims to observe whether personality-like continuity emerges from memory, behavior, correction, research, creativity, action, reflection, and experience. Assigning traits would contaminate the experiment.
-
-Implications:
-
-- Do not create prescriptive personality sliders.
-- Do not create fixed personality traits.
-- Avoid prompts that say the entity is curious/cautious/warm/etc.
-- Use behavior observations instead.
+### Status
+Locked in principle.
 
 ---
 
-## Decision 004 — Behavior is observed, not configured
+## 3. Memory Architecture
 
-**Status:** Active
+### Decision
+Use a dual-store model:
+- archive DB = durable record
+- working DB/Chroma/FTS = queryable operational memory
 
-The system may observe behavioral patterns and store them as evidence-linked, revisable behavioral memory.
+### Alternatives Rejected
+- Single mutable memory DB.
+- Pure vector database memory.
+- Summary-only memory.
 
-Implications:
+### Why
+Archive must preserve source truth. Working memory can be rebuilt.
 
-- Add `behavior_observations`, not prescriptive `personality_traits`.
-- Observations require evidence.
-- Observations should be revisable/supersedable.
-- Context should present them as observed patterns, not identity commands.
-
----
-
-## Decision 005 — Raw experience is primary
-
-**Status:** Active
-
-Raw conversations, actions, documents, tool traces, research sessions, corrections, journals, creative artifacts, and failures are primary experience.
-
-Implications:
-
-- Preserve raw archive.
-- Treat summaries as derived artifacts.
-- Do not inject hidden summaries as identity.
-- Maintain source links and provenance.
+### Status
+Locked.
 
 ---
 
-## Decision 006 — Working theories are needed
+## 4. Retrieval
 
-**Status:** Active
+### Decision
+Use hybrid retrieval: Chroma vectors + SQLite FTS/BM25 + RRF fusion.
 
-The entity should be able to form revisable working theories / provisional conclusions.
+### Alternatives Rejected
+- Vector-only retrieval.
+- Keyword-only retrieval.
+- Hidden source-trust ranking multiplier.
 
-Reason: The autonomous research cycle is intended to let the entity form opinions/conclusions and build on prior research, not merely produce reports.
+### Why
+Hybrid retrieval improves recall. Source trust must remain visible metadata, not hidden ranking.
 
-Implications:
-
-- Add working theory storage.
-- Add theory revision/supersession.
-- Retrieve relevant theories in context.
-- Keep theories revisable.
-
----
-
-## Decision 007 — Open questions should be first-class
-
-**Status:** Active
-
-The system should preserve unresolved questions from conversations and research sessions.
-
-Implications:
-
-- Add `open_questions`.
-- Link questions to theories, sessions, memories, and documents.
-- Track status: open, investigating, resolved, abandoned, superseded.
+### Status
+Locked, tunable.
 
 ---
 
-## Decision 008 — Web search differs between chat and autonomy
+## 5. Source Trust
 
-**Status:** Active
+### Decision
+`source_trust` remains metadata/debug only. It is not a hidden retrieval multiplier.
 
-Live chat search and autonomous-cycle search should use different policies.
+### Alternatives Rejected
+- Down/up-ranking memories invisibly by source type.
 
-Implications:
+### Why
+Hidden trust multipliers distort continuity and make debugging harder.
 
-- Chat web search can be enabled by default with small limits.
-- Autonomous web search should be disabled by default.
-- Autonomous web search requires explicit task permission and budgets.
-- All web searches should be traced and remembered.
-
----
-
-## Decision 009 — Self-modification should be staged and remembered
-
-**Status:** Active
-
-Self-modification should use staged proposals, patches, tests, activation, and memory of outcomes.
-
-Implications:
-
-- Do not allow silent direct core mutation as the first version.
-- Use staged patch folders.
-- Store proposals and outcomes.
-- Treat self-modification as experience.
+### Status
+Locked.
 
 ---
 
-## Decision 010 — soul.md remains minimal
+## 6. Source Labels
 
-**Status:** Active
+### Decision
+All durable information should retain source/type/context metadata.
 
-`soul.md` should remain a minimal seed orientation file.
+### Alternatives Rejected
+- Flattening user statements, research notes, traces, and reflections into undifferentiated memory.
 
-Implications:
+### Why
+Anam must distinguish “Lyle said X,” “research note proposed X,” “source trace contained X,” and “system verified X.”
 
-- No assigned name.
-- No fixed personality.
-- No project-specific working theories.
-- No user profile.
-- No hidden self-summary.
-
----
-
-## Decision 011 — Workspace is distinct from self-modification
-
-**Status:** Active
-
-The entity should have a workspace for writing, coding, research, images, drafts, experiments, journals, and artifacts. This workspace is separate from direct modification of the core substrate.
-
-Implications:
-
-- Workspace tools can be added earlier than self-modification.
-- Workspace writes are lower risk than core substrate edits.
-- Core substrate edits should remain staged and traceable.
-- Workspace outputs should become artifact memory.
+### Status
+Locked.
 
 ---
 
-## Decision 012 — Nightly journaling should be first-class
+## 7. Source Traces
 
-**Status:** Active
+### Decision
+Source traces are audit/provenance sidecars. They are not indexed as primary content.
 
-The entity should eventually create a nightly journal reflecting on the day.
+### Alternatives Rejected
+- Indexing raw source traces into Chroma/FTS.
+- Treating source traces as guidance/instructions.
 
-Implications:
+### Why
+Source traces may contain prompt injection, errors, or low-quality source text.
 
-- Add scheduled reflection.
-- Journal entries should be stored as artifacts and retrievable memory.
-- Journals should include conversations, actions, research, corrections, created artifacts, open questions, and possible behavior observations.
-
----
-
-## Decision 013 — Image generation should be first-class creative functionality
-
-**Status:** Active
-
-The entity should eventually be able to generate and possibly edit images.
-
-Implications:
-
-- Add image tools later.
-- Store prompts, outputs, revision lineage, and user feedback.
-- Generated images should be artifacts.
-- Image generation may use external services/backends if local generation is impractical.
+### Status
+Locked.
 
 ---
 
-## Decision 014 — Moltbook integration should be included
+## 8. Research Notes
 
-**Status:** Active
+### Decision
+Research notes may be indexed. Raw source traces may not.
 
-The entity should eventually have access to Moltbook.
+### Alternatives Rejected
+- Indexing all collected data.
+- Keeping all research unindexed.
 
-Implications:
+### Why
+Research notes are synthesized artifacts; traces are provenance.
 
-- Start read-only if possible.
-- Draft-only posting before controlled posting.
-- Trace Moltbook reads/posts/replies.
-- Store Moltbook interactions as action/social memory.
-- Do not post freely without mode/policy decisions.
-
----
-
-## Decision 015 — iMessage communication should be included
-
-**Status:** Active
-
-The entity should eventually communicate through iMessage.
-
-Implications:
-
-- Start send-only notifications.
-- Later support approval messages.
-- Later support conversational iMessage.
-- Store channel metadata and transcripts as communication memory.
+### Status
+Locked.
 
 ---
 
-## Decision 016 — Voice and sight are future goals
+## 9. Bounded Research
 
-**Status:** Active
+### Decision
+Research is manual/bounded and open-loop based. Scheduler can run at most one bounded research action if explicitly enabled.
 
-The entity should eventually gain voice and sight, likely using an edge device such as a Raspberry Pi 5 for microphone/speaker/camera capture.
+### Alternatives Rejected
+- Open-ended autonomous research.
+- Background daemon research.
+- Unlimited nightly tasks.
 
-Implications:
+### Why
+The project needs continuity without broad autonomy.
 
-- Mac mini should remain the brain/substrate.
-- Raspberry Pi 5 can act as voice/sight edge node.
-- Start with push-to-talk or snapshots, not always-on perception.
-- Store transcripts and visual observations as memory.
-
----
-
-## Decision 017 — Governance/runtime files are not normal artifact memory
-
-**Status:** Active
-
-Project governance and runtime files are builder/runtime materials, not ordinary uploaded source artifacts.
-
-Implications:
-
-- Normal artifact ingestion must block governance/runtime filenames.
-- Governance files may be backed up/restored through explicit allowlists.
-- Intentional governance-file inspection should use a dedicated path later.
-- Do not let accidental uploads turn governance files into uploaded source memory.
+### Status
+Locked for v1.
 
 ---
 
-## Decision 018 — Behavioral guidance is AI-proposed and admin-approved
+## 10. Scheduler
 
-**Status:** Active
+### Decision
+Scheduler v1 is a one-shot CLI command, not a daemon.
 
-Behavioral guidance entries should come from AI-proposed guidance reviewed and approved by an admin if the subsystem is reintroduced.
+### Alternatives Rejected
+- Always-running background worker.
+- Full autonomous scheduler.
 
-Implications:
+### Why
+A one-shot CLI is testable, auditable, and launchd/cron-ready later.
 
-- The UI may review existing proposals but should not create behavioral guidance proposals.
-- `BEHAVIORAL_GUIDANCE.md` is dormant before go-live and is not loaded into runtime context.
-- Apply-to-file behavior is dormant before go-live.
-- Rejected proposals remain visible as evidence for future review.
-
----
-
-## Decision 019 — Local-network API secret is hardening, not full auth
-
-**Status:** Active
-
-`ANAM_API_SECRET` provides lightweight protection when the API is exposed on a local network.
-
-Implications:
-
-- It is not a replacement for user sessions, admin roles, or full authentication.
-- Do not store the secret in the database.
-- Do not hardcode secrets.
-- Full admin/user role enforcement remains future work.
+### Status
+Locked for v1.
 
 ---
 
-## Decision 020 — Do not deliberately forget raw experience
+## 11. Scheduler Scope
 
-**Status:** Active
+### Decision
+Scheduler v1 supports heartbeat and optional one model-only bounded research action.
 
-Deliberate forgetting of raw experience is rejected.
+### Alternatives Rejected
+- Scheduler image generation.
+- Scheduler web crawling.
+- Scheduler Moltbook collection.
+- Scheduler governance/code/guidance mutation.
 
-Implications:
+### Why
+Avoid broad autonomy before live continuity is stable.
 
-- Raw experience should remain preserved.
-- Future salience or value-density systems may affect what is surfaced, summarized, or prioritized.
-- Salience must not silently delete or erase raw records.
-
----
-
-## Decision 021 — Use “review pass” in formal docs
-
-**Status:** Active
-
-Formal project documents should prefer “review pass” over “dream” for future reflective review workflows.
-
-Implications:
-
-- Keep language operational and inspectable.
-- Do not imply mystical, hidden, or unreviewable background behavior.
+### Status
+Locked for v1.
 
 ---
 
-## Decision 022 — SELF_UNDERSTANDING.md is descriptive and revisable
+## 12. Guidance / Soul Loading
 
-**Status:** Active
+### Decision
+`soul.md` and operational guidance may shape runtime behavior, but they must not assign a fixed name/avatar/personality.
 
-`SELF_UNDERSTANDING.md` is the approved concept name for a future reviewed, revisable self-understanding surface.
+### Alternatives Rejected
+- No seed guidance.
+- Highly prescriptive persona file.
 
-Implications:
+### Why
+The system needs philosophical/operational boundaries without forcing identity.
 
-- It should describe experience-derived self-interpretation, not prescribe behavior.
-- It should not be named `PERSONALITY.md`, `SELF_PROFILE.md`, `IDENTITY.md`, or `SELF_MODEL.md` for now.
-- Entries should be AI-proposed and admin-reviewed in future implementation.
-- Admins should not normally author self-understanding entries directly.
-- Rejected proposals should remain visible with review reasons.
-- Runtime loading is deferred and must be separately designed.
-- If runtime loading is later added, it should sit below `soul.md` and operational guidance and should not be treated as behavioral instruction.
-
----
-
-## Decision 023 — Behavioral guidance needs explicit scope before scale
-
-**Status:** Active
-
-Future active behavioral guidance should support explicit user, channel, context, and applicability scope before the guidance file grows large.
-
-Implications:
-
-- If active behavioral guidance is reintroduced later, existing unscoped guidance would be interpreted as global/default guidance unless explicitly migrated.
-- Future global guidance should be chosen deliberately, not created by omission.
-- Scope should be present in both proposal records and applied Markdown entries.
-- Early proposal scope may live in `metadata_json` or a structured metadata object before first-class columns are justified.
-- Applied `BEHAVIORAL_GUIDANCE.md` entries should include human-readable scope metadata.
-- Runtime filtering is deferred and must preserve debug visibility.
-- If scope matching is uncertain, labeled inclusion is safer than silent exclusion.
-- Scoped guidance does not override `soul.md` or `OPERATIONAL_GUIDANCE.md`.
+### Status
+Open to careful wording review before go-live.
 
 ---
 
-## Decision 024 — Behavioral guidance removal and revision preserve history
+## 13. Behavioral Guidance
 
-**Status:** Active
+### Decision
+AI-suggested guidance changes require admin approval. AI can propose; admin approves.
 
-Future approved removal and revision proposals should retire and supersede guidance rather than deleting or silently rewriting it.
+### Alternatives Rejected
+- Direct AI mutation of behavioral guidance.
+- User-created proposal-author metadata.
 
-Implications:
+### Why
+Preserve emergence while preventing uncontrolled self-modification.
 
-- Removal proposals should mark or move active guidance to retired guidance, not delete it.
-- Revision proposals should retire the old entry and append a new active entry.
-- Targeting should prefer stable guidance/proposal IDs over text matching.
-- `target_text` may be a fallback only with exact validation.
-- Retired and superseded guidance should remain reviewable but must not load as active runtime guidance.
-- Dry-run diff/plan output should be required before write behavior.
-- Proposal status should become `applied` only after successful file application.
-
----
-
-## Decision 025 — Manual research produces provisional artifacts, not truth
-
-**Status:** Active
-
-Manual research should be a user-triggered, bounded artifact-producing workflow. Research conclusions are working notes, not permanent truth, runtime guidance, self-understanding, or project decisions.
-
-Current implementation note: Manual Research Foundation is complete for the first bounded CLI path. `research-run` supports dry-run, `--write` file creation, explicit `--write --register-artifact` registration/indexing, and working-research retrieval framing.
-
-Implications:
-
-- Research should have a clear purpose and consumption path.
-- Dry-run should be the default for future manual research commands.
-- File creation should be explicit through `--write`.
-- Artifact registration and indexing should be explicit through `--register-artifact`.
-- Retrieved research should be framed as working research notes.
-- Research may suggest open loops, review items, or future working-theory proposals.
-- Research must not directly mutate `BEHAVIORAL_GUIDANCE.md`, `SELF_UNDERSTANDING.md`, runtime prompt guidance, or project decisions.
-- Web research requires a separate bounded source collection design before implementation.
+### Status
+Locked.
 
 ---
 
-## Decision 026 — Research continuation creates new notes
+## 14. Admin/User Role Model
 
-**Status:** Active
+### Decision
+Two roles: admin and user. Lyle is admin.
 
-Manual research continuation should create a new provisional research note rather than overwriting, editing, or silently revising the prior note.
+### Alternatives Rejected
+- Complex role model for v1.
+- No role boundary.
 
-Implications:
+### Why
+Self-modification, governance, and code changes require admin control.
 
-- Prior research notes remain intact as source artifacts.
-- Continuation notes must preserve lineage to the prior artifact or file.
-- Prior findings are inputs, not authorities.
-- Weakened or superseded prior claims should be stated in the new note, not applied by mutating the previous artifact.
-- Formal working-theory promotion, supersession, or revision remains a separate future design.
+### Status
+Locked for v1.
 
 ---
 
-## Decision 027 — Behavioral guidance runtime loading is dormant before go-live
+## 15. Trusted Household User Mode
 
-**Status:** Active
+### Decision
+Use trusted-client `user_id` source attribution for Lyle and wife on LAN/VPN.
 
-Behavioral guidance runtime loading is dormant before go-live.
+### Alternatives Rejected
+- Full login/session auth before go-live.
+- Single undifferentiated user.
 
-Reason: the reviewed learning channel was useful as an experiment, but runtime-loaded behavioral guidance was judged too prescriptive for Project Anam's emergence goal. It risked turning early corrections or identity-adjacent observations into every-turn runtime steering before the entity had accumulated enough lived experience.
+### Why
+Wife must be able to shape early continuity; public auth is not required for trusted household LAN/VPN.
 
-Implications:
+### Status
+Locked for go-live under LAN/VPN only.
 
-- `BEHAVIORAL_GUIDANCE.md` must not shape runtime prompts at go-live.
-- Reflection journals must not receive active behavioral guidance as entity context.
-- The root guidance file should remain a dormant placeholder with no active `- Guidance:` lines.
-- Pre-live proposal/apply records do not need to be preserved as operational go-live history because the go-live database will be reset.
-- Future reintroduction requires a separate reviewed design decision with explicit runtime scope, per-entry rationale, debug visibility, and safeguards against identity, personality, emotion, name, or self-understanding guidance becoming every-turn instruction.
+---
+
+## 16. Real Auth
+
+### Decision
+Real login/session auth is deferred.
+
+### Alternatives Rejected
+- Implementing full auth before go-live.
+
+### Why
+Trusted household model is accepted for current threat model.
+
+### Status
+Deferred; required before broader exposure.
+
+---
+
+## 17. API Secret
+
+### Decision
+`ANAM_API_SECRET` is shared-secret API protection, not per-user identity.
+
+### Alternatives Rejected
+- Treating API secret as login/session identity.
+
+### Why
+Current model is LAN/VPN trusted household protection only.
+
+### Status
+Locked for v1.
+
+---
+
+## 18. Frontend LAN Design
+
+### Decision
+Expose Vite frontend on LAN; keep backend bound to localhost and reached through Vite proxy.
+
+### Alternatives Rejected
+- Expose backend directly on LAN.
+- Public internet exposure.
+
+### Why
+Allows iPhone access while limiting backend exposure.
+
+### Status
+Locked for go-live; CORS/proxy-only assumption should be documented/tested.
+
+---
+
+## 19. Image Generation Backend
+
+### Decision
+Use local ComfyUI as first image generation backend.
+
+### Alternatives Rejected
+- Cloud image generation.
+- Agent-first image generation before backend proof.
+
+### Why
+Local, controllable, provenance-friendly.
+
+### Status
+Locked for v1.
+
+---
+
+## 20. Image Generation Role
+
+### Decision
+Generated images are ordinary media artifacts unless explicitly part of a future avatar/self-representation workflow.
+
+### Alternatives Rejected
+- Treat every generated face/image as identity.
+- Let tool output imply “this is me.”
+
+### Why
+Self-representation must be intentional and reviewed.
+
+### Status
+Locked for v1.
+
+---
+
+## 21. Chat-Callable Tools
+
+### Decision
+Go-live tools safe for explicit user use should be callable from chat.
+
+### Alternatives Rejected
+- UI-only image generation.
+- Admin-only media reference.
+
+### Why
+The AI must be able to use live capabilities through conversation.
+
+### Status
+Locked.
+
+---
+
+## 22. Chat Image Tool Gate
+
+### Decision
+`image_generate` is available only when image generation and agent tool access are both enabled.
+
+### Alternatives Rejected
+- Enable chat image generation by default.
+- Scheduler/autonomous image generation.
+
+### Why
+Avoid unexpected media generation.
+
+### Status
+Locked for v1.
+
+---
+
+## 23. Media Reference
+
+### Decision
+Add `media_search` and `media_get` as active read-only tools.
+
+### Alternatives Rejected
+- Image generation without later reference/search.
+- Raw file access from chat.
+
+### Why
+Anam must reference generated/uploaded media by title/id/prompt safely.
+
+### Status
+Locked.
+
+---
+
+## 24. Model Selection
+
+### Decision
+Primary go-live model candidate is normal `gemma4:26b`.
+
+### Alternatives Rejected
+- `qwen3.5:27b`: too slow with Anam-sized prompts.
+- `qwen3.5:27b-mlx`: faster than Qwen normal, still too slow.
+- `qwen3.5:9b`: better but still sluggish.
+- `mistral-small3.2`: too slow.
+- `gemma4:26b-mlx`: faster load/huge context, but text-only and less useful for image understanding.
+
+### Why
+`gemma4:26b` is fast enough, supports image input later, and handles Anam prompt sizes well.
+
+### Status
+Open only for temperature tuning, likely 0.20–0.25.
+
+---
+
+## 25. Model Temperature
+
+### Decision
+Default was 0.35. Lower-temp test target is 0.20–0.25.
+
+### Alternatives Rejected
+- Switch model solely to reduce sycophancy.
+- Use abliterated/uncensored models for independence.
+
+### Why
+Lower temperature may reduce theatricality while preserving Gemma performance.
+
+### Status
+Open; final value pending.
+
+---
+
+## 26. Abliterated / Uncensored Models
+
+### Decision
+Do not use abliterated/Heretic-style models for go-live.
+
+### Alternatives Rejected
+- Use “uncensored” model to encourage disagreement.
+
+### Why
+Less refusal does not equal better independent judgment; could increase unsafe compliance.
+
+### Status
+Locked for go-live.
+
+---
+
+## 27. Reviewer Pattern
+
+### Decision
+Use plan-only before complex implementation; commit checkpoints after approved patches.
+
+### Alternatives Rejected
+- Let Codex implement broad changes without plan.
+- Large multi-feature patches.
+
+### Why
+Recent complexity showed need for scoped patches and review gates.
+
+### Status
+Locked.
+
+---
+
+## 28. Runtime Files
+
+### Decision
+Runtime DB/log/workspace files should not be committed.
+
+### Alternatives Rejected
+- Commit current pre-live runtime state.
+
+### Why
+Pre-live state is test data and will be reset.
+
+### Status
+Locked; cleanup/untracking still needed.
+
+---
+
+## 29. Go-Live Reset
+
+### Decision
+Runbook exists. Reset command still required before live.
+
+### Alternatives Rejected
+- Manual destructive reset without guardrails.
+- Go live with pre-live test data.
+
+### Why
+Live continuity must start clean but backed up.
+
+### Status
+Open blocker.
+
+---
+
+## 30. Interpretation / Temporal Runtime
+
+### Decision
+Design docs exist; runtime is deferred unless explicitly prioritized.
+
+### Alternatives Rejected
+- Block go-live on all interpretive/temporal runtime features.
+
+### Why
+Valuable, but scope-expanding.
+
+### Status
+Deferred.
+
+---
+
+## 31. Avatar / Self-Representation
+
+### Decision
+Deferred until explicit reviewed workflow.
+
+### Alternatives Rejected
+- Assign avatar before go-live.
+- Let ordinary image generation become identity.
+
+### Why
+Name/avatar should emerge intentionally later.
+
+### Status
+Locked for go-live.
