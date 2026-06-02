@@ -21,6 +21,11 @@ from tir.config import CHROMA_DIR, EMBED_MODEL, EXPECTED_EMBEDDING_DIM, OLLAMA_H
 
 logger = logging.getLogger(__name__)
 
+# Single source of truth for the collection identity, shared by the live
+# accessor and the go-live empty/teardown seam below.
+COLLECTION_NAME = "tir_memory"
+COLLECTION_METADATA = {"hnsw:space": "cosine"}
+
 # ---------------------------------------------------------------------------
 # Client and collection
 # ---------------------------------------------------------------------------
@@ -39,8 +44,8 @@ def _get_collection(chroma_path: str = CHROMA_DIR) -> chromadb.Collection:
     if _collection is None:
         _client = chromadb.PersistentClient(path=chroma_path)
         _collection = _client.get_or_create_collection(
-            name="tir_memory",
-            metadata={"hnsw:space": "cosine"},
+            name=COLLECTION_NAME,
+            metadata=COLLECTION_METADATA,
         )
         logger.info(
             f"ChromaDB collection 'tir_memory' ready, {_collection.count()} chunks"
@@ -264,3 +269,30 @@ def get_collection_count(chroma_path: str = CHROMA_DIR) -> int:
     """Return the number of chunks in the collection."""
     collection = _get_collection(chroma_path)
     return collection.count()
+
+
+def empty_collection(chroma_path: str = CHROMA_DIR) -> dict:
+    """Empty the vector collection by deleting and recreating it empty.
+
+    This is the "empty" half of an empty + repopulate seam: a future
+    recoverability tool can reuse this teardown and then re-add chunks. It does
+    not rebuild from any source. Returns the pre-wipe chunk count.
+
+    The module-level client cache is reset afterward so the next accessor
+    reopens against the freshly recreated (empty) collection.
+    """
+    client = chromadb.PersistentClient(path=chroma_path)
+    try:
+        existing = client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            metadata=COLLECTION_METADATA,
+        )
+        removed = existing.count()
+        client.delete_collection(name=COLLECTION_NAME)
+        client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            metadata=COLLECTION_METADATA,
+        )
+    finally:
+        reset_client()
+    return {"collection": COLLECTION_NAME, "removed": removed, "count": 0}

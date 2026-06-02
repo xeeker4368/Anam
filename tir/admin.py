@@ -79,6 +79,12 @@ from tir.ops.backup import (
     restore_backup,
     verify_backup_restore,
 )
+from tir.ops.go_live_reset import (
+    GoLiveResetError,
+    execute_go_live_reset,
+    plan_go_live_reset,
+    verify_clean,
+)
 from tir.review.service import (
     ReviewValidationError,
     create_review_item,
@@ -537,6 +543,27 @@ def cmd_backup_restore_verify(args):
         sys.exit(1)
 
     _print_backup_restore_verify_summary(summary)
+    if not summary.get("ok"):
+        sys.exit(1)
+
+
+def cmd_go_live_reset(args):
+    """Run the gated, destructive go-live reset (or its dry-run/verify modes)."""
+    try:
+        if args.dry_run:
+            summary = plan_go_live_reset()
+        elif args.verify_clean:
+            summary = verify_clean()
+        else:
+            summary = execute_go_live_reset(
+                confirm=args.confirm_go_live_reset,
+                typed_confirm=args.typed_confirm,
+            )
+    except GoLiveResetError as exc:
+        print(f"Go-live reset aborted: {exc}")
+        sys.exit(1)
+
+    print(json.dumps(summary, indent=2, sort_keys=True))
     if not summary.get("ok"):
         sys.exit(1)
 
@@ -1497,6 +1524,33 @@ def main():
         help="Delete and recreate a non-empty verification target",
     )
 
+    # go-live-reset
+    p = sub.add_parser(
+        "go-live-reset",
+        help="Destructive go-live memory reset (gated; see GO_LIVE_RESET_RUNBOOK.md)",
+    )
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report what would be wiped/preserved; no changes, no backup",
+    )
+    mode.add_argument(
+        "--verify-clean",
+        action="store_true",
+        help="Assert a clean post-reset state; report pass/fail",
+    )
+    p.add_argument(
+        "--confirm-go-live-reset",
+        action="store_true",
+        help="Arm the destructive reset (required for a real wipe)",
+    )
+    p.add_argument(
+        "--typed-confirm",
+        default=None,
+        help='Exact confirmation phrase: "WIPE PRE-LIVE RUNTIME STATE"',
+    )
+
     # review-list
     p = sub.add_parser("review-list", help="List review queue items")
     p.add_argument("--status", default=None, help="Filter by status")
@@ -1889,6 +1943,7 @@ def main():
         "backup": cmd_backup,
         "restore": cmd_restore,
         "backup-restore-verify": cmd_backup_restore_verify,
+        "go-live-reset": cmd_go_live_reset,
         "review-list": cmd_review_list,
         "review-add": cmd_review_add,
         "review-update": cmd_review_update,
