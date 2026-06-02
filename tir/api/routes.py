@@ -38,7 +38,6 @@ from tir.api.auth import (
 from tir.config import (
     CHAT_MODEL,
     CONVERSATION_ITERATION_LIMIT,
-    DEFAULT_USER,
     FRONTEND_DIR,
     OLLAMA_HOST,
     SKILLS_DIR,
@@ -48,7 +47,6 @@ from tir.config import (
 from tir.memory.db import (
     init_databases,
     get_user,
-    get_user_by_name,
     get_all_users,
     get_connection,
     update_user_last_seen,
@@ -258,22 +256,21 @@ class ImageGenerationRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _resolve_user(user_id: str | None) -> dict:
-    """Resolve user from user_id or fall back to DEFAULT_USER."""
-    if user_id:
-        user = get_user(user_id)
-        if user:
-            return user
-        raise HTTPException(status_code=404, detail="User not found")
+    """Resolve a request's user from an explicit user_id.
 
-    user = get_user_by_name(DEFAULT_USER)
+    Attribution-critical: raw-transcript memory permanently bakes in the source
+    label, so a missing/blank user_id is REJECTED (422), never silently
+    defaulted. An unknown user_id is rejected (404).
+    """
+    if not user_id or not user_id.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="user_id is required; the request must identify a known user",
+        )
+    user = get_user(user_id)
     if user:
         return user
-
-    users = get_all_users()
-    if users:
-        return next((u for u in users if u["role"] == "admin"), users[0])
-
-    raise HTTPException(status_code=500, detail="No users exist")
+    raise HTTPException(status_code=404, detail="User not found")
 
 
 def _error_response(status_code: int, error: str) -> JSONResponse:
@@ -934,6 +931,22 @@ def stream_chat(req: ChatRequest):
 def api_list_users():
     """List all users."""
     return get_all_users()
+
+
+@app.get("/api/users/resolve")
+def api_resolve_user_by_name(name: str):
+    """Resolve a user by name, case-insensitively; 404 if no match.
+
+    For the upcoming login UI to map a typed name to a user_id. Does not change
+    the case-sensitive db.get_user_by_name used by CLI/admin.
+    """
+    target = (name or "").strip().lower()
+    if not target:
+        raise HTTPException(status_code=422, detail="name is required")
+    for user in get_all_users():
+        if (user.get("name") or "").strip().lower() == target:
+            return user
+    raise HTTPException(status_code=404, detail="User not found")
 
 
 # ---------------------------------------------------------------------------
