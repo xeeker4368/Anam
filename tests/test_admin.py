@@ -81,6 +81,86 @@ def test_set_password_updates_existing_web_channel_without_duplicate(temp_admin,
     assert rows[0]["verified"] == 1
 
 
+def _user_row(db_mod, user_id):
+    with db_mod.get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM main.users WHERE id = ?", (user_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def test_set_role_changes_role_and_nothing_else(temp_admin, capsys):
+    db_mod, admin_mod = temp_admin
+    user = db_mod.create_user("Lyle")  # role defaults to "user"
+    before = _user_row(db_mod, user["id"])
+    assert before["role"] == "user"
+
+    with db_mod.get_connection() as conn:
+        archive_before = dict(
+            conn.execute(
+                "SELECT * FROM archive.users WHERE id = ?", (user["id"],)
+            ).fetchone()
+        )
+
+    admin_mod.cmd_set_role(SimpleNamespace(name="Lyle", role="admin"))
+
+    output = capsys.readouterr().out
+    assert "Set role for Lyle: user -> admin" in output
+    assert user["id"] in output
+
+    after = _user_row(db_mod, user["id"])
+    assert after["role"] == "admin"
+    # Every other column is unchanged.
+    for column in before:
+        if column == "role":
+            continue
+        assert after[column] == before[column], f"{column} changed unexpectedly"
+
+    # Archive users row is untouched (no role column there).
+    with db_mod.get_connection() as conn:
+        archive_after = dict(
+            conn.execute(
+                "SELECT * FROM archive.users WHERE id = ?", (user["id"],)
+            ).fetchone()
+        )
+    assert archive_after == archive_before
+
+
+def test_set_role_persists_across_reread(temp_admin):
+    db_mod, admin_mod = temp_admin
+    db_mod.create_user("Lyle")
+
+    admin_mod.cmd_set_role(SimpleNamespace(name="Lyle", role="admin"))
+
+    # Fresh lookup via a new connection confirms persistence.
+    assert db_mod.get_user_by_name("Lyle")["role"] == "admin"
+
+
+def test_set_role_invalid_role_rejected(temp_admin, capsys):
+    db_mod, admin_mod = temp_admin
+    db_mod.create_user("Lyle")
+
+    with pytest.raises(SystemExit) as exc:
+        admin_mod.cmd_set_role(SimpleNamespace(name="Lyle", role="superuser"))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert "invalid role 'superuser'" in output
+    # Unchanged.
+    assert db_mod.get_user_by_name("Lyle")["role"] == "user"
+
+
+def test_set_role_nonexistent_user_rejected(temp_admin, capsys):
+    _db_mod, admin_mod = temp_admin
+
+    with pytest.raises(SystemExit) as exc:
+        admin_mod.cmd_set_role(SimpleNamespace(name="Ghost", role="admin"))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert "no user named 'Ghost'" in output
+
+
 def test_behavioral_guidance_admin_commands(temp_admin, capsys):
     db_mod, admin_mod = temp_admin
     user = db_mod.create_user("Lyle", role="admin")

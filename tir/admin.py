@@ -66,6 +66,7 @@ from tir.memory.db import (
     get_user_by_name,
     add_channel_identifier,
     upsert_channel_auth,
+    update_user_role,
 )
 from tir.memory.audit import (
     audit_memory_integrity,
@@ -139,6 +140,11 @@ from tir.research.moltbook_sources import (
 )
 from tir.media.image_generation import ImageGenerationError, generate_image
 from tir.scheduler.nightly import NightlyTickError, run_nightly_tick
+
+
+# The only values the users.role column uses: schema default 'user' plus
+# 'admin' (set by add-user --admin). Do not invent others.
+VALID_USER_ROLES = ("admin", "user")
 
 
 def cmd_init_db(args):
@@ -217,6 +223,27 @@ def cmd_set_password(args):
         verified=True,
     )
     print(f"Password set for {args.user} (web channel)")
+
+
+def cmd_set_role(args):
+    """Change an existing user's role."""
+    if args.role not in VALID_USER_ROLES:
+        print(
+            f"Error: invalid role '{args.role}'. "
+            f"Valid roles: {', '.join(VALID_USER_ROLES)}"
+        )
+        sys.exit(1)
+
+    user = get_user_by_name(args.name)
+    if not user:
+        print(f"Error: no user named '{args.name}'")
+        sys.exit(1)
+
+    update_user_role(user["id"], args.role)
+    print(
+        f"Set role for {user['name']}: {user['role']} -> {args.role} "
+        f"(id: {user['id']})"
+    )
 
 
 def cmd_show_user(args):
@@ -1473,6 +1500,11 @@ def main():
     p = sub.add_parser("show-user", help="Show user details")
     p.add_argument("user", help="User name")
 
+    # set-role
+    p = sub.add_parser("set-role", help="Change an existing user's role (admin|user)")
+    p.add_argument("name", help="User name")
+    p.add_argument("role", help="New role: admin or user")
+
     # memory-audit
     p = sub.add_parser("memory-audit", help="Report memory retrieval integrity")
     p.add_argument("--limit", type=int, default=25, help="Max IDs to show")
@@ -1937,6 +1969,7 @@ def main():
         "add-channel": cmd_add_channel,
         "set-password": cmd_set_password,
         "show-user": cmd_show_user,
+        "set-role": cmd_set_role,
         "memory-audit": cmd_memory_audit,
         "memory-repair": cmd_memory_repair,
         "memory-checkpoint-active": cmd_memory_checkpoint_active,

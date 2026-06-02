@@ -523,6 +523,16 @@ def update_user_last_seen(user_id: str):
         conn.commit()
 
 
+def update_user_role(user_id: str, role: str) -> None:
+    """Update only the role column for a user in working store."""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE main.users SET role = ? WHERE id = ?",
+            (role, user_id),
+        )
+        conn.commit()
+
+
 # ---------------------------------------------------------------------------
 # Channel identifiers
 # ---------------------------------------------------------------------------
