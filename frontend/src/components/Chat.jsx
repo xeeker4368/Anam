@@ -121,8 +121,7 @@ function Chat({
   conversationId,
   userId,
   userName,
-  users = [],
-  onUserChange,
+  onSignOut,
   onConversationCreated,
   onDebugData,
   onRefresh,
@@ -892,20 +891,18 @@ function Chat({
   return (
     <div className={`chat ${keyboardActive ? 'keyboard-active' : ''}`}>
       <div className="chat-active-user" aria-live="polite">
-        <span className="chat-active-user-label">Active household user</span>
-        {users.length > 1 && onUserChange ? (
-          <select
-            className="chat-user-select"
-            value={userId || ''}
-            onChange={e => onUserChange(e.target.value)}
-            aria-label="Active household user"
-          >
-            {users.map(user => (
-              <option key={user.id} value={user.id}>{user.name}</option>
-            ))}
-          </select>
-        ) : (
+        <span className="chat-active-user-indicator">
+          <span className="chat-active-user-label">You are</span>
           <span className="chat-active-user-name">{userName || 'No user selected'}</span>
+        </span>
+        {onSignOut && (
+          <button
+            type="button"
+            className="btn btn-small chat-switch-user"
+            onClick={onSignOut}
+          >
+            Switch user
+          </button>
         )}
       </div>
       <div className="messages-container">

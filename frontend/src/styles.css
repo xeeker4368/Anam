@@ -1987,3 +1987,100 @@ body {
     font-size: 11px;
   }
 }
+
+/* --- Part 2: name-login gate, role-based view, source indicator --- */
+/* Structural/functional layout only (not theme polish). */
+
+.name-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  height: var(--anam-visual-viewport-height, 100vh);
+  background: #1a1a2e;
+  padding: 24px;
+}
+
+.name-gate-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 360px;
+  padding: 28px;
+  background: #16213e;
+  border: 1px solid #2a2a4a;
+  border-radius: 10px;
+}
+
+.name-gate-title {
+  margin: 0;
+  font-size: 20px;
+  color: #7faacc;
+}
+
+.name-gate-prompt {
+  margin: 0;
+  font-size: 15px;
+  color: #b8c7d8;
+}
+
+.name-gate-input {
+  min-height: 42px;
+  background: #111827;
+  color: #e0e0e0;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 16px;
+}
+
+.name-gate-submit {
+  align-self: flex-start;
+}
+
+.name-gate-error {
+  margin: 0;
+  color: #ff8a8a;
+  font-size: 14px;
+}
+
+/* Household (non-admin) chat-only layout */
+.app-chat-only {
+  height: 100vh;
+  height: var(--anam-visual-viewport-height, 100vh);
+  display: flex;
+  flex-direction: column;
+  background: #1a1a2e;
+}
+
+.chat-only-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Prominent "You are: <name>" source indicator (both roles) */
+.chat-active-user {
+  font-size: 14px;
+}
+
+.chat-active-user-indicator {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.chat-active-user-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  color: #8fa6ba;
+}
+
+.chat-active-user-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #7faacc;
+}

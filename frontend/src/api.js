@@ -42,6 +42,18 @@ export async function apiFetch(path, options = {}) {
   })
 }
 
+export async function resolveUserByName(name) {
+  const trimmed = (name || '').trim()
+  if (!trimmed) {
+    return { ok: false, status: 422, user: null }
+  }
+  const resp = await apiFetch(`/api/users/resolve?name=${encodeURIComponent(trimmed)}`)
+  if (resp.ok) {
+    return { ok: true, status: 200, user: await resp.json() }
+  }
+  return { ok: false, status: resp.status, user: null }
+}
+
 export async function readErrorMessage(resp, fallback) {
   if (resp.status === 401) {
     return 'API secret required or invalid.'

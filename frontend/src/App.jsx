@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Chat from './components/Chat'
+import NameGate from './components/NameGate'
 import DebugPanel from './components/DebugPanel'
 import RegistryPanel from './components/RegistryPanel'
 import SystemPanel from './components/SystemPanel'
@@ -18,6 +19,7 @@ const DEFAULT_BEHAVIORAL_GUIDANCE_FILTERS = {
 }
 
 const CLIENT_STATE_KEYS = {
+  activeUser: 'anam.activeUser',
   activeUserId: 'anam.activeUserId',
   activeConversationId: 'anam.activeConversationId',
   activeTab: 'anam.activeTab',
@@ -50,6 +52,38 @@ function writeClientState(key, value) {
 
 function normalizeStoredTab(tab) {
   return VALID_MOBILE_TABS.has(tab) ? tab : 'chat'
+}
+
+// Identity is a resolved known user: {id, name, role}. We persist the full
+// object so the role-based view is correct before /api/users reloads. The
+// legacy bare-string `anam.activeUserId` key is intentionally NOT restored as
+// identity — after deploy each user re-enters their name once via the gate.
+function readActiveUser() {
+  try {
+    const raw = window.localStorage.getItem(CLIENT_STATE_KEYS.activeUser)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (parsed && parsed.id && parsed.name && parsed.role) {
+      return { id: parsed.id, name: parsed.name, role: parsed.role }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function writeActiveUser(user) {
+  try {
+    if (user) {
+      window.localStorage.setItem(CLIENT_STATE_KEYS.activeUser, JSON.stringify(user))
+      window.localStorage.setItem(CLIENT_STATE_KEYS.activeUserId, user.id)
+    } else {
+      window.localStorage.removeItem(CLIENT_STATE_KEYS.activeUser)
+      window.localStorage.removeItem(CLIENT_STATE_KEYS.activeUserId)
+    }
+  } catch {
+    // Local storage may be unavailable in private browsing or restricted contexts.
+  }
 }
 
 function conversationBelongsToUser(conversation, userId) {
@@ -108,9 +142,8 @@ function App() {
   const [showDebug, setShowDebug] = useState(false)
   const [health, setHealth] = useState(null)
   const [users, setUsers] = useState([])
-  const [activeUserId, setActiveUserId] = useState(
-    () => readClientState(CLIENT_STATE_KEYS.activeUserId) || null
-  )
+  const [activeUser, setActiveUser] = useState(() => readActiveUser())
+  const activeUserId = activeUser?.id || null
   const [showDashboard, setShowDashboard] = useState(false)
   const [activeTab, setActiveTab] = useState(
     () => normalizeStoredTab(readClientState(CLIENT_STATE_KEYS.activeTab))
@@ -167,10 +200,11 @@ function App() {
     conversationsRef.current = conversations
   }, [conversations])
 
-  const selectActiveUser = useCallback((userId) => {
-    writeClientState(CLIENT_STATE_KEYS.activeUserId, userId)
+  const applyActiveUser = useCallback((user) => {
+    const userId = user?.id || null
+    writeActiveUser(user)
     activeUserIdRef.current = userId
-    setActiveUserId(userId)
+    setActiveUser(user)
 
     const currentConversationId = activeConversationIdRef.current
     const currentConversations = conversationsRef.current
@@ -186,6 +220,26 @@ function App() {
     setViewingConversation(null)
     setViewingMessages([])
   }, [])
+
+  // Gate resolved a known user (full {id, name, role} from /api/users/resolve).
+  const handleUserResolved = useCallback((user) => {
+    applyActiveUser(user)
+  }, [applyActiveUser])
+
+  // Admin switching among known users via the dropdown.
+  const selectActiveUser = useCallback((userId) => {
+    const user = users.find(u => u.id === userId)
+    if (user) applyActiveUser(user)
+  }, [users, applyActiveUser])
+
+  // Switch / sign out: clear identity and active conversation -> back to gate.
+  const handleSignOut = useCallback(() => {
+    activeConversationIdRef.current = null
+    setActiveConversationId(null)
+    setViewingConversation(null)
+    setViewingMessages([])
+    applyActiveUser(null)
+  }, [applyActiveUser])
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -240,19 +294,23 @@ function App() {
       const data = await fetchJsonList('/api/users', 'Failed to fetch users')
 
       setUsers(data)
-      if (data.length > 0) {
-        const storedUserId = readClientState(CLIENT_STATE_KEYS.activeUserId)
-        const selected =
-          data.find(u => u.id === activeUserIdRef.current) ||
-          data.find(u => u.id === storedUserId) ||
-          data.find(u => u.role === 'admin') ||
-          data[0]
-        selectActiveUser(selected.id)
+      // No auto-selection: identity is established only via the name gate
+      // (or restored from a previously resolved active user). If the stored
+      // active user no longer exists, return to the gate.
+      const currentId = activeUserIdRef.current
+      if (currentId && !data.some(u => u.id === currentId)) {
+        activeConversationIdRef.current = null
+        setActiveConversationId(null)
+        setViewingConversation(null)
+        setViewingMessages([])
+        writeActiveUser(null)
+        activeUserIdRef.current = null
+        setActiveUser(null)
       }
     } catch (e) {
       console.error('Failed to fetch users:', e)
     }
-  }, [selectActiveUser])
+  }, [])
 
   const fetchArtifacts = useCallback(async ({ showLoading = true } = {}) => {
     if (showLoading) {
@@ -798,8 +856,8 @@ function App() {
     }
   }
 
-  const activeUser = users.find(user => user.id === activeUserId) || null
   const activeUserName = activeUser?.name || 'No user selected'
+  const isAdmin = activeUser?.role === 'admin'
 
   // --- Sidebar content ---
   const sidebarContent = (
@@ -914,14 +972,27 @@ function App() {
       conversationId={activeConversationId}
       userId={activeUserId}
       userName={activeUserName}
-      users={users}
-      onUserChange={selectActiveUser}
+      onSignOut={handleSignOut}
       onConversationCreated={handleConversationCreated}
       onDebugData={handleDebugData}
       onRefresh={handleChatRefresh}
       onStreamingStateChange={handleChatStreamingStateChange}
     />
   )
+
+  // --- Name-login gate: no chat until a known user is resolved ---
+  if (!activeUser) {
+    return <NameGate onResolved={handleUserResolved} />
+  }
+
+  // --- Household (non-admin): chat only, no operator surfaces ---
+  if (!isAdmin) {
+    return (
+      <div className="app-chat-only">
+        <main className="chat-only-main">{mainContent}</main>
+      </div>
+    )
+  }
 
   // --- Mobile layout ---
   if (isMobile) {
