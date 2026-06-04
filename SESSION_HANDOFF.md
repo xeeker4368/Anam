@@ -177,3 +177,33 @@ Must still do:
 - Final clean launch smoke test.
 
 Do not add major new capabilities unless they are direct go-live blockers.
+
+
+## Open items discovered this session (not yet built)
+
+### Ctrl+C double-press orphans the backend (CONFIRMED root cause)
+- Mechanism: cleanup() resets the trap (`trap - INT TERM`) at its start, then
+  stops frontend FIRST, backend SECOND. A second Ctrl+C during the multi-second
+  shutdown is no longer trapped → kills the script mid-cleanup → backend never
+  gets its stop signal → orphaned, still holding port 8000. Next start fails
+  with "address already in use".
+- Fix: in cleanup, IGNORE further signals during shutdown (`trap '' INT TERM`)
+  instead of resetting to default, so a second Ctrl+C can't abort cleanup.
+  Consider also a startup port-in-use guard with a clear message.
+- Status: diagnosed, not yet fixed. Small CC task, plan-check loop.
+
+### Frontend consolidation (IN FLIGHT)
+- Approved plan: one resume/refresh coordinator + one height/viewport system +
+  remove recovery/merge scaffolding. Phased A/B/C. CC running §6 runtime repro
+  first; implementation pending repro results. See the consolidation plan doc.
+
+### Conversation model: discrete vs. continuous (ARCHITECTURE DECISION — pre-go-live)
+- Operator's mental model: ONE continuous conversation per user across all
+  sessions/devices, not discrete sessions. Current system is discrete
+  (per-session conversation records, conversation list, per-conversation
+  chunking/attribution).
+- This is a real fork that touches chunking, retrieval, the conversation list,
+  cross-device continuity, and the "active" badge bug.
+- BLOCKS: the conversation "active"-badge fix (the right fix differs per model).
+- Decide BEFORE the go-live wipe (cheapest time to change memory structure).
+- Status: flagged, undecided.
