@@ -93,9 +93,6 @@ function interruptedAssistantMessage(message) {
   }
 }
 
-const RESUME_MESSAGE_REFRESH_DELAY_MS = 150
-const RESUME_MESSAGE_REFRESH_THROTTLE_MS = 2500
-
 function Chat({
   conversationId,
   userId,
@@ -105,6 +102,7 @@ function Chat({
   onDebugData,
   onRefresh,
   onStreamingStateChange,
+  resumeSignal,
 }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -126,10 +124,8 @@ function Chat({
   const messageIdCounterRef = useRef(0)
   const draftStorageKeyRef = useRef(draftStorageKey(userId, conversationId))
   const skipDraftPersistRef = useRef(false)
-  const wasHiddenRef = useRef(false)
   const messagesConversationIdRef = useRef(conversationId)
-  const resumeMessageRefreshTimerRef = useRef(null)
-  const lastResumeMessageRefreshRef = useRef(0)
+  const lastResumeSignalRef = useRef(resumeSignal)
   const onStreamingStateChangeRef = useRef(onStreamingStateChange)
 
   useEffect(() => {
@@ -140,10 +136,6 @@ function Chat({
     setIsStreaming(isActive)
     isStreamingRef.current = isActive
     onStreamingStateChangeRef.current?.(isActive)
-    if (isActive && resumeMessageRefreshTimerRef.current) {
-      window.clearTimeout(resumeMessageRefreshTimerRef.current)
-      resumeMessageRefreshTimerRef.current = null
-    }
   }
 
   useEffect(() => {
@@ -155,10 +147,6 @@ function Chat({
       streamAbortRef.current?.abort()
       streamReaderRef.current?.cancel().catch(() => {})
       streamReaderRef.current = null
-      if (resumeMessageRefreshTimerRef.current) {
-        window.clearTimeout(resumeMessageRefreshTimerRef.current)
-        resumeMessageRefreshTimerRef.current = null
-      }
       if (viewportScrollTimerRef.current) {
         window.clearTimeout(viewportScrollTimerRef.current)
       }
@@ -426,62 +414,19 @@ function Chat({
     }
   }, [conversationId, fetchMessages])
 
+  // Re-sync messages when App's single resume listener signals a coordinated
+  // tab-return (App owns the visibility/focus/pageshow listener and throttle).
+  // The ref-baseline guard makes mount a no-op and ignores conversation switches
+  // (those are handled by the conversationId-load effect above) — only a genuine
+  // resume bump fetches. The urgent missed-tail case is covered by the one-shot
+  // refetch in sendMessage's finally, so this slower coordinated path is enough.
   useEffect(() => {
-    function runResumeMessageRefresh() {
-      resumeMessageRefreshTimerRef.current = null
-      if (isStreamingRef.current) return
-      lastResumeMessageRefreshRef.current = Date.now()
-      if (!conversationId) return
-      fetchMessages(conversationId)
-    }
-
-    function scheduleResumeMessageRefresh() {
-      if (!conversationId) return
-      if (document.visibilityState && document.visibilityState !== 'visible') return
-      if (isStreamingRef.current) return
-      const now = Date.now()
-      if (now - lastResumeMessageRefreshRef.current < RESUME_MESSAGE_REFRESH_THROTTLE_MS) return
-      if (resumeMessageRefreshTimerRef.current) return
-      resumeMessageRefreshTimerRef.current = window.setTimeout(
-        runResumeMessageRefresh,
-        RESUME_MESSAGE_REFRESH_DELAY_MS
-      )
-    }
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === 'hidden') {
-        wasHiddenRef.current = true
-        return
-      }
-      if (document.visibilityState === 'visible') {
-        scheduleResumeMessageRefresh()
-        wasHiddenRef.current = false
-      }
-    }
-
-    function handleFocus() {
-      scheduleResumeMessageRefresh()
-      wasHiddenRef.current = false
-    }
-
-    function handlePageShow() {
-      scheduleResumeMessageRefresh()
-      wasHiddenRef.current = false
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    window.addEventListener('focus', handleFocus)
-    window.addEventListener('pageshow', handlePageShow)
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      window.removeEventListener('focus', handleFocus)
-      window.removeEventListener('pageshow', handlePageShow)
-      if (resumeMessageRefreshTimerRef.current) {
-        window.clearTimeout(resumeMessageRefreshTimerRef.current)
-        resumeMessageRefreshTimerRef.current = null
-      }
-    }
-  }, [conversationId, fetchMessages])
+    if (resumeSignal === lastResumeSignalRef.current) return
+    lastResumeSignalRef.current = resumeSignal
+    if (isStreamingRef.current) return
+    if (!conversationId) return
+    fetchMessages(conversationId)
+  }, [resumeSignal, conversationId, fetchMessages])
 
   // Auto-scroll to bottom
   useEffect(() => {

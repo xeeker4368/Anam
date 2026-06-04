@@ -151,6 +151,9 @@ function App() {
   const [rightPanelView, setRightPanelView] = useState('debug')
   const [artifacts, setArtifacts] = useState([])
   const [openLoops, setOpenLoops] = useState([])
+  // Bumped once per coordinated tab-return resume so Chat can re-sync its
+  // messages off App's single resume listener instead of its own.
+  const [resumeSignal, setResumeSignal] = useState(0)
   const [registryLoading, setRegistryLoading] = useState(false)
   const [registryError, setRegistryError] = useState(null)
   const [uploading, setUploading] = useState(false)
@@ -395,6 +398,7 @@ function App() {
       fetchConversations()
       fetchHealth()
       fetchRegistries()
+      setResumeSignal(n => n + 1)
     }
 
     function scheduleResumeRefresh() {
@@ -977,6 +981,7 @@ function App() {
       onDebugData={handleDebugData}
       onRefresh={handleChatRefresh}
       onStreamingStateChange={handleChatStreamingStateChange}
+      resumeSignal={resumeSignal}
     />
   )
 
