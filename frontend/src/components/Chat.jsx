@@ -25,13 +25,6 @@ function writeDraft(key, value) {
   }
 }
 
-function findLastMessageIndex(messages, predicate) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (predicate(messages[index], index)) return index
-  }
-  return -1
-}
-
 function hasPersistedMatchingUser(serverMessages, localMessage) {
   return serverMessages.some(message => (
     message.role === 'user' && message.content === localMessage.content
@@ -39,12 +32,13 @@ function hasPersistedMatchingUser(serverMessages, localMessage) {
 }
 
 function hasPersistedAssistantForPending(serverMessages, pendingMessage) {
-  const userContent = pendingMessage.pendingForUserContent
-  if (!userContent) return false
+  // Anchor by the server user-message id (from the debug event), not by content:
+  // repeated content would otherwise collide with an earlier identical turn that
+  // did get a reply, falsely dropping this turn's interrupted bubble.
+  const anchorId = pendingMessage.serverUserMessageId
+  if (!anchorId) return false
 
-  const userIndex = findLastMessageIndex(serverMessages, message => (
-    message.role === 'user' && message.content === userContent
-  ))
+  const userIndex = serverMessages.findIndex(message => message.id === anchorId)
   if (userIndex < 0) return false
 
   return serverMessages
@@ -88,32 +82,17 @@ function mergeServerMessagesWithLocalPending(serverMessages, localMessages) {
   return merged
 }
 
-function recoveringAssistantMessage(message) {
-  return {
-    ...message,
-    streaming: false,
-    pending: true,
-    recovering: true,
-    interrupted: false,
-    localOnly: true,
-    recoveringStartedAt: message.recoveringStartedAt || Date.now(),
-  }
-}
-
 function interruptedAssistantMessage(message) {
   return {
     ...message,
     streaming: false,
     pending: true,
-    recovering: false,
     interrupted: true,
     localOnly: true,
     interruptedAt: Date.now(),
   }
 }
 
-const RECOVERY_POLL_INTERVAL_MS = 1500
-const RECOVERY_POLL_TIMEOUT_MS = 30000
 const RESUME_MESSAGE_REFRESH_DELAY_MS = 150
 const RESUME_MESSAGE_REFRESH_THROTTLE_MS = 2500
 
@@ -149,10 +128,6 @@ function Chat({
   const skipDraftPersistRef = useRef(false)
   const wasHiddenRef = useRef(false)
   const messagesConversationIdRef = useRef(conversationId)
-  const recoveryPollTimerRef = useRef(null)
-  const recoveryPollDeadlineRef = useRef(0)
-  const recoveryConversationIdRef = useRef(null)
-  const hasRecoveringPendingRef = useRef(false)
   const resumeMessageRefreshTimerRef = useRef(null)
   const lastResumeMessageRefreshRef = useRef(0)
   const onStreamingStateChangeRef = useRef(onStreamingStateChange)
@@ -180,10 +155,6 @@ function Chat({
       streamAbortRef.current?.abort()
       streamReaderRef.current?.cancel().catch(() => {})
       streamReaderRef.current = null
-      if (recoveryPollTimerRef.current) {
-        window.clearTimeout(recoveryPollTimerRef.current)
-        recoveryPollTimerRef.current = null
-      }
       if (resumeMessageRefreshTimerRef.current) {
         window.clearTimeout(resumeMessageRefreshTimerRef.current)
         resumeMessageRefreshTimerRef.current = null
@@ -429,78 +400,6 @@ function Chat({
     }
   }, [messageIdFromServer])
 
-  const clearRecoveryPoll = useCallback(() => {
-    if (recoveryPollTimerRef.current) {
-      window.clearTimeout(recoveryPollTimerRef.current)
-      recoveryPollTimerRef.current = null
-    }
-    recoveryConversationIdRef.current = null
-    recoveryPollDeadlineRef.current = 0
-  }, [])
-
-  const markRecoveryTimedOut = useCallback((convId) => {
-    setMessages(prev => {
-      if (messagesConversationIdRef.current !== convId) return prev
-      return prev.map(message => (
-        message.localOnly && message.role === 'assistant' && message.recovering
-          ? interruptedAssistantMessage(message)
-          : message
-      ))
-    })
-  }, [])
-
-  const startRecoveryPolling = useCallback((convId) => {
-    if (!convId) return
-
-    if (
-      recoveryConversationIdRef.current === convId
-        && recoveryPollTimerRef.current
-    ) {
-      return
-    }
-
-    if (recoveryPollTimerRef.current) {
-      window.clearTimeout(recoveryPollTimerRef.current)
-    }
-
-    recoveryConversationIdRef.current = convId
-    recoveryPollDeadlineRef.current = Date.now() + RECOVERY_POLL_TIMEOUT_MS
-
-    const poll = async () => {
-      if (!mountedRef.current || recoveryConversationIdRef.current !== convId) {
-        clearRecoveryPoll()
-        return
-      }
-
-      if (!hasRecoveringPendingRef.current) {
-        clearRecoveryPoll()
-        return
-      }
-
-      await fetchMessages(convId)
-
-      if (Date.now() >= recoveryPollDeadlineRef.current) {
-        markRecoveryTimedOut(convId)
-        clearRecoveryPoll()
-        return
-      }
-
-      recoveryPollTimerRef.current = window.setTimeout(poll, RECOVERY_POLL_INTERVAL_MS)
-    }
-
-    recoveryPollTimerRef.current = window.setTimeout(poll, 0)
-  }, [clearRecoveryPoll, fetchMessages, markRecoveryTimedOut])
-
-  useEffect(() => {
-    const hasRecovering = messages.some(message => (
-      message.localOnly && message.role === 'assistant' && message.recovering
-    ))
-    hasRecoveringPendingRef.current = hasRecovering
-    if (!hasRecovering && recoveryPollTimerRef.current) {
-      clearRecoveryPoll()
-    }
-  }, [messages, clearRecoveryPoll])
-
   useEffect(() => {
     const key = draftStorageKey(userId, conversationId)
     draftStorageKeyRef.current = key
@@ -519,21 +418,13 @@ function Chat({
   // Load existing messages when conversationId changes
   // Skip if we're mid-stream — streaming manages its own message state
   useEffect(() => {
-    if (
-      recoveryConversationIdRef.current
-        && recoveryConversationIdRef.current !== conversationId
-    ) {
-      clearRecoveryPoll()
-    }
-
     if (conversationId && !isStreamingRef.current) {
       fetchMessages(conversationId)
     } else if (!conversationId) {
-      clearRecoveryPoll()
       messagesConversationIdRef.current = null
       setMessages([])
     }
-  }, [conversationId, fetchMessages, clearRecoveryPoll])
+  }, [conversationId, fetchMessages])
 
   useEffect(() => {
     function runResumeMessageRefresh() {
@@ -651,6 +542,9 @@ function Chat({
     let firstTokenSeen = false
     let reader = null
     let streamDone = false
+    let streamStarted = false
+    let sawDoneEvent = false
+    let sawError = false
     const userMessageId = nextMessageId('user')
     const assistantMessageId = nextMessageId('assistant')
     messagesConversationIdRef.current = conversationId
@@ -711,7 +605,6 @@ function Chat({
           content: message,
           streaming: false,
           pending: false,
-          recovering: false,
           error: true,
         }))
         return
@@ -719,6 +612,7 @@ function Chat({
 
       reader = resp.body.getReader()
       streamReaderRef.current = reader
+      streamStarted = true
       const decoder = new TextDecoder()
       let buffer = ''
 
@@ -751,6 +645,14 @@ function Chat({
                 tool_events: [],
                 raw_events: [data],
               })
+              // Stamp this turn's server user-message id onto the pending assistant
+              // bubble so reconciliation can anchor by id, not by ambiguous content.
+              if (data.user_message_id) {
+                updateMessageById(assistantMessageId, last => ({
+                  ...last,
+                  serverUserMessageId: data.user_message_id,
+                }))
+              }
               if (data.conversation_id && data.conversation_id !== conversationId) {
                 messagesConversationIdRef.current = data.conversation_id
                 onConversationCreated(data.conversation_id)
@@ -780,21 +682,21 @@ function Chat({
                 frontend_stream_total_ms: elapsedMs(requestStart, doneAt),
               }, data)
               // Mark streaming complete
+              sawDoneEvent = true
               updateMessageById(assistantMessageId, last => ({
                 ...last,
                 streaming: false,
                 pending: false,
-                recovering: false,
                 interrupted: false,
               }))
             } else if (data.type === 'error') {
               appendRawEvent(data)
+              sawError = true
               updateMessageById(assistantMessageId, last => ({
                 ...last,
                 content: data.message,
                 streaming: false,
                 pending: false,
-                recovering: false,
                 error: true,
               }))
             } else {
@@ -807,20 +709,26 @@ function Chat({
       }
     } catch (e) {
       if (isAbortError(e) || abortController.signal.aborted) {
-        if (!abortController.signal.aborted && wasHiddenRef.current) {
-          streamAbortReasonRef.current = 'resume_recovery'
-        }
+        // Explicit abort (user re-send, unmount) — settled in finally.
         return
       }
-      console.error('Stream failed:', e)
-      updateMessageById(assistantMessageId, last => ({
-        ...last,
-        content: `Connection error: ${e.message}`,
-        streaming: false,
-        pending: false,
-        recovering: false,
-        error: true,
-      }))
+      if (!streamStarted) {
+        // Request failed before any streaming began: a genuine connection error.
+        console.error('Stream failed:', e)
+        updateMessageById(assistantMessageId, last => ({
+          ...last,
+          content: `Connection error: ${e.message}`,
+          streaming: false,
+          pending: false,
+          error: true,
+        }))
+        return
+      }
+      // Stream was interrupted after it began (e.g. iOS backgrounded the tab and
+      // the connection was torn down mid-response). Fall through to finally, which
+      // does a single message refetch to recover a server-persisted reply if one
+      // exists, and otherwise settles the local bubble.
+      console.warn('Stream interrupted mid-response:', e)
     } finally {
       if (reader) {
         try {
@@ -847,23 +755,31 @@ function Chat({
       }
       if (mountedRef.current && streamIdRef.current === streamId) {
         const abortReason = streamAbortReasonRef.current
+        const convId = messagesConversationIdRef.current
+        // The stream began but ended without a clean `done` event and without an
+        // error or explicit abort — i.e. the connection was torn down mid-response.
+        // The backend does not persist on mid-stream disconnect, but iOS sometimes
+        // keeps the socket alive long enough for the server to finish and save, so
+        // do one refetch: adopt the persisted reply if present, else settle locally.
+        const needsRecoveryRefetch = (
+          streamStarted
+            && !sawDoneEvent
+            && !sawError
+            && abortReason !== 'user_abort'
+            && abortReason !== 'unmount'
+            && Boolean(convId)
+        )
         updateMessageById(assistantMessageId, last => {
-          if (abortReason === 'resume_recovery') {
-            return recoveringAssistantMessage(last)
-          }
-          if (abortController.signal.aborted || abortReason) {
+          if (abortController.signal.aborted || abortReason || needsRecoveryRefetch) {
             return interruptedAssistantMessage(last)
           }
           return { ...last, streaming: false }
         })
-        if (abortReason === 'resume_recovery') {
-          hasRecoveringPendingRef.current = true
-          startRecoveryPolling(messagesConversationIdRef.current)
-        }
         setStreamingActive(false)
         streamAbortReasonRef.current = null
-        if (abortReason !== 'resume_recovery') {
-          onRefresh()
+        onRefresh()
+        if (needsRecoveryRefetch) {
+          fetchMessages(convId)
         }
       }
     }
@@ -921,7 +837,6 @@ function Chat({
             </div>
             <div className="message-content">
               {msg.content
-                || (msg.recovering ? 'Response still finishing...' : '')
                 || (msg.interrupted ? 'Response interrupted; send again if needed.' : '')}
               {msg.streaming && <span className="cursor">|</span>}
             </div>
