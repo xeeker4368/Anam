@@ -26,8 +26,8 @@ usage() {
 Usage: ./start.sh [options]
 
 Options:
-  --lan             Expose the Vite frontend on the local network.
-                    Backend remains bound to 127.0.0.1 and is reached through Vite proxy.
+  --lan             Expose the Vite frontend and the backend on the local network
+                    (both bound to 0.0.0.0). For trusted household LAN/VPN use only.
   --with-comfyui    Start or reuse local ComfyUI on 127.0.0.1:${COMFYUI_PORT}.
   --no-comfyui      Explicitly skip ComfyUI startup.
   --help            Show this help.
@@ -191,6 +191,7 @@ wait_for_url() {
 }
 
 detect_lan_urls() {
+  local port="${1:-$FRONTEND_PORT}"
   local seen=""
   local ips=""
 
@@ -211,7 +212,7 @@ detect_lan_urls() {
 
   if [ -n "$ips" ]; then
     while IFS= read -r ip; do
-      [ -n "$ip" ] && echo "  http://${ip}:${FRONTEND_PORT}"
+      [ -n "$ip" ] && echo "  http://${ip}:${port}"
     done <<< "$ips"
   else
     echo "  Could not detect a LAN IPv4 address. Check macOS Network settings."
@@ -233,10 +234,14 @@ python_for_backend() {
 start_backend() {
   local python_bin
   python_bin="$(python_for_backend)"
-  echo "Starting backend on ${BACKEND_HOST}:${BACKEND_PORT}..."
+  local backend_bind_host="127.0.0.1"
+  if [ "$LAN_MODE" = true ]; then
+    backend_bind_host="0.0.0.0"
+  fi
+  echo "Starting backend on ${backend_bind_host}:${BACKEND_PORT}..."
   (
     cd "$ROOT_DIR"
-    ANAM_API_HOST="$BACKEND_HOST" ANAM_API_PORT="$BACKEND_PORT" "$python_bin" run_server.py
+    ANAM_API_HOST="$backend_bind_host" ANAM_API_PORT="$BACKEND_PORT" "$python_bin" run_server.py
   ) &
   BACKEND_PID=$!
 }
@@ -351,7 +356,10 @@ echo "Backend local URL:  http://${BACKEND_HOST}:${BACKEND_PORT}"
 if [ "$LAN_MODE" = true ]; then
   echo ""
   echo "Frontend LAN URL(s):"
-  detect_lan_urls
+  detect_lan_urls "$FRONTEND_PORT"
+  echo ""
+  echo "Backend LAN URL(s):"
+  detect_lan_urls "$BACKEND_PORT"
 fi
 if [ "$WITH_COMFYUI" = true ]; then
   echo ""

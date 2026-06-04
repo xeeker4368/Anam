@@ -62,6 +62,20 @@ The reset must preserve the substrate, schema, household users, configuration, g
 
 10. Confirm the first live chat has no pre-live retrieved memory.
 
+## Pre-Go-Live Network Hardening Checklist
+
+`./start.sh --lan` now binds the backend to `0.0.0.0:8000` (in addition to the
+Vite frontend) so household devices can reach it directly. Before go-live on a
+shared LAN:
+
+- [ ] **Set `ANAM_API_SECRET` before go-live.** Under `--lan` the backend is
+  reachable by any device on the LAN; with `ANAM_API_SECRET` unset the API is
+  unauthenticated (read/write, user attribution). Set the secret so the wide
+  bind is not also wide open. The frontend already sends `x-anam-secret`, and the
+  backend enforces it (401) when configured. This stays consistent with the
+  trusted-household LAN/VPN model — it is not real auth and not for public
+  exposure.
+
 ## What To Wipe
 
 The future reset should wipe pre-live continuity/runtime state:
