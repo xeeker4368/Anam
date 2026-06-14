@@ -114,8 +114,7 @@ function Chat({
   const inputRef = useRef(null)
   const inputAreaRef = useRef(null)
   const viewportScrollTimerRef = useRef(null)
-  const viewportRafRef = useRef(null)
-  const viewportDelayTimersRef = useRef([])
+  const focusSettleTimersRef = useRef([])
   const mountedRef = useRef(false)
   const streamAbortRef = useRef(null)
   const streamAbortReasonRef = useRef(null)
@@ -150,11 +149,8 @@ function Chat({
       if (viewportScrollTimerRef.current) {
         window.clearTimeout(viewportScrollTimerRef.current)
       }
-      if (viewportRafRef.current) {
-        window.cancelAnimationFrame(viewportRafRef.current)
-      }
-      viewportDelayTimersRef.current.forEach(timer => window.clearTimeout(timer))
-      viewportDelayTimersRef.current = []
+      focusSettleTimersRef.current.forEach(timer => window.clearTimeout(timer))
+      focusSettleTimersRef.current = []
     }
   }, [])
 
@@ -175,65 +171,16 @@ function Chat({
     messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
   }, [])
 
+  // Publish only the keyboard-adjusted visible height. The keyboard-active chat
+  // container is sized to this, and an in-flow sticky-bottom composer rides above
+  // the keyboard — no hand-computed composer top, no mid-animation sampling.
   const updateVisualViewportVars = useCallback(() => {
-    const root = document.documentElement
-    const visualViewport = window.visualViewport
-    const composerHeight = Math.ceil(inputAreaRef.current?.getBoundingClientRect().height || 76)
-
-    if (!visualViewport) {
-      const fixedTop = Math.max(0, window.innerHeight - composerHeight)
-      root.style.setProperty('--anam-visual-viewport-height', `${window.innerHeight}px`)
-      root.style.setProperty('--anam-visual-viewport-offset-top', '0px')
-      root.style.setProperty('--anam-visual-viewport-bottom-gap', '0px')
-      root.style.setProperty('--anam-composer-height', `${composerHeight}px`)
-      root.style.setProperty('--anam-composer-fixed-top', `${fixedTop}px`)
-      root.style.setProperty('--anam-composer-occluded-bottom-space', `${composerHeight}px`)
-      return
-    }
-
-    const bottomGap = Math.max(
-      0,
-      window.innerHeight - visualViewport.height - visualViewport.offsetTop
+    const height = window.visualViewport?.height ?? window.innerHeight
+    document.documentElement.style.setProperty(
+      '--anam-visual-viewport-height',
+      `${height}px`
     )
-    const fixedTop = Math.max(
-      visualViewport.offsetTop,
-      visualViewport.offsetTop + visualViewport.height - composerHeight
-    )
-    const occludedBottomSpace = Math.max(composerHeight, window.innerHeight - fixedTop)
-
-    root.style.setProperty('--vv-height', `${visualViewport.height}px`)
-    root.style.setProperty('--vv-offset-top', `${visualViewport.offsetTop}px`)
-    root.style.setProperty('--composer-height', `${composerHeight}px`)
-    root.style.setProperty('--composer-fixed-top', `${fixedTop}px`)
-    root.style.setProperty('--anam-visual-viewport-height', `${visualViewport.height}px`)
-    root.style.setProperty('--anam-visual-viewport-offset-top', `${visualViewport.offsetTop}px`)
-    root.style.setProperty('--anam-visual-viewport-bottom-gap', `${bottomGap}px`)
-    root.style.setProperty('--anam-composer-height', `${composerHeight}px`)
-    root.style.setProperty('--anam-composer-fixed-top', `${fixedTop}px`)
-    root.style.setProperty('--anam-composer-occluded-bottom-space', `${occludedBottomSpace}px`)
   }, [])
-
-  const scheduleViewportSync = useCallback((behavior = 'auto') => {
-    updateVisualViewportVars()
-
-    if (viewportRafRef.current) {
-      window.cancelAnimationFrame(viewportRafRef.current)
-    }
-    viewportDelayTimersRef.current.forEach(timer => window.clearTimeout(timer))
-    viewportDelayTimersRef.current = []
-
-    viewportRafRef.current = window.requestAnimationFrame(() => {
-      updateVisualViewportVars()
-      scrollToLatestMessage(behavior)
-    })
-
-    viewportDelayTimersRef.current = [60, 160, 320].map(delay => (
-      window.setTimeout(() => {
-        updateVisualViewportVars()
-        scrollToLatestMessage(behavior)
-      }, delay)
-    ))
-  }, [scrollToLatestMessage, updateVisualViewportVars])
 
   function updateMessageById(messageId, updater) {
     setMessages(prev => prev.map(message => (
@@ -436,26 +383,28 @@ function Chat({
   useEffect(() => {
     if (!window.visualViewport) return undefined
 
-    function handleVisualViewportChange() {
+    // Resize only — the keyboard show/hide animation drives this. We deliberately
+    // do NOT listen for visualViewport `scroll`: scroll events were the re-entrant
+    // feeder that turned every scrollIntoView into another sync.
+    function handleVisualViewportResize() {
       if (viewportScrollTimerRef.current) {
         window.clearTimeout(viewportScrollTimerRef.current)
       }
       viewportScrollTimerRef.current = window.setTimeout(() => {
-        scheduleViewportSync('auto')
+        updateVisualViewportVars()
+        scrollToLatestMessage('auto')
       }, 90)
     }
 
     updateVisualViewportVars()
-    window.visualViewport.addEventListener('resize', handleVisualViewportChange)
-    window.visualViewport.addEventListener('scroll', handleVisualViewportChange)
+    window.visualViewport.addEventListener('resize', handleVisualViewportResize)
     return () => {
-      window.visualViewport.removeEventListener('resize', handleVisualViewportChange)
-      window.visualViewport.removeEventListener('scroll', handleVisualViewportChange)
+      window.visualViewport.removeEventListener('resize', handleVisualViewportResize)
       if (viewportScrollTimerRef.current) {
         window.clearTimeout(viewportScrollTimerRef.current)
       }
     }
-  }, [scheduleViewportSync, updateVisualViewportVars])
+  }, [scrollToLatestMessage, updateVisualViewportVars])
 
   // Focus input
   useEffect(() => {
@@ -737,15 +686,32 @@ function Chat({
     }
   }
 
+  function clearFocusSettleTimers() {
+    focusSettleTimersRef.current.forEach(timer => window.clearTimeout(timer))
+    focusSettleTimersRef.current = []
+  }
+
   function handleInputFocus() {
     setKeyboardActive(true)
-    scheduleViewportSync('auto')
+    updateVisualViewportVars()
+    scrollToLatestMessage('auto')
+    // iOS does not expose the keyboard-reduced visualViewport height synchronously
+    // at focus; the resize event is unreliable on keyboard-open. Re-sample the
+    // height a few times across the keyboard-open animation so the container picks
+    // up the reduced height. Height-only writes can't resize the visual viewport,
+    // so these cannot oscillate (no scroll, no rAF).
+    clearFocusSettleTimers()
+    focusSettleTimersRef.current = [200, 500, 800].map(delay => (
+      window.setTimeout(updateVisualViewportVars, delay)
+    ))
   }
 
   function handleInputBlur() {
+    clearFocusSettleTimers()
     window.setTimeout(() => {
       setKeyboardActive(false)
-      scheduleViewportSync('auto')
+      updateVisualViewportVars()
+      scrollToLatestMessage('auto')
     }, 120)
   }
 

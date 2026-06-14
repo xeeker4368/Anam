@@ -114,23 +114,6 @@ function useIsMobile(breakpoint = 768) {
   return isMobile
 }
 
-// iOS Safari viewport height fix
-function useViewportHeight() {
-  useEffect(() => {
-    function setVh() {
-      const vh = window.innerHeight * 0.01
-      document.documentElement.style.setProperty('--vh', `${vh}px`)
-    }
-    setVh()
-    window.addEventListener('resize', setVh)
-    window.addEventListener('orientationchange', setVh)
-    return () => {
-      window.removeEventListener('resize', setVh)
-      window.removeEventListener('orientationchange', setVh)
-    }
-  }, [])
-}
-
 function App() {
   const [conversations, setConversations] = useState([])
   const [activeConversationId, setActiveConversationId] = useState(
@@ -189,7 +172,6 @@ function App() {
   const activeUserIdRef = useRef(activeUserId)
   const conversationsRef = useRef(conversations)
   const isMobile = useIsMobile()
-  useViewportHeight()
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId
@@ -252,20 +234,23 @@ function App() {
       setConversations(data)
       const storedConversationId = readClientState(CLIENT_STATE_KEYS.activeConversationId)
       const storedUserId = readClientState(CLIENT_STATE_KEYS.activeUserId)
-      const candidateConversationId = activeConversationIdRef.current || storedConversationId
+      const liveConversationId = activeConversationIdRef.current
+      const candidateConversationId = liveConversationId || storedConversationId
       const candidateUserId = storedUserId || activeUserIdRef.current
       if (candidateConversationId) {
         const candidate = data.find(conv => conv.id === candidateConversationId)
-        if (!candidate) {
-          activeConversationIdRef.current = null
-          setActiveConversationId(null)
-        } else if (conversationBelongsToUser(candidate, candidateUserId)) {
+        if (candidate && conversationBelongsToUser(candidate, candidateUserId)) {
           activeConversationIdRef.current = candidateConversationId
           setActiveConversationId(candidateConversationId)
-        } else {
+        } else if (!liveConversationId) {
+          // Only clear an unvalidated restored-from-storage id (e.g. after a
+          // reset). Never null a live session id merely missing from this
+          // (possibly stale or early) list response — that races a freshly
+          // created conversation on resume and wipes its messages.
           activeConversationIdRef.current = null
           setActiveConversationId(null)
         }
+        // else: live id absent/other-user in this response → transient; keep it.
       }
     } catch (e) {
       console.error('Failed to fetch conversations:', e)
