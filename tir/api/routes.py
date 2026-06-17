@@ -54,6 +54,7 @@ from tir.memory.db import (
     start_conversation,
     end_conversation,
     get_conversation,
+    get_active_conversations,
     get_conversation_messages,
     list_conversations,
 )
@@ -403,9 +404,19 @@ def stream_chat(req: ChatRequest):
 
         # --- Resolve or create conversation ---
         if conversation_id is None:
-            conversation_id = start_conversation(user_id)
-            conversation_started_reason = "new_request"
-            logger.info(f"Started conversation {conversation_id[:8]} for {user_name}")
+            # One resumable thread per user: with no supplied id, reuse the user's
+            # newest open conversation if one exists, else start fresh. Server-side
+            # so a send that races client-side resume-selection can't fork a
+            # duplicate thread. Same primitive the /current endpoint reads.
+            existing_open = get_active_conversations(user_id)
+            if existing_open:
+                conversation_id = existing_open[0]["id"]
+                conversation_started_reason = "resumed_open"
+                logger.info(f"Resumed open conversation {conversation_id[:8]} for {user_name}")
+            else:
+                conversation_id = start_conversation(user_id)
+                conversation_started_reason = "new_request"
+                logger.info(f"Started conversation {conversation_id[:8]} for {user_name}")
         else:
             conv = supplied_conversation
             if conv is None:
@@ -957,6 +968,20 @@ def api_resolve_user_by_name(name: str):
 def api_list_conversations(limit: int = 50, offset: int = 0):
     """List conversations, most recent first."""
     return list_conversations(limit=limit, offset=offset)
+
+
+@app.get("/api/conversations/current")
+def api_get_current_conversation(user_id: str):
+    """Return the user's newest open (non-ended) conversation, or null if none.
+
+    Single source of truth for "the user's current resumable thread": this and the
+    chat-stream's null-conversation reuse both read get_active_conversations(user_id).
+    Declared before the /{conversation_id}/... routes so "current" is not captured
+    as a conversation id.
+    """
+    user = _resolve_user(user_id)
+    active = get_active_conversations(user["id"])
+    return active[0] if active else None
 
 
 @app.get("/api/conversations/{conversation_id}/messages")

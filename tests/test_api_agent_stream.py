@@ -1764,3 +1764,153 @@ def test_stream_chat_empty_complete_output_does_not_save_synthetic_assistant_mes
     assert events[-1]["message_id"] is None
     assert mock_save_message.call_count == 1
     mock_checkpoint_conversation.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Resume-on-load: server reuse (B) + /api/conversations/current endpoint
+# ---------------------------------------------------------------------------
+
+@patch("tir.api.routes.get_active_conversations")
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_null_conversation_reuses_open_thread(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+    mock_get_active_conversations,
+):
+    """No supplied conversation_id + an existing open thread -> reuse it, not create."""
+    app.state.registry = FakeRegistry(has_tools=False)
+    mock_resolve_user.return_value = _fake_user()
+    mock_get_active_conversations.return_value = [{"id": "open-1"}, {"id": "open-2"}]
+    mock_start_conversation.return_value = "should-not-be-used"
+    mock_retrieve.return_value = []
+    mock_save_message.side_effect = [
+        _fake_message("user", "Hi", "msg-user"),
+        _fake_message("assistant", "Hi back", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", "Hi", "msg-user")]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "Hi back"},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="Hi back",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": "Hi"})
+    events = _stream_lines(response)
+
+    assert events[0]["supplied_conversation_id"] is None
+    assert events[0]["effective_conversation_id"] == "open-1"  # newest open
+    assert events[0]["conversation_started_reason"] == "resumed_open"
+    mock_get_active_conversations.assert_called_once_with("user-1")
+    mock_start_conversation.assert_not_called()
+
+
+@patch("tir.api.routes.get_active_conversations")
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_stream_null_conversation_creates_when_no_open_thread(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+    mock_get_active_conversations,
+):
+    """No supplied conversation_id + no open thread -> create a new one."""
+    app.state.registry = FakeRegistry(has_tools=False)
+    mock_resolve_user.return_value = _fake_user()
+    mock_get_active_conversations.return_value = []
+    mock_start_conversation.return_value = "conv-new"
+    mock_retrieve.return_value = []
+    mock_save_message.side_effect = [
+        _fake_message("user", "Hi", "msg-user"),
+        _fake_message("assistant", "Hi back", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", "Hi", "msg-user")]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "Hi back"},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="Hi back",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": "Hi"})
+    events = _stream_lines(response)
+
+    assert events[0]["effective_conversation_id"] == "conv-new"
+    assert events[0]["conversation_started_reason"] == "new_request"
+    mock_start_conversation.assert_called_once_with("user-1")
+
+
+@patch("tir.api.routes.get_active_conversations")
+@patch("tir.api.routes._resolve_user")
+def test_current_conversation_returns_newest_open(mock_resolve_user, mock_get_active):
+    mock_resolve_user.return_value = _fake_user()
+    mock_get_active.return_value = [{"id": "open-1"}, {"id": "open-2"}]
+    client = TestClient(app)
+    resp = client.get("/api/conversations/current", params={"user_id": "user-1"})
+    assert resp.status_code == 200
+    assert resp.json()["id"] == "open-1"  # newest first
+    mock_get_active.assert_called_once_with("user-1")
+
+
+@patch("tir.api.routes.get_active_conversations")
+@patch("tir.api.routes._resolve_user")
+def test_current_conversation_null_when_none(mock_resolve_user, mock_get_active):
+    mock_resolve_user.return_value = _fake_user()
+    mock_get_active.return_value = []
+    client = TestClient(app)
+    resp = client.get("/api/conversations/current", params={"user_id": "user-1"})
+    assert resp.status_code == 200
+    assert resp.json() is None
+
+
+def test_current_conversation_requires_user_id():
+    client = TestClient(app)
+    resp = client.get("/api/conversations/current")
+    assert resp.status_code == 422  # missing required query param
+
+
+@patch("tir.api.routes.get_active_conversations")
+@patch("tir.api.routes.get_user", return_value=None)
+def test_current_conversation_unknown_user(mock_get_user, mock_get_active):
+    client = TestClient(app)
+    resp = client.get("/api/conversations/current", params={"user_id": "ghost"})
+    assert resp.status_code == 404
+    mock_get_active.assert_not_called()

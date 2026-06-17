@@ -4,7 +4,7 @@ import NameGate from './components/NameGate'
 import DebugPanel from './components/DebugPanel'
 import RegistryPanel from './components/RegistryPanel'
 import SystemPanel from './components/SystemPanel'
-import { apiFetch, readErrorMessage } from './api'
+import { apiFetch, readErrorMessage, getCurrentConversation } from './api'
 import './styles.css'
 
 const DEFAULT_REVIEW_FILTERS = {
@@ -209,7 +209,12 @@ function App() {
   // Gate resolved a known user (full {id, name, role} from /api/users/resolve).
   const handleUserResolved = useCallback((user) => {
     applyActiveUser(user)
-  }, [applyActiveUser])
+    // Resume-on-load for gate-login users: land them in their current open thread.
+    // (Restored users are covered by the mount effect.) fetchConversations is a
+    // stable useCallback([]); omitting it from deps is intentional and safe, and
+    // avoids a render-time TDZ since it's declared below.
+    fetchConversations({ resumeCurrentIfNone: true })
+  }, [applyActiveUser]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Admin switching among known users via the dropdown.
   const selectActiveUser = useCallback((userId) => {
@@ -226,7 +231,7 @@ function App() {
     applyActiveUser(null)
   }, [applyActiveUser])
 
-  const fetchConversations = useCallback(async () => {
+  const fetchConversations = useCallback(async ({ resumeCurrentIfNone = false } = {}) => {
     try {
       const data = await fetchJsonList('/api/conversations', 'Failed to fetch conversations')
 
@@ -251,6 +256,17 @@ function App() {
           setActiveConversationId(null)
         }
         // else: live id absent/other-user in this response → transient; keep it.
+      } else if (resumeCurrentIfNone && activeUserIdRef.current) {
+        // Resume-on-load: a fresh device/browser has no stored or live id. Land
+        // the user back in their newest open thread (with history) instead of a
+        // blank screen. Same server source of truth as the stream's reuse. Gated
+        // on resumeCurrentIfNone so this only runs on initial load / identity
+        // resolve — never on resume/onRefresh/close (which keep the default).
+        const current = await getCurrentConversation(activeUserIdRef.current)
+        if (current?.id) {
+          activeConversationIdRef.current = current.id
+          setActiveConversationId(current.id)
+        }
       }
     } catch (e) {
       console.error('Failed to fetch conversations:', e)
@@ -351,7 +367,9 @@ function App() {
 
   useEffect(() => {
     const initialRefreshTimer = window.setTimeout(() => {
-      fetchConversations()
+      // resumeCurrentIfNone covers a restored user (activeUser is set at mount);
+      // gate-login users are covered by handleUserResolved.
+      fetchConversations({ resumeCurrentIfNone: true })
       fetchHealth()
       fetchUsers()
       fetchRegistries()

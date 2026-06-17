@@ -54,6 +54,19 @@ export async function resolveUserByName(name) {
   return { ok: false, status: resp.status, user: null }
 }
 
+// The user's newest open conversation, or null if none. Same server source of
+// truth as the chat-stream's null-conversation reuse (get_active_conversations).
+export async function getCurrentConversation(userId) {
+  if (!userId) return null
+  try {
+    const resp = await apiFetch(`/api/conversations/current?user_id=${encodeURIComponent(userId)}`)
+    if (!resp.ok) return null
+    return await resp.json()
+  } catch {
+    return null
+  }
+}
+
 export async function readErrorMessage(resp, fallback) {
   if (resp.status === 401) {
     return 'API secret required or invalid.'
