@@ -745,6 +745,15 @@ def stream_chat(req: ChatRequest):
             url_prefetch_ms = elapsed_ms(phase_start)
 
         # --- Stream from agent loop ---
+        # Persistence-on-disconnect (Option 2): the agent loop already finishes
+        # generation before any token is replayed, so we DRAIN it and BUFFER the
+        # client-facing events here without yielding, persist the assistant reply
+        # below, and only THEN flush the buffer to the client. The save therefore
+        # sits in a no-yield stretch — a sync generator only observes a client
+        # disconnect when it yields, so a mid-stream drop can no longer unwind the
+        # generator before save_message runs. (Replaces the old yield-as-we-go loop
+        # whose post-loop save was skipped by GeneratorExit on disconnect.)
+        buffered_events = []
         loop_result = None
         agent_loop_start = time.perf_counter()
         first_token_ms = None
@@ -767,31 +776,31 @@ def stream_chat(req: ChatRequest):
                         first_token_at = token_at
                         first_token_ms = elapsed_ms(request_start, token_at)
                     last_token_at = token_at
-                    yield json.dumps({
+                    buffered_events.append({
                         "type": "token",
                         "content": event["content"],
-                    }) + "\n"
+                    })
                 elif event_type == "tool_call":
                     tool_call_count += 1
-                    yield json.dumps({
+                    buffered_events.append({
                         "type": "tool_call",
                         "name": event["name"],
                         "arguments": event["arguments"],
-                    }) + "\n"
+                    })
                 elif event_type == "tool_result":
-                    yield json.dumps({
+                    buffered_events.append({
                         "type": "tool_result",
                         "name": event["name"],
                         "ok": event["ok"],
                         "result": event["result"],
-                    }) + "\n"
+                    })
                 elif event_type == "done":
                     loop_result = event["result"]
         except Exception as e:
             logger.error(f"Streaming failed: {e}")
             error_msg = f"Something went wrong when I tried to respond: {e}"
             loop_result = None
-            yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+            buffered_events.append({"type": "error", "message": error_msg})
         agent_loop_total_ms = elapsed_ms(agent_loop_start)
 
         # --- Save assistant message ---
@@ -812,7 +821,7 @@ def stream_chat(req: ChatRequest):
             elif not should_persist_assistant:
                 empty_message = "I received your message but couldn't generate a response."
                 logger.warning("Agent loop completed with empty assistant content")
-                yield json.dumps({"type": "error", "message": empty_message}) + "\n"
+                buffered_events.append({"type": "error", "message": empty_message})
         elif loop_result.terminated_reason == "iteration_limit":
             assistant_content = loop_result.final_content or (
                 "I reached the tool iteration limit for this turn, so I am stopping cleanly.\n\n"
@@ -826,13 +835,13 @@ def stream_chat(req: ChatRequest):
             combined_tool_trace = prefetch_tool_trace + (loop_result.tool_trace or [])
             if should_persist_assistant and combined_tool_trace:
                 tool_trace = json.dumps(combined_tool_trace)
-            yield json.dumps({"type": "token", "content": assistant_content}) + "\n"
+            buffered_events.append({"type": "token", "content": assistant_content})
         else:
             error_message = (
                 "Something went wrong when I tried to respond: "
                 f"{loop_result.error or 'unknown error'}"
             )
-            yield json.dumps({"type": "error", "message": error_message}) + "\n"
+            buffered_events.append({"type": "error", "message": error_message})
 
         if should_persist_assistant:
             phase_start = time.perf_counter()
@@ -918,6 +927,13 @@ def stream_chat(req: ChatRequest):
             write_chat_debug_trace(trace_record, path=CHAT_DEBUG_TRACE_PATH)
         except Exception as e:
             logger.warning("Chat debug trace logging failed: %s", e)
+
+        # --- Flush buffered events to the client ---
+        # The assistant reply is already persisted (above). From here, yields can
+        # observe a client disconnect (GeneratorExit), but a drop now only stops
+        # delivery — it cannot lose the reply; resume-on-load shows it on reopen.
+        for buffered_event in buffered_events:
+            yield json.dumps(buffered_event) + "\n"
 
         yield json.dumps({
             "type": "debug_update",
