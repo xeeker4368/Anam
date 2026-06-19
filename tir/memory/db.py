@@ -677,6 +677,34 @@ def get_active_conversations(user_id: str | None = None) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def get_idle_open_conversations(
+    cutoff_iso: str, exclude_id: str | None = None, limit: int = 50
+) -> list[dict]:
+    """Open conversations whose last activity is older than cutoff_iso.
+
+    Last activity = newest message timestamp, falling back to started_at for a
+    conversation with no messages. Timestamps are ISO-8601 UTC strings, so the
+    lexical comparison is chronologically correct. Returns oldest-idle first,
+    capped at `limit`. `exclude_id` omits the caller's own active conversation.
+
+    Returns dicts with: id, user_id, last_at.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT c.id, c.user_id,
+                      COALESCE(MAX(m.timestamp), c.started_at) AS last_at
+               FROM main.conversations c
+               LEFT JOIN main.messages m ON m.conversation_id = c.id
+               WHERE c.ended_at IS NULL AND c.id != ?
+               GROUP BY c.id
+               HAVING last_at < ?
+               ORDER BY last_at ASC
+               LIMIT ?""",
+            (exclude_id or "", cutoff_iso, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def is_conversation_ended(conversation_id: str) -> bool:
     """Check if a conversation has been marked ended."""
     with get_connection() as conn:

@@ -321,6 +321,19 @@ WEB_PORT = int(
 DEFAULT_USER = "Lyle"
 FRONTEND_DIR = PROJECT_ROOT / "frontend" / "dist"
 
+# --- Conversations ---
+# Idle window after which the lazy janitor auto-closes a conversation (final
+# chunking + ended_at). Floored at 2 minutes so it always exceeds a worst-case
+# in-flight turn (~62s generation + ~60s persist-on-disconnect tail), which keeps
+# the idle window itself a guard against closing a mid-turn conversation.
+IDLE_CLOSE_MINUTES = max(
+    2,
+    _env_int(
+        "ANAM_IDLE_CLOSE_MINUTES",
+        int(_config_value("conversations", "idle_close_minutes", 15)),
+    ),
+)
+
 # --- Web search ---
 SEARXNG_URL = os.getenv(
     "TIR_SEARXNG_URL",

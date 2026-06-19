@@ -56,6 +56,10 @@ recent_artifact_context_budget_chars = 2000
 host = "127.0.0.1"
 port = 8000
 
+[conversations]
+# Auto-close conversations idle longer than this (minutes). Floored at 2 in code.
+idle_close_minutes = 15
+
 [web_search]
 searxng_url = "http://127.0.0.1:8080"
 timeout_seconds = 10

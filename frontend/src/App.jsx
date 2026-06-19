@@ -761,26 +761,6 @@ function App() {
     }
   }
 
-  async function handleCloseConversation() {
-    if (!activeConversationId) return
-    try {
-      const resp = await apiFetch(`/api/conversations/${activeConversationId}/close`, {
-        method: 'POST',
-      })
-      if (!resp.ok) {
-        throw new Error(await readErrorMessage(resp, 'Failed to close conversation'))
-      }
-
-      await resp.json().catch(() => null)
-      activeConversationIdRef.current = null
-      setActiveConversationId(null)
-      setDebugData(null)
-      fetchConversations()
-    } catch (e) {
-      console.error('Failed to close conversation:', e)
-    }
-  }
-
   async function handleViewConversation(conv) {
     try {
       const resp = await apiFetch(`/api/conversations/${conv.id}/messages`)
@@ -884,13 +864,6 @@ function App() {
         )}
       </div>
 
-      <div className="sidebar-actions">
-        {activeConversationId && (
-          <button onClick={handleCloseConversation} className="btn btn-close">
-            Close Conversation
-          </button>
-        )}
-      </div>
 
       <div className="conversation-list">
         <h3>Conversations</h3>
@@ -1026,11 +999,6 @@ function App() {
               <span className="m-active-user">User: {activeUserName}</span>
             )}
           </div>
-          {activeConversationId && (
-            <button onClick={handleCloseConversation} className="btn btn-small">
-              Close
-            </button>
-          )}
         </div>
         <div className="m-body">
           {activeTab === 'chat' && mainContent}

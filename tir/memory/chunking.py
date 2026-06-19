@@ -31,6 +31,7 @@ from tir.memory.db import (
     get_turn_count,
     get_unchunked_ended_conversations,
     get_user,
+    end_conversation,
     upsert_chunk_fts,
     mark_conversation_chunked,
 )
@@ -308,6 +309,29 @@ def checkpoint_conversation(conversation_id: str, user_id: str) -> int:
 # ---------------------------------------------------------------------------
 # Final chunking (called at conversation close)
 # ---------------------------------------------------------------------------
+
+def close_conversation(conversation_id: str, user_id: str) -> int:
+    """Close a conversation: mark it ended, then run final chunking.
+
+    The single shared close primitive — used by the idle-close janitor (and any
+    other caller) so close behaviour can't diverge. Idempotent: a missing or
+    already-ended conversation is a no-op returning 0. `ended_at` is set first, so
+    a conversation still counts as closed even if final chunking fails.
+
+    Returns the number of chunks created/updated by final chunking.
+    """
+    conv = get_conversation(conversation_id)
+    if conv is None or conv.get("ended_at"):
+        return 0
+    end_conversation(conversation_id)
+    try:
+        return chunk_conversation_final(conversation_id, user_id)
+    except Exception as e:
+        logger.warning(
+            "Final chunking failed during close of %s: %s", conversation_id, e
+        )
+        return 0
+
 
 def chunk_conversation_final(conversation_id: str, user_id: str) -> int:
     """Re-chunk an entire conversation from scratch.

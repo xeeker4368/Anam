@@ -9,7 +9,6 @@ Endpoints:
     GET  /api/users          — list all users
     GET  /api/conversations  — list conversations with summaries
     GET  /api/conversations/{id}/messages — get messages for a conversation
-    POST /api/conversations/{id}/close   — close a conversation
     GET  /api/health         — system health check
 """
 
@@ -17,7 +16,7 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests as http_requests
@@ -39,6 +38,7 @@ from tir.config import (
     CHAT_MODEL,
     CONVERSATION_ITERATION_LIMIT,
     FRONTEND_DIR,
+    IDLE_CLOSE_MINUTES,
     OLLAMA_HOST,
     SKILLS_DIR,
     WORKSPACE_DIR,
@@ -52,14 +52,17 @@ from tir.memory.db import (
     update_user_last_seen,
     save_message,
     start_conversation,
-    end_conversation,
     get_conversation,
     get_active_conversations,
+    get_idle_open_conversations,
     get_conversation_messages,
     list_conversations,
 )
 from tir.memory.retrieval import retrieve
-from tir.memory.chunking import checkpoint_conversation, chunk_conversation_final
+from tir.memory.chunking import (
+    checkpoint_conversation,
+    close_conversation,
+)
 from tir.engine.context import (
     build_system_prompt_with_debug,
     is_greeting,
@@ -199,6 +202,64 @@ def startup():
     if not is_api_secret_configured():
         logger.warning("ANAM_API_SECRET is not configured; API routes are unauthenticated.")
     logger.info(f"Tír API started — {tool_count} tools loaded")
+
+
+# ---------------------------------------------------------------------------
+# Idle-close janitor (in-process, lazy, stream-triggered)
+# ---------------------------------------------------------------------------
+# Replaces the manual Close control: conversations idle past IDLE_CLOSE_MINUTES
+# are auto-closed (ended_at + final chunking) by a bounded sweep that piggybacks
+# on chat traffic — no new timer/daemon. Two in-flight guards: the idle window
+# itself (floored >= 2 min, above worst-case turn duration) AND the live-turn set
+# below (conversations mid-generation are skipped even if mis-timed).
+
+# Conversation ids with an in-flight generation. The stream adds on start and
+# discards in a finally (including the GeneratorExit/disconnect path). set
+# add/discard/`in` are atomic under the GIL, which is sufficient here.
+_active_generations: set[str] = set()
+
+# Sweep throttle + per-sweep cap. The sweep runs synchronously at stream start,
+# and each close runs final chunking (embeddings), so the cap bounds the latency
+# any one request can incur — a backlog drains across several throttled sweeps.
+_SWEEP_THROTTLE_SECONDS = 120
+_MAX_CLOSES_PER_SWEEP = 3
+_last_idle_sweep_monotonic = 0.0
+
+
+def _sweep_idle_conversations(exclude_id: str | None) -> None:
+    """Close up to _MAX_CLOSES_PER_SWEEP idle conversations. Throttled; best-effort.
+
+    Skips the caller's own conversation (exclude_id) and any conversation with an
+    in-flight generation (_active_generations). Never raises into the request.
+    """
+    global _last_idle_sweep_monotonic
+    now_mono = time.monotonic()
+    if now_mono - _last_idle_sweep_monotonic < _SWEEP_THROTTLE_SECONDS:
+        return
+    _last_idle_sweep_monotonic = now_mono
+
+    try:
+        cutoff_iso = (
+            datetime.now(timezone.utc) - timedelta(minutes=IDLE_CLOSE_MINUTES)
+        ).isoformat()
+        candidates = get_idle_open_conversations(
+            cutoff_iso, exclude_id=exclude_id, limit=_MAX_CLOSES_PER_SWEEP
+        )
+    except Exception as e:
+        logger.warning("Idle-close sweep query failed: %s", e)
+        return
+
+    for conv in candidates:
+        conversation_id = conv["id"]
+        if conversation_id in _active_generations:
+            continue
+        try:
+            chunks = close_conversation(conversation_id, conv["user_id"])
+            logger.info(
+                "Idle-closed conversation %s (%d chunks)", conversation_id[:8], chunks
+            )
+        except Exception as e:
+            logger.warning("Idle-close of %s failed: %s", conversation_id, e)
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +495,17 @@ def stream_chat(req: ChatRequest):
                     user_name,
                 )
         timings["resolve_conversation_ms"] = elapsed_ms(phase_start)
+
+        # Mark this conversation in-flight so the idle-close janitor never closes
+        # it mid-generation. Discarded in the drain's finally below (which always
+        # runs — the drain is a no-yield stretch, so it completes even when the
+        # client has disconnected, before the flush where GeneratorExit fires).
+        _active_generations.add(conversation_id)
+
+        # Stream-triggered idle-close sweep: close OTHER idle conversations
+        # (excluding this one), throttled and bounded. Piggybacks on chat traffic
+        # in place of the removed manual Close control.
+        _sweep_idle_conversations(exclude_id=conversation_id)
 
         # --- Save user message ---
         phase_start = time.perf_counter()
@@ -801,6 +873,12 @@ def stream_chat(req: ChatRequest):
             error_msg = f"Something went wrong when I tried to respond: {e}"
             loop_result = None
             buffered_events.append({"type": "error", "message": error_msg})
+        finally:
+            # Generation is done (the drain is no-yield, so this runs on every
+            # path including a client disconnect, before the later flush). Clear
+            # the in-flight marker; from here the conversation's newest message is
+            # recent, so the idle-window guard alone keeps the janitor off it.
+            _active_generations.discard(conversation_id)
         agent_loop_total_ms = elapsed_ms(agent_loop_start)
 
         # --- Save assistant message ---
@@ -1007,27 +1085,6 @@ def api_get_messages(conversation_id: str):
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return get_conversation_messages(conversation_id)
-
-
-@app.post("/api/conversations/{conversation_id}/close")
-def api_close_conversation(conversation_id: str):
-    """Close a conversation and run final chunking."""
-    conv = get_conversation(conversation_id)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-
-    if conv.get("ended_at"):
-        return {"closed": True, "chunks_saved": 0, "already_closed": True}
-
-    end_conversation(conversation_id)
-
-    chunks_saved = 0
-    try:
-        chunks_saved = chunk_conversation_final(conversation_id, conv["user_id"])
-    except Exception as e:
-        logger.warning(f"Final chunking failed: {e}")
-
-    return {"closed": True, "chunks_saved": chunks_saved}
 
 
 def _validate_artifact_source_target(
