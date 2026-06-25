@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 from pathlib import Path
 from typing import Callable
 
@@ -13,6 +14,8 @@ from tir.config import (
     COMFYUI_TIMEOUT_SECONDS,
     COMFYUI_WORKFLOW_PATH,
     IMAGE_GENERATION_DEFAULT_BACKEND,
+    IMAGE_GENERATION_DEFAULT_HEIGHT,
+    IMAGE_GENERATION_DEFAULT_WIDTH,
     IMAGE_GENERATION_ENABLED,
     IMAGE_GENERATION_MAX_HEIGHT,
     IMAGE_GENERATION_MAX_PROMPT_CHARS,
@@ -187,6 +190,15 @@ def generate_image(
         max_chars=IMAGE_GENERATION_MAX_PROMPT_CHARS,
     )
     width, height = _validate_dimensions(width, height)
+    # Resolve to concrete integers so workflow placeholders always substitute.
+    # Validation above already rejected explicit out-of-range values; defaults
+    # are known-good. A missing seed picks a random one rather than failing.
+    if width is None:
+        width = IMAGE_GENERATION_DEFAULT_WIDTH
+    if height is None:
+        height = IMAGE_GENERATION_DEFAULT_HEIGHT
+    if seed is None:
+        seed = random.randint(0, 2**32 - 1)
     selected_intended_use = _validate_intended_use(intended_use)
 
     if not IMAGE_GENERATION_ENABLED:

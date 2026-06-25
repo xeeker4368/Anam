@@ -80,6 +80,8 @@ default_backend = "comfyui"
 max_prompt_chars = 2000
 max_width = 2048
 max_height = 2048
+default_width = 512
+default_height = 512
 allow_agent_tool = true
 
 [image_generation.comfyui]

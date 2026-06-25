@@ -58,6 +58,8 @@ def image_generation_env(tmp_path, monkeypatch):
     monkeypatch.setattr(image_mod, "IMAGE_GENERATION_MAX_PROMPT_CHARS", 2000)
     monkeypatch.setattr(image_mod, "IMAGE_GENERATION_MAX_WIDTH", 2048)
     monkeypatch.setattr(image_mod, "IMAGE_GENERATION_MAX_HEIGHT", 2048)
+    monkeypatch.setattr(image_mod, "IMAGE_GENERATION_DEFAULT_WIDTH", 512)
+    monkeypatch.setattr(image_mod, "IMAGE_GENERATION_DEFAULT_HEIGHT", 512)
     monkeypatch.setattr(image_mod, "IMAGE_GENERATION_DEFAULT_BACKEND", "comfyui")
 
     return {
@@ -248,6 +250,106 @@ def test_backend_no_output_creates_no_artifact(image_generation_env):
     assert result["generation_error"] is True
     assert result["error_type"] == "no_output"
     assert _artifact_count(image_generation_env["working_db"]) == 0
+
+
+def test_load_workflow_raises_on_unsubstituted_placeholder(tmp_path):
+    from tir.media.backends import comfyui as comfyui_mod
+
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text(
+        '{"3": {"inputs": {"text": "{{prompt}}", "extra": "{{unknown}}"}}}',
+        encoding="utf-8",
+    )
+    request = ImageGenerationBackendRequest(
+        prompt="a prompt",
+        width=512,
+        height=512,
+        seed=7,
+    )
+
+    with pytest.raises(ImageGenerationBackendError) as excinfo:
+        comfyui_mod._load_workflow(workflow_path, request)
+
+    assert excinfo.value.error_type == "config_error"
+    assert "{{unknown}}" in str(excinfo.value)
+
+
+def test_load_workflow_substitutes_all_known_placeholders(tmp_path):
+    from tir.media.backends import comfyui as comfyui_mod
+
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text(
+        '{"3": {"inputs": {"text": "{{prompt}}", "width": "{{width}}", '
+        '"height": "{{height}}", "seed": "{{seed}}", "neg": "{{negative_prompt}}"}}}',
+        encoding="utf-8",
+    )
+    request = ImageGenerationBackendRequest(
+        prompt="a prompt",
+        negative_prompt="bad",
+        width=640,
+        height=480,
+        seed=11,
+    )
+
+    rendered = comfyui_mod._load_workflow(workflow_path, request)
+
+    inputs = rendered["3"]["inputs"]
+    assert inputs["text"] == "a prompt"
+    assert inputs["width"] == 640
+    assert inputs["height"] == 480
+    assert inputs["seed"] == 11
+    assert inputs["neg"] == "bad"
+
+
+def test_missing_dimensions_and_seed_resolve_to_concrete_integers(image_generation_env):
+    backend = FakeBackend()
+
+    result = image_generation_env["image_mod"].generate_image(
+        prompt="conversational path with no dimensions",
+        backend="comfyui",
+        write=True,
+        width=None,
+        height=None,
+        seed=None,
+        backend_factory=lambda _name: backend,
+        workspace_root=image_generation_env["workspace_root"],
+    )
+
+    assert result["ok"] is True
+    assert len(backend.requests) == 1
+    request = backend.requests[0]
+    assert request.width == 512
+    assert request.height == 512
+    assert isinstance(request.seed, int)
+    assert 0 <= request.seed <= 2**32 - 1
+
+    metadata = result["artifact"]["metadata"]
+    assert metadata["width"] == 512
+    assert metadata["height"] == 512
+    assert metadata["seed"] == request.seed
+    assert metadata["generation_params"]["width"] == 512
+    assert metadata["generation_params"]["height"] == 512
+    assert metadata["generation_params"]["seed"] == request.seed
+
+
+def test_explicit_dimensions_and_seed_are_preserved(image_generation_env):
+    backend = FakeBackend()
+
+    image_generation_env["image_mod"].generate_image(
+        prompt="explicit overrides survive",
+        backend="comfyui",
+        write=True,
+        width=1024,
+        height=768,
+        seed=99,
+        backend_factory=lambda _name: backend,
+        workspace_root=image_generation_env["workspace_root"],
+    )
+
+    request = backend.requests[0]
+    assert request.width == 1024
+    assert request.height == 768
+    assert request.seed == 99
 
 
 def test_backend_unsafe_output_filename_is_rejected(image_generation_env):

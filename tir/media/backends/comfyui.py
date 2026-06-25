@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
@@ -81,6 +82,25 @@ def _replace_placeholders(value, replacements: dict[str, object]):
     return value
 
 
+_PLACEHOLDER_PATTERN = re.compile(r"\{\{.*?\}\}")
+
+
+def _find_unsubstituted_placeholders(value) -> list[str]:
+    if isinstance(value, dict):
+        found: list[str] = []
+        for item in value.values():
+            found.extend(_find_unsubstituted_placeholders(item))
+        return found
+    if isinstance(value, list):
+        found = []
+        for item in value:
+            found.extend(_find_unsubstituted_placeholders(item))
+        return found
+    if isinstance(value, str):
+        return _PLACEHOLDER_PATTERN.findall(value)
+    return []
+
+
 def _load_workflow(path: Path, request: ImageGenerationBackendRequest) -> dict:
     try:
         workflow = json.loads(path.read_text(encoding="utf-8"))
@@ -108,7 +128,18 @@ def _load_workflow(path: Path, request: ImageGenerationBackendRequest) -> dict:
         replacements["{{height}}"] = request.height
     if request.seed is not None:
         replacements["{{seed}}"] = request.seed
-    return _replace_placeholders(workflow, replacements)
+    rendered = _replace_placeholders(workflow, replacements)
+
+    surviving = _find_unsubstituted_placeholders(rendered)
+    if surviving:
+        unique = sorted(set(surviving))
+        raise ImageGenerationBackendError(
+            "ComfyUI workflow has unsubstituted placeholder(s): "
+            + ", ".join(unique),
+            error_type="config_error",
+            safe_path=str(path),
+        )
+    return rendered
 
 
 def _request_error(exc: requests.RequestException, safe_url: str) -> ImageGenerationBackendError:
