@@ -170,9 +170,8 @@ Before finalizing changes, answer:
 
 When given a task, respond first with:
 
-```text
-I will first inspect the relevant files and compare the task against PROJECT_STATE.md, DECISIONS.md, ROADMAP.md, ACTIVE_TASK.md, and CODING_ASSISTANT_RULES.md. I will not edit files until a specific patch is approved.
-```
+
+I will first read NORTH_STAR.md for the project's intent and invariants, then inspect the relevant files and compare the task against PROJECT_STATE.md, DECISIONS.md, ROADMAP.md, ACTIVE_TASK.md, and CODING_ASSISTANT_RULES.md. If the task conflicts with NORTH_STAR.md, I will stop and surface the conflict. I will not edit files until a specific patch is approved.
 
 Then proceed in REVIEW ONLY mode unless the user has explicitly approved implementation.
 

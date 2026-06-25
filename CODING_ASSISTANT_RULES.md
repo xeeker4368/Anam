@@ -12,16 +12,21 @@ They are project governance instructions for implementation work.
 
 ## Required Workflow
 
+
+Before the checks below, confirm: does this change conflict with anything in `NORTH_STAR.md`? If so, stop and surface it rather than finalizing.
+
+
 Before editing files:
 
-1. Read `PROJECT_STATE.md`.
-2. Read `DECISIONS.md`.
-3. Read `ROADMAP.md`.
-4. Read `ACTIVE_TASK.md`.
-5. Summarize understanding.
-6. Propose a minimal implementation plan.
-7. List files expected to change.
-8. Wait for approval before editing.
+1. Read `NORTH_STAR.md` — the project's intent and invariants. If the task conflicts with it, stop and surface the conflict before planning further.
+2. Read `PROJECT_STATE.md`.
+3. Read `DECISIONS.md`.
+4. Read `ROADMAP.md`.
+5. Read `ACTIVE_TASK.md`.
+6. Summarize understanding.
+7. Propose a minimal implementation plan.
+8. List files expected to change.
+9. Wait for approval before editing.
 
 ---
 
