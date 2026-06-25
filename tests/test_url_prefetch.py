@@ -263,10 +263,15 @@ def test_failed_web_fetch_result_is_passed_to_model(
         "url": "http://localhost/page",
     }
 
+    # The model-visible tool message carries explicit failure framing so a
+    # failed prefetch cannot be narrated as a success; the raw payload is still
+    # appended after the framing.
     model_messages = mock_loop.call_args.kwargs["messages"]
-    assert json.loads(model_messages[-1]["content"])["error"] == (
-        "web_fetch rejected localhost URLs"
-    )
+    failed_content = model_messages[-1]["content"]
+    assert failed_content.startswith("TOOL FAILED")
+    assert "web_fetch rejected localhost URLs" in failed_content
+    raw_payload = failed_content.split("Raw tool result:\n", 1)[1]
+    assert json.loads(raw_payload)["error"] == "web_fetch rejected localhost URLs"
 
 
 @patch("tir.api.routes.checkpoint_conversation")

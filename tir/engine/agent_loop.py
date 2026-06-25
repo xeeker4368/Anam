@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from tir.config import CHAT_MODEL
 from tir.engine.ollama import chat_completion_stream_with_tools
 from tir.engine.tool_trace_context import selection_metadata_for_tool_result
-from tir.tools.rendering import render_tool_result
+from tir.tools.rendering import frame_failed_tool_message, render_tool_envelope
 
 logger = logging.getLogger(__name__)
 
@@ -236,29 +236,34 @@ def run_agent_loop(
                     else arguments
                 )
 
-                if envelope["ok"]:
-                    tool_value = envelope["value"]
-                    rendered = render_tool_result(tool_value)
-                    selection = selection_metadata_for_tool_result(
-                        tool_name,
-                        tool_value,
-                    )
-                else:
-                    rendered = f"Error: {envelope['error']}"
-                    selection = None
+                # effective_ok unwraps inner tool failures (value["ok"] is False),
+                # which the outer dispatch envelope reports as ok=True ("ran").
+                effective_ok, rendered = render_tool_envelope(envelope)
+                selection = (
+                    selection_metadata_for_tool_result(tool_name, envelope["value"])
+                    if envelope.get("ok")
+                    else None
+                )
 
                 yield {
                     "type": "tool_result",
                     "name": tool_name,
-                    "ok": envelope["ok"],
+                    "ok": effective_ok,
                     "result": rendered,
                 }
 
-                # Feed result back into conversation for next iteration
+                # Feed result back into conversation for next iteration. On
+                # failure the model reads explicit framing, not buried JSON, so
+                # it cannot narrate a failed tool call as a success.
+                model_content = (
+                    rendered
+                    if effective_ok
+                    else frame_failed_tool_message(tool_name, rendered, envelope)
+                )
                 messages.append({
                     "role": "tool",
                     "tool_name": tool_name,
-                    "content": rendered,
+                    "content": model_content,
                 })
 
                 trace_record["tool_calls"].append({
@@ -267,7 +272,7 @@ def run_agent_loop(
                 })
                 tool_result_trace = {
                     "tool_name": tool_name,
-                    "ok": envelope["ok"],
+                    "ok": effective_ok,
                     "rendered": rendered[:500],
                 }
                 if selection:

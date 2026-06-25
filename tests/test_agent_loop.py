@@ -86,6 +86,21 @@ def object_tool() -> NonJsonSerializable:
     return NonJsonSerializable()
 
 
+@tool(
+    name="inner_fail_tool",
+    description="Runs without raising but returns an honest inner failure",
+    args_schema={"type": "object", "properties": {}},
+)
+def inner_fail_tool() -> dict:
+    return {
+        "ok": False,
+        "generation_error": True,
+        "error_type": "backend_unavailable",
+        "error": "backend was busy",
+        "artifact_created": False,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Mock helpers
 # ---------------------------------------------------------------------------
@@ -203,12 +218,20 @@ def _build_test_registry():
         function=object_tool,
         skill_name="test_structured",
     )
+    registry._tools["inner_fail_tool"] = ToolDefinition(
+        name="inner_fail_tool",
+        description="Returns an honest inner failure",
+        args_schema={"type": "object", "properties": {}},
+        function=inner_fail_tool,
+        skill_name="test_inner_fail",
+    )
     registry._tool_to_skill["echo"] = "test_echo"
     registry._tool_to_skill["fail_tool"] = "test_fail"
     registry._tool_to_skill["dict_tool"] = "test_structured"
     registry._tool_to_skill["list_tool"] = "test_structured"
     registry._tool_to_skill["unicode_tool"] = "test_structured"
     registry._tool_to_skill["object_tool"] = "test_structured"
+    registry._tool_to_skill["inner_fail_tool"] = "test_inner_fail"
 
     return registry
 
@@ -456,6 +479,95 @@ class TestAgentLoopToolCalling:
         result = events[-1]["result"]
         assert result.terminated_reason == "complete"
         assert result.iterations == 2
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_inner_tool_failure_is_surfaced_as_failure(self, mock_stream):
+        """A tool that runs but returns inner ok:false is treated as failure.
+
+        The outer dispatch envelope reports ok:true ("ran"); the loop must read
+        the inner ok and report failure in the event, the trace, and — critically
+        — frame the model-visible tool message so it cannot be narrated as success.
+        """
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("inner_fail_tool", {})),
+            iter(_make_text_chunks("Understood, it failed")),
+        ]
+        registry = _build_test_registry()
+        messages = [{"role": "user", "content": "generate an image"}]
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=messages,
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        # Streamed event reports failure (not the outer "ran" ok).
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr["ok"] is False
+
+        # Trace record reports failure — no more ok:true / rendered.ok:false.
+        trace = events[-1]["result"].tool_trace
+        assert trace[0]["tool_results"][0]["ok"] is False
+
+        # The model-visible tool message carries explicit failure framing, and
+        # still includes the raw payload after it.
+        tool_message = [m for m in messages if m["role"] == "tool"][0]
+        assert tool_message["content"].startswith("TOOL FAILED")
+        assert "backend was busy" in tool_message["content"]
+        raw = tool_message["content"].split("Raw tool result:\n", 1)[1]
+        assert json.loads(raw)["artifact_created"] is False
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_inner_tool_failure_labeled_failed_at_iteration_limit(self, mock_stream):
+        """The iteration-limit summary labels an inner failure as failed."""
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("inner_fail_tool", {})),
+            iter(_make_tool_call_chunks("inner_fail_tool", {})),
+        ]
+        registry = _build_test_registry()
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=[{"role": "user", "content": "generate an image"}],
+            registry=registry,
+            iteration_limit=2,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        result = events[-1]["result"]
+        assert result.terminated_reason == "iteration_limit"
+        assert "`inner_fail_tool` failed" in result.final_content
+        assert "`inner_fail_tool` succeeded" not in result.final_content
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_successful_tool_result_is_not_framed(self, mock_stream):
+        """A tool with inner ok:true is unchanged — success content is not framed."""
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("dict_tool", {})),
+            iter(_make_text_chunks("done")),
+        ]
+        registry = _build_test_registry()
+        messages = [{"role": "user", "content": "call dict_tool"}]
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=messages,
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr["ok"] is True
+
+        tool_message = [m for m in messages if m["role"] == "tool"][0]
+        assert "TOOL FAILED" not in tool_message["content"]
+        assert json.loads(tool_message["content"]) == {"ok": True, "value": None}
 
     @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
     def test_unknown_tool(self, mock_stream):

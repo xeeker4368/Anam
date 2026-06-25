@@ -90,7 +90,7 @@ from tir.engine.url_prefetch import get_url_prefetch_candidate
 from tir.memory.chroma import get_collection_count
 from tir.tools.registry import SkillRegistry
 from tir.tools.context import ToolContext
-from tir.tools.rendering import render_tool_result
+from tir.tools.rendering import frame_failed_tool_message, render_tool_envelope
 from tir.artifacts.service import (
     ArtifactValidationError,
     get_artifact,
@@ -138,15 +138,6 @@ from tir.behavioral_guidance.service import (
 
 logger = logging.getLogger(__name__)
 
-
-def _render_tool_envelope(envelope: dict) -> tuple[bool, str]:
-    """Render a registry dispatch envelope for stream/model tool context."""
-    if envelope.get("ok"):
-        value = envelope.get("value")
-        effective_ok = not (isinstance(value, dict) and value.get("ok") is False)
-        return effective_ok, render_tool_result(value)
-
-    return False, f"Error: {envelope.get('error', 'unknown tool error')}"
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -773,7 +764,7 @@ def stream_chat(req: ChatRequest):
                     "error": "web_fetch tool unavailable",
                 }
 
-            effective_ok, rendered = _render_tool_envelope(envelope)
+            effective_ok, rendered = render_tool_envelope(envelope)
             trace_args = (
                 envelope.get("normalized_args", tool_args)
                 if envelope.get("ok")
@@ -787,6 +778,13 @@ def stream_chat(req: ChatRequest):
                 "result": rendered,
             }) + "\n"
 
+            # On failure the model reads explicit framing, not buried JSON, so a
+            # failed prefetch cannot be narrated as a success.
+            model_content = (
+                rendered
+                if effective_ok
+                else frame_failed_tool_message(tool_name, rendered, envelope)
+            )
             model_messages.append({
                 "role": "assistant",
                 "content": "",
@@ -797,7 +795,7 @@ def stream_chat(req: ChatRequest):
             model_messages.append({
                 "role": "tool",
                 "tool_name": tool_name,
-                "content": rendered,
+                "content": model_content,
             })
 
             prefetch_tool_trace.append({
