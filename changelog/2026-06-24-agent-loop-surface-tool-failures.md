@@ -122,3 +122,24 @@ Applied in **both** the agent loop (`agent_loop.py`) and the prefetch path
 - No new external dependency or paid service.
 - Additive, consumer-side fix; `registry.dispatch` and the tools were not changed.
 - Tool traces are now internally consistent (`ok` matches the inner result).
+
+## Addendum (2026-06-25) — WARNING log for tool failures
+
+Confirmed in real production data (conversation `0b6acc0e`, turns 23 and 25):
+`image_generate` returned inner `{"ok": false, ... backend_unavailable / status
+400 ...}` while the persisted message `tool_trace` recorded outer `"ok": true` —
+the exact outer-vs-inner `ok` bug this fix targets, now seen live, not just in
+tests.
+
+Follow-up addition (separate commit from the original fix): tool failures are now
+logged at WARNING level so they are visible in `tir.log` instead of silent.
+
+- `tir/tools/rendering.py` — added `summarize_tool_failure(tool_name, envelope)`,
+  a one-line, tool-agnostic summary (tool name + `error_type`/`error`, falling
+  back to the dispatch error when the tool crashed).
+- `tir/engine/agent_loop.py` — at the `effective_ok is False` branch, one
+  `logger.warning(summarize_tool_failure(...))` before the model message is framed.
+- `tir/api/routes.py` — same one-line WARNING at the URL-prefetch failure branch.
+
+No behavior change beyond logging; the streamed event, trace `ok`, model framing,
+and control flow are unchanged. Full suite re-run: still green.

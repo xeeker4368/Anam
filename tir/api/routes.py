@@ -90,7 +90,11 @@ from tir.engine.url_prefetch import get_url_prefetch_candidate
 from tir.memory.chroma import get_collection_count
 from tir.tools.registry import SkillRegistry
 from tir.tools.context import ToolContext
-from tir.tools.rendering import frame_failed_tool_message, render_tool_envelope
+from tir.tools.rendering import (
+    frame_failed_tool_message,
+    render_tool_envelope,
+    summarize_tool_failure,
+)
 from tir.artifacts.service import (
     ArtifactValidationError,
     get_artifact,
@@ -778,6 +782,9 @@ def stream_chat(req: ChatRequest):
                 "result": rendered,
             }) + "\n"
 
+            if not effective_ok:
+                logger.warning(summarize_tool_failure(tool_name, envelope))
+
             # On failure the model reads explicit framing, not buried JSON, so a
             # failed prefetch cannot be narrated as a success.
             model_content = (
@@ -858,12 +865,15 @@ def stream_chat(req: ChatRequest):
                         "arguments": event["arguments"],
                     })
                 elif event_type == "tool_result":
-                    buffered_events.append({
+                    forwarded_result = {
                         "type": "tool_result",
                         "name": event["name"],
                         "ok": event["ok"],
                         "result": event["result"],
-                    })
+                    }
+                    if event.get("selection"):
+                        forwarded_result["selection"] = event["selection"]
+                    buffered_events.append(forwarded_result)
                 elif event_type == "done":
                     loop_result = event["result"]
         except Exception as e:

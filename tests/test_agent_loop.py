@@ -8,6 +8,7 @@ error handling, and tool trace recording.
 
 import copy
 import json
+import logging
 import pytest
 from unittest.mock import patch, MagicMock
 from tir.engine.agent_loop import run_agent_loop, LoopResult
@@ -481,7 +482,7 @@ class TestAgentLoopToolCalling:
         assert result.iterations == 2
 
     @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
-    def test_inner_tool_failure_is_surfaced_as_failure(self, mock_stream):
+    def test_inner_tool_failure_is_surfaced_as_failure(self, mock_stream, caplog):
         """A tool that runs but returns inner ok:false is treated as failure.
 
         The outer dispatch envelope reports ok:true ("ran"); the loop must read
@@ -495,14 +496,23 @@ class TestAgentLoopToolCalling:
         registry = _build_test_registry()
         messages = [{"role": "user", "content": "generate an image"}]
 
-        events = _collect_events(run_agent_loop(
-            system_prompt="test",
-            messages=messages,
-            registry=registry,
-            iteration_limit=5,
-            ollama_host="http://fake",
-            model="test-model",
-        ))
+        with caplog.at_level(logging.WARNING, logger="tir.engine.agent_loop"):
+            events = _collect_events(run_agent_loop(
+                system_prompt="test",
+                messages=messages,
+                registry=registry,
+                iteration_limit=5,
+                ollama_host="http://fake",
+                model="test-model",
+            ))
+
+        # The failure is logged at WARNING so it is visible in tir.log.
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any(
+            "inner_fail_tool" in r.getMessage()
+            and "backend_unavailable" in r.getMessage()
+            for r in warnings
+        )
 
         # Streamed event reports failure (not the outer "ran" ok).
         tr = [e for e in events if e["type"] == "tool_result"][0]
@@ -568,6 +578,91 @@ class TestAgentLoopToolCalling:
         tool_message = [m for m in messages if m["role"] == "tool"][0]
         assert "TOOL FAILED" not in tool_message["content"]
         assert json.loads(tool_message["content"]) == {"ok": True, "value": None}
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_image_generate_success_emits_card_selection(self, mock_stream):
+        """A successful image_generate result carries a generated_image selection."""
+        def image_generate():
+            return {
+                "ok": True,
+                "generation_error": False,
+                "artifact_created": True,
+                "artifact_id": "artifact-xyz",
+                "artifact_title": "A blue heron",
+                "media_kind": "generated_image",
+                "preview_url": "/api/artifacts/artifact-xyz/file",
+            }
+
+        registry = SkillRegistry()
+        from tir.tools.registry import ToolDefinition
+        registry._tools["image_generate"] = ToolDefinition(
+            name="image_generate",
+            description="Generates an image",
+            args_schema={"type": "object", "properties": {}},
+            function=image_generate,
+            skill_name="test_media",
+        )
+        registry._tool_to_skill["image_generate"] = "test_media"
+
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("image_generate", {})),
+            iter(_make_text_chunks("Here is your image")),
+        ]
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=[{"role": "user", "content": "make an image"}],
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr["ok"] is True
+        assert tr["selection"]["kind"] == "generated_image"
+        assert tr["selection"]["artifact_id"] == "artifact-xyz"
+        assert tr["selection"]["preview_url"] == "/api/artifacts/artifact-xyz/file"
+
+    @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
+    def test_failed_image_generate_emits_no_card_selection(self, mock_stream):
+        """A failed image_generate result carries no selection (no card)."""
+        def image_generate_fail():
+            return {
+                "ok": False,
+                "generation_error": True,
+                "error_type": "backend_unavailable",
+                "artifact_created": False,
+            }
+
+        registry = SkillRegistry()
+        from tir.tools.registry import ToolDefinition
+        registry._tools["image_generate"] = ToolDefinition(
+            name="image_generate",
+            description="Generates an image",
+            args_schema={"type": "object", "properties": {}},
+            function=image_generate_fail,
+            skill_name="test_media",
+        )
+        registry._tool_to_skill["image_generate"] = "test_media"
+
+        mock_stream.side_effect = [
+            iter(_make_tool_call_chunks("image_generate", {})),
+            iter(_make_text_chunks("It failed")),
+        ]
+
+        events = _collect_events(run_agent_loop(
+            system_prompt="test",
+            messages=[{"role": "user", "content": "make an image"}],
+            registry=registry,
+            iteration_limit=5,
+            ollama_host="http://fake",
+            model="test-model",
+        ))
+
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr["ok"] is False
+        assert "selection" not in tr
 
     @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
     def test_unknown_tool(self, mock_stream):

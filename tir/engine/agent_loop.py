@@ -25,7 +25,11 @@ from dataclasses import dataclass, field
 from tir.config import CHAT_MODEL
 from tir.engine.ollama import chat_completion_stream_with_tools
 from tir.engine.tool_trace_context import selection_metadata_for_tool_result
-from tir.tools.rendering import frame_failed_tool_message, render_tool_envelope
+from tir.tools.rendering import (
+    frame_failed_tool_message,
+    render_tool_envelope,
+    summarize_tool_failure,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -245,12 +249,20 @@ def run_agent_loop(
                     else None
                 )
 
-                yield {
+                tool_result_event = {
                     "type": "tool_result",
                     "name": tool_name,
                     "ok": effective_ok,
                     "result": rendered,
                 }
+                # Bounded structured metadata (e.g. a generated-image artifact
+                # card) for consumers to render from the real tool result.
+                if selection:
+                    tool_result_event["selection"] = selection
+                yield tool_result_event
+
+                if not effective_ok:
+                    logger.warning(summarize_tool_failure(tool_name, envelope))
 
                 # Feed result back into conversation for next iteration. On
                 # failure the model reads explicit framing, not buried JSON, so

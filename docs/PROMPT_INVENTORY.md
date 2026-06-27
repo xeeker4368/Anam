@@ -183,7 +183,7 @@ Excerpt:
 
 ## Chat / agent loop
 
-### 1. `tir/engine/agent_loop.py:75` — `_format_iteration_limit_response`
+### 1. `tir/engine/agent_loop.py:79` — `_format_iteration_limit_response`
 
 - Name: `append_arg`
 - Category: Chat / agent loop
@@ -196,7 +196,7 @@ Excerpt:
 - Iteration {...}: `{...}` {...}; result preview: {...}
 ```
 
-### 2. `tir/engine/agent_loop.py:80` — `_format_iteration_limit_response`
+### 2. `tir/engine/agent_loop.py:84` — `_format_iteration_limit_response`
 
 - Name: `append_arg`
 - Category: Chat / agent loop
@@ -209,7 +209,7 @@ Excerpt:
 - Iteration {...}: `{...}` {...}.
 ```
 
-### 3. `tir/engine/agent_loop.py:88` — `_format_iteration_limit_response`
+### 3. `tir/engine/agent_loop.py:92` — `_format_iteration_limit_response`
 
 - Name: `append_arg`
 - Category: Chat / agent loop
@@ -222,7 +222,7 @@ Excerpt:
 - {...} additional tool result(s) omitted from this summary.
 ```
 
-### 4. `tir/engine/agent_loop.py:90` — `_format_iteration_limit_response`
+### 4. `tir/engine/agent_loop.py:94` — `_format_iteration_limit_response`
 
 - Name: `append_arg`
 - Category: Chat / agent loop
@@ -727,7 +727,7 @@ Review bounded operational/system activity and return only a strict JSON object.
 
 ## Other prompt-like strings
 
-### 1. `tir/api/routes.py:898` — `generate`
+### 1. `tir/api/routes.py:908` — `generate`
 
 - Name: `empty_message`
 - Category: Other prompt-like strings
@@ -740,7 +740,7 @@ Excerpt:
 I received your message but couldn't generate a response.
 ```
 
-### 2. `tir/api/routes.py:917` — `generate`
+### 2. `tir/api/routes.py:927` — `generate`
 
 - Name: `error_message`
 - Category: Other prompt-like strings

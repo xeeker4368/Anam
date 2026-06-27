@@ -55,3 +55,25 @@ def frame_failed_tool_message(tool_name: str, rendered: str, envelope: dict) -> 
         f"(e.g. an artifact, link, or content).\n"
         f"Raw tool result:\n{rendered}"
     )
+
+
+def summarize_tool_failure(tool_name: str, envelope: dict) -> str:
+    """One-line, tool-agnostic failure summary for logging.
+
+    Pulls ``error_type``/``error`` from the inner tool result (or the dispatch
+    error when the tool crashed) so failures are visible in the log instead of
+    silent.
+    """
+    value = envelope.get("value")
+    if isinstance(value, dict):
+        error_type = value.get("error_type")
+        message = value.get("error")
+    else:
+        error_type = None
+        message = envelope.get("error")
+    parts = [f"tool '{tool_name}' failed"]
+    if error_type:
+        parts.append(f"error_type={error_type}")
+    if message:
+        parts.append(f"error={message}")
+    return "; ".join(parts)
