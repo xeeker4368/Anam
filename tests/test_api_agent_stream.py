@@ -585,6 +585,68 @@ def test_stream_chat_tool_trace_is_emitted_and_persisted(
 @patch("tir.api.routes.retrieve")
 @patch("tir.api.routes._resolve_user")
 @patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_forwards_generated_image_selection(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    app.state.registry = FakeRegistry(has_tools=True)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = []
+    mock_save_message.side_effect = [
+        _fake_message("user", "make an image", "msg-user"),
+        _fake_message("assistant", "Here it is.", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", "make an image", "msg-user")]
+    selection = {
+        "kind": "generated_image",
+        "tool_name": "image_generate",
+        "artifact_id": "artifact-xyz",
+        "preview_url": "/api/artifacts/artifact-xyz/file",
+        "title": "A blue heron",
+    }
+    mock_loop.return_value = iter([
+        {
+            "type": "tool_result",
+            "name": "image_generate",
+            "ok": True,
+            "result": "{\"artifact_id\": \"artifact-xyz\"}",
+            "selection": selection,
+        },
+        {"type": "token", "content": "Here it is."},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="Here it is.",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=2,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": "make an image"})
+    events = _stream_lines(response)
+
+    tool_result = [e for e in events if e["type"] == "tool_result"][0]
+    assert tool_result["selection"] == selection
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
 def test_stream_chat_saves_final_tool_informed_moltbook_answer(
     mock_loop,
     mock_resolve_user,

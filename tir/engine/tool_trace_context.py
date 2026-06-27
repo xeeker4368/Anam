@@ -11,6 +11,8 @@ import json
 MOLTBOOK_SELECTION_KIND = "moltbook_authored_posts"
 MAX_MOLTBOOK_SELECTION_POSTS = 10
 
+GENERATED_IMAGE_SELECTION_KIND = "generated_image"
+
 
 def build_moltbook_authored_posts_selection(result: dict) -> dict | None:
     """Build compact selection metadata from moltbook_find_author_posts output."""
@@ -48,10 +50,36 @@ def build_moltbook_authored_posts_selection(result: dict) -> dict | None:
     }
 
 
+def build_generated_image_selection(result) -> dict | None:
+    """Build compact artifact-card metadata from a successful image_generate result.
+
+    Returns None for anything that is not a real, successful artifact record
+    (failed generation, no artifact created, or missing id), so the frontend
+    renders no card rather than a broken/placeholder one.
+    """
+    if not isinstance(result, dict):
+        return None
+    if result.get("ok") is not True or not result.get("artifact_created"):
+        return None
+    artifact_id = result.get("artifact_id")
+    if not artifact_id:
+        return None
+    return {
+        "kind": GENERATED_IMAGE_SELECTION_KIND,
+        "tool_name": "image_generate",
+        "artifact_id": str(artifact_id),
+        "preview_url": str(result.get("preview_url") or ""),
+        "title": str(result.get("artifact_title") or ""),
+        "media_kind": str(result.get("media_kind") or ""),
+    }
+
+
 def selection_metadata_for_tool_result(tool_name: str, result) -> dict | None:
     """Return bounded selection metadata for supported tool results."""
     if tool_name == "moltbook_find_author_posts":
         return build_moltbook_authored_posts_selection(result)
+    if tool_name == "image_generate":
+        return build_generated_image_selection(result)
     return None
 
 

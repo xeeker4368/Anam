@@ -1,6 +1,47 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { apiFetch, readErrorMessage } from '../api'
 
+// Renders a generated-image artifact card from the real tool result. The image
+// is fetched through apiFetch (so it works whether or not an API secret is
+// configured, which a raw <img src> cannot). Fail-safe-empty: if there is no
+// usable preview, the card renders nothing — no broken image, no placeholder.
+function ArtifactCard({ card }) {
+  const [src, setSrc] = useState(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    if (!card.preview_url) {
+      setFailed(true)
+      return undefined
+    }
+    let cancelled = false
+    let objectUrl = null
+    apiFetch(card.preview_url)
+      .then(resp => (resp.ok ? resp.blob() : Promise.reject(new Error('preview fetch failed'))))
+      .then(blob => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(blob)
+        setSrc(objectUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [card.preview_url])
+
+  if (failed || !src) return null
+
+  return (
+    <div className="artifact-card">
+      <img className="artifact-card-image" src={src} alt={card.title || 'Generated image'} />
+      {card.title && <div className="artifact-card-title">{card.title}</div>}
+    </div>
+  )
+}
+
 function draftStorageKey(userId, conversationId) {
   return `anam.chatDraft.${userId || 'unknown'}.${conversationId || 'new'}`
 }
@@ -557,6 +598,16 @@ function Chat({
               recordToolCall(data)
             } else if (data.type === 'tool_result') {
               recordToolResult(data)
+              // Render an artifact card ONLY from the structured tool result —
+              // never from message text. The backend emits this selection only
+              // for a real, successful artifact record.
+              if (data.selection && data.selection.kind === 'generated_image') {
+                const card = data.selection
+                updateMessageById(assistantMessageId, last => ({
+                  ...last,
+                  artifacts: [...(last.artifacts || []), card],
+                }))
+              }
             } else if (data.type === 'token') {
               if (abortController.signal.aborted || streamIdRef.current !== streamId) break
               if (!firstTokenSeen) {
@@ -751,6 +802,9 @@ function Chat({
                 || (msg.interrupted ? 'Response interrupted; send again if needed.' : '')}
               {msg.streaming && <span className="cursor">|</span>}
             </div>
+            {(msg.artifacts || []).map(card => (
+              <ArtifactCard key={card.artifact_id} card={card} />
+            ))}
           </div>
         ))}
         <div ref={messagesEndRef} />

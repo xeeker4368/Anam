@@ -264,6 +264,27 @@ body {
   color: #e74c3c;
 }
 
+.artifact-card {
+  margin-top: 8px;
+  max-width: 360px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.artifact-card-image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.artifact-card-title {
+  padding: 6px 10px;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
 .cursor {
   animation: blink 1s infinite;
 }
