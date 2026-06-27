@@ -37,6 +37,7 @@ from tir.api.auth import (
 from tir.config import (
     CHAT_MODEL,
     CONVERSATION_ITERATION_LIMIT,
+    DEBUG_PROMPT_ENABLED,
     FRONTEND_DIR,
     IDLE_CLOSE_MINUTES,
     OLLAMA_HOST,
@@ -1009,6 +1010,34 @@ def stream_chat(req: ChatRequest):
         ollama_stats = getattr(loop_result, "ollama_stats", None)
         if ollama_stats:
             trace_record["ollama"] = ollama_stats
+
+        # Opt-in (ANAM_DEBUG_PROMPT), off by default: capture the full assembled
+        # prompt and tool I/O so a turn — including a zero-tool-call confabulation
+        # — can be inspected. Observe-only; reads existing values, changes nothing.
+        # The prompt holds conversation + retrieved memory (PII); the sink is
+        # gitignored and secret-shaped strings are redacted by the writer.
+        if DEBUG_PROMPT_ENABLED:
+            trace_record["debug_prompt"] = {
+                "system_prompt": system_prompt,
+                "messages": [
+                    {
+                        key: message[key]
+                        for key in ("role", "tool_name", "content", "tool_calls")
+                        if key in message
+                    }
+                    for message in model_messages
+                ],
+                "tool_calls": [
+                    {
+                        "name": call.get("function", {}).get("name"),
+                        "arguments": call.get("function", {}).get("arguments"),
+                    }
+                    for message in model_messages
+                    if message.get("role") == "assistant"
+                    for call in (message.get("tool_calls") or [])
+                ],
+            }
+
         try:
             write_chat_debug_trace(trace_record, path=CHAT_DEBUG_TRACE_PATH)
         except Exception as e:

@@ -286,6 +286,123 @@ def test_stream_chat_writes_structured_debug_trace_without_message_bodies(
     assert "Bearer SECRET_TRACE_TOKEN" not in raw_record
 
 
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_debug_prompt_flag_captures_prompt_and_tool_io(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+    chat_debug_trace_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("tir.api.routes.DEBUG_PROMPT_ENABLED", True)
+    app.state.registry = FakeRegistry(has_tools=False)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = [
+        {
+            "chunk_id": "chunk-1",
+            "text": "DISTINCTIVE_RETRIEVED_MEMORY_MARKER for the prompt capture.",
+            "source_type": "conversation",
+        }
+    ]
+    user_text = "Make me a rainbow"
+    assistant_text = "Here is a rainbow."
+    mock_save_message.side_effect = [
+        _fake_message("user", user_text, "msg-user"),
+        _fake_message("assistant", assistant_text, "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", user_text, "msg-user")]
+    # Zero tool calls — the pure-confabulation case we could not see before.
+    mock_loop.return_value = iter([
+        {"type": "token", "content": assistant_text},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content=assistant_text,
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": user_text})
+    _stream_lines(response)
+
+    record = json.loads(chat_debug_trace_path.read_text(encoding="utf-8").splitlines()[0])
+    assert "debug_prompt" in record
+    debug = record["debug_prompt"]
+    # Full assembled prompt captured, including retrieved memory.
+    assert isinstance(debug["system_prompt"], str) and debug["system_prompt"]
+    assert "DISTINCTIVE_RETRIEVED_MEMORY_MARKER" in debug["system_prompt"]
+    # Conversation messages captured (the prompt the model received).
+    assert any(m.get("role") == "user" for m in debug["messages"])
+    # Zero-tool-call turn: tool_calls present but empty.
+    assert debug["tool_calls"] == []
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
+def test_debug_prompt_flag_off_omits_capture(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+    chat_debug_trace_path,
+):
+    # Default: flag off — no debug_prompt key, no prompt/tool bodies captured.
+    app.state.registry = FakeRegistry(has_tools=False)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = []
+    mock_save_message.side_effect = [
+        _fake_message("user", "hi", "msg-user"),
+        _fake_message("assistant", "hello", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", "hi", "msg-user")]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": "hello"},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content="hello",
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    client.post("/api/chat/stream", json={"text": "hi"})
+
+    record = json.loads(chat_debug_trace_path.read_text(encoding="utf-8").splitlines()[0])
+    assert "debug_prompt" not in record
+
+
 @patch("tir.api.routes.write_chat_debug_trace")
 @patch("tir.api.routes.checkpoint_conversation")
 @patch("tir.api.routes.save_message")

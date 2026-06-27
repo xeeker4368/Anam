@@ -385,6 +385,13 @@ SCHEDULER_GO_LIVE = _env_bool(
     bool(_SCHEDULER_CONFIG.get("go_live", False)),
 )
 
+# --- Debug capture ---
+# Opt-in, off by default. When enabled, the per-turn chat debug trace also
+# captures the full assembled prompt and tool calls/results. The prompt contains
+# the full conversation and retrieved memory (PII), so this stays off in normal
+# operation; the trace file lives under DATA_DIR, which is gitignored.
+DEBUG_PROMPT_ENABLED = _env_bool("ANAM_DEBUG_PROMPT", False)
+
 # --- Image generation ---
 _IMAGE_GENERATION_CONFIG = _config_section("image_generation")
 _COMFYUI_CONFIG = _IMAGE_GENERATION_CONFIG.get("comfyui", {})
