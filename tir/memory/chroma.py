@@ -92,7 +92,20 @@ def embed_text(
         json={"model": model, "input": text},
         timeout=30,
     )
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError:
+        # Observability only: surface Ollama's real error body (otherwise
+        # discarded by raise_for_status), with status/model/input length to
+        # split 400 over-length from 404 model-not-loaded. Re-raises unchanged.
+        logger.error(
+            "Ollama /api/embed failed: status=%s model=%s text_len=%d body=%s",
+            resp.status_code,
+            model,
+            len(text),
+            resp.text[:1000],
+        )
+        raise
 
     data = resp.json()
 
@@ -176,6 +189,32 @@ def upsert_chunk(
         metadatas=[metadata],
     )
     logger.debug(f"Upserted chunk {chunk_id} ({len(text)} chars)")
+
+
+def delete_chunk_records_by_index(
+    conversation_id: str,
+    chunk_index: int,
+    chroma_path: str = CHROMA_DIR,
+):
+    """Delete every chunk record for one (conversation_id, chunk_index).
+
+    Uses a metadata-filtered delete — exact, no full-collection scan, and it does
+    not need to know the prior sub-split shape. This is the convergence/orphan
+    cleanup for sub-chunking: when a growing tail group changes shape (e.g.
+    `{conv}_chunk_2` -> `{conv}_chunk_2_0`/`_1`), the stale unit(s) for that index
+    are removed before the current shape is written. All units of a group carry
+    the same `chunk_index` in their metadata, so this matches them regardless of
+    their `_0/_1/...` suffixes.
+    """
+    collection = _get_collection(chroma_path)
+    collection.delete(
+        where={
+            "$and": [
+                {"conversation_id": conversation_id},
+                {"chunk_index": chunk_index},
+            ]
+        }
+    )
 
 
 def delete_chunks_by_prefix(

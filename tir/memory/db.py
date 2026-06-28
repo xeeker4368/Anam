@@ -862,6 +862,23 @@ def get_messages_since_last_chunk(
 # FTS5 chunks index
 # ---------------------------------------------------------------------------
 
+def delete_fts_chunk_index(conversation_id: str, chunk_index: int):
+    """Delete FTS rows for one (conversation_id, chunk_index).
+
+    Removes the bare ``{conv}_chunk_{i}`` and any ``{conv}_chunk_{i}_<j>``
+    sub-units. GLOB is used (not LIKE) because GLOB treats ``_`` literally, so it
+    can't accidentally match a different index (e.g. ``_chunk_1`` vs ``_chunk_10``).
+    chunks_fts has no chunk_index column, so cleanup keys on chunk_id here.
+    """
+    base = f"{conversation_id}_chunk_{chunk_index}"
+    with get_connection() as conn:
+        conn.execute(
+            "DELETE FROM main.chunks_fts WHERE chunk_id = ? OR chunk_id GLOB ?",
+            (base, f"{base}_*"),
+        )
+        conn.commit()
+
+
 def upsert_chunk_fts(
     chunk_id: str,
     text: str,

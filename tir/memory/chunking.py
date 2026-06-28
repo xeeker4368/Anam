@@ -24,7 +24,7 @@ import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from tir.config import CHUNK_TURN_SIZE, TIMEZONE
+from tir.config import CHUNK_TURN_SIZE, EMBED_MAX_CHARS, TIMEZONE
 from tir.memory.db import (
     get_conversation,
     get_conversation_messages,
@@ -32,10 +32,15 @@ from tir.memory.db import (
     get_unchunked_ended_conversations,
     get_user,
     end_conversation,
+    delete_fts_chunk_index,
     upsert_chunk_fts,
     mark_conversation_chunked,
 )
-from tir.memory.chroma import upsert_chunk, embed_text
+from tir.memory.chroma import (
+    delete_chunk_records_by_index,
+    upsert_chunk,
+    embed_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,24 +60,73 @@ def _format_timestamp(iso_timestamp: str) -> str:
     return dt.strftime("[%B %-d, %Y at %-I:%M %p]")
 
 
-def _format_chunk_text(messages: list[dict], user_name: str) -> str:
-    """Format a list of messages into chunk transcript text.
+def _format_message_line(msg: dict, user_name: str) -> str:
+    """Format one message into a single transcript line."""
+    ts = _format_timestamp(msg["timestamp"])
+    speaker = user_name if msg["role"] == "user" else "assistant"
+    return f"{ts} {speaker}: {msg['content']}"
 
-    Args:
-        messages: List of message dicts with 'role', 'content', 'timestamp'.
-        user_name: Resolved display name for the user side.
 
-    Returns:
-        Timestamped transcript string. Example:
-            [April 22, 2026 at 3:30 PM] Lyle: Hello
-            [April 22, 2026 at 3:30 PM] assistant: Hi there!
+def _hard_split_text(text: str, budget: int) -> list[str]:
+    """Split a single over-budget line into <=budget-char pieces.
+
+    Slices in str/codepoint space — Python str slicing NEVER splits a multi-byte
+    UTF-8 character. Do NOT change this to bytes/byte-slicing: that would corrupt
+    multibyte characters (emoji, CJK) at the cut points.
     """
-    lines = []
+    return [text[i:i + budget] for i in range(0, len(text), budget)]
+
+
+def _split_chunk_for_embedding(
+    messages: list[dict],
+    user_name: str,
+    budget: int = EMBED_MAX_CHARS,
+) -> list[tuple[str, int]]:
+    """Split a turn-group's formatted text into embed-sized sub-units.
+
+    Turn-based grouping is unchanged; this only sub-divides a *formed* group
+    whose text exceeds ``budget`` chars (nomic's context limit; Ollama 400s over
+    it and truncate=true does not help). Prefers whole-message boundaries:
+    contiguous runs of whole messages that fit the budget. Only when a single
+    message's own line exceeds the budget is that line hard-split (in str space).
+
+    Returns a list of ``(text, message_count)`` sub-units in order. Concatenating
+    the sub-unit texts reproduces the group's content with no loss. A group that
+    already fits returns exactly one sub-unit (the whole group).
+    """
+    sub_units: list[tuple[str, int]] = []
+    run_lines: list[str] = []
+    run_count = 0
+
+    def flush_run() -> None:
+        nonlocal run_lines, run_count
+        if run_lines:
+            sub_units.append(("\n".join(run_lines), run_count))
+            run_lines = []
+            run_count = 0
+
     for msg in messages:
-        ts = _format_timestamp(msg["timestamp"])
-        speaker = user_name if msg["role"] == "user" else "assistant"
-        lines.append(f"{ts} {speaker}: {msg['content']}")
-    return "\n".join(lines)
+        line = _format_message_line(msg, user_name)
+        if len(line) > budget:
+            # Single message exceeds the budget on its own: close the current
+            # whole-message run, then hard-split THIS line (str-space) into pieces.
+            flush_run()
+            for k, piece in enumerate(_hard_split_text(line, budget)):
+                # Attribute the message to its first piece so sub-unit counts sum
+                # back to the group's message count.
+                sub_units.append((piece, 1 if k == 0 else 0))
+            continue
+        candidate = "\n".join(run_lines + [line]) if run_lines else line
+        if len(candidate) > budget:
+            flush_run()
+            run_lines = [line]
+            run_count = 1
+        else:
+            run_lines.append(line)
+            run_count += 1
+
+    flush_run()
+    return sub_units
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +219,12 @@ def _store_chunk(
         "created_at": now,
     }
 
-    # ChromaDB (vector) — primary store
+    # ChromaDB (vector) — primary store.
+    # Defect 2: if the vector write fails (e.g. an embed 400), do NOT skip the
+    # FTS write. Record the error, still attempt FTS below so the chunk degrades
+    # to lexically-searchable rather than being dropped from BOTH stores, then
+    # re-raise so the caller leaves the conversation chunked=0 (recoverable).
+    vector_error: Exception | None = None
     try:
         upsert_chunk(
             chunk_id=chunk_id,
@@ -173,10 +232,10 @@ def _store_chunk(
             metadata=metadata,
         )
     except Exception as e:
+        vector_error = e
         logger.error(f"ChromaDB upsert failed for {chunk_id}: {e}")
-        raise  # Can't proceed without vector storage
 
-    # FTS5 (lexical) — secondary store
+    # FTS5 (lexical) — secondary store. Attempted regardless of the vector outcome.
     try:
         upsert_chunk_fts(
             chunk_id=chunk_id,
@@ -189,6 +248,58 @@ def _store_chunk(
         )
     except Exception as e:
         logger.warning(f"FTS5 upsert failed for {chunk_id}: {e} (will retry at close)")
+
+    if vector_error is not None:
+        raise vector_error  # vector storage failed → caller leaves it recoverable
+
+
+def _store_chunk_group(
+    conversation_id: str,
+    user_id: str,
+    chunk_index: int,
+    chunk_messages: list[dict],
+    user_name: str,
+) -> tuple[int, int]:
+    """Store one turn-group, splitting it into embed-sized sub-units if needed.
+
+    Returns ``(intended, written)`` — the number of sub-units this group should
+    produce and the number that fully stored (vector + lexical). A group that
+    fits the budget is one sub-unit with the unchanged bare ID
+    ``{conv}_chunk_{i}`` (no migration of the existing corpus). An over-budget
+    group becomes ``{conv}_chunk_{i}_{j}`` sub-units.
+
+    Convergence/idempotency: every write first removes ALL prior records for this
+    (conversation_id, chunk_index) from both stores, so a changed split shape as
+    a tail grows leaves no orphan, and re-running on frozen content reproduces the
+    same stored set.
+    """
+    sub_units = _split_chunk_for_embedding(chunk_messages, user_name)
+    base = f"{conversation_id}_chunk_{chunk_index}"
+
+    # Remove any prior units for this index before writing the current shape.
+    # (See delete_chunk_records_by_index / delete_fts_chunk_index for mechanism.)
+    delete_chunk_records_by_index(conversation_id, chunk_index)
+    delete_fts_chunk_index(conversation_id, chunk_index)
+
+    intended = len(sub_units)
+    written = 0
+    single = intended == 1
+    for j, (text, message_count) in enumerate(sub_units):
+        chunk_id = base if single else f"{base}_{j}"
+        try:
+            _store_chunk(
+                chunk_id=chunk_id,
+                text=text,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                message_count=message_count,
+                chunk_index=chunk_index,
+            )
+            written += 1
+        except Exception as e:
+            logger.error(f"Failed to write chunk {chunk_id}: {e}", exc_info=True)
+
+    return intended, written
 
 
 # ---------------------------------------------------------------------------
@@ -234,23 +345,18 @@ def maybe_chunk_live(conversation_id: str, user_id: str) -> bool:
     user = get_user(user_id)
     user_name = user["name"] if user else "Unknown"
 
-    chunk_text = _format_chunk_text(chunk_messages, user_name)
-    chunk_id = f"{conversation_id}_chunk_{chunk_index}"
-
-    _store_chunk(
-        chunk_id=chunk_id,
-        text=chunk_text,
-        conversation_id=conversation_id,
-        user_id=user_id,
-        message_count=len(chunk_messages),
-        chunk_index=chunk_index,
+    intended, written = _store_chunk_group(
+        conversation_id, user_id, chunk_index, chunk_messages, user_name
     )
 
     logger.info(
-        f"Live chunk {chunk_index} created for conversation "
-        f"{conversation_id[:8]} ({len(chunk_messages)} messages)"
+        "Live chunk %s created for conversation %s (%s messages, %s sub-chunks)",
+        chunk_index,
+        conversation_id[:8],
+        len(chunk_messages),
+        intended,
     )
-    return True
+    return written > 0
 
 
 # ---------------------------------------------------------------------------
@@ -285,25 +391,18 @@ def checkpoint_conversation(conversation_id: str, user_id: str) -> int:
     user = get_user(user_id)
     user_name = user["name"] if user else "Unknown"
 
-    chunk_text = _format_chunk_text(chunk_messages, user_name)
-    chunk_id = f"{conversation_id}_chunk_{chunk_index}"
-
-    _store_chunk(
-        chunk_id=chunk_id,
-        text=chunk_text,
-        conversation_id=conversation_id,
-        user_id=user_id,
-        message_count=len(chunk_messages),
-        chunk_index=chunk_index,
+    intended, written = _store_chunk_group(
+        conversation_id, user_id, chunk_index, chunk_messages, user_name
     )
 
     logger.info(
-        "Checkpointed conversation %s chunk %s (%s messages)",
+        "Checkpointed conversation %s chunk %s (%s messages, %s sub-chunks)",
         conversation_id[:8],
         chunk_index,
         len(chunk_messages),
+        intended,
     )
-    return 1
+    return 1 if written > 0 else 0
 
 
 # ---------------------------------------------------------------------------
@@ -352,9 +451,8 @@ def chunk_conversation_final(conversation_id: str, user_id: str) -> int:
     """
     messages = get_conversation_messages(conversation_id)
     chunk_groups = _assign_messages_to_chunks(messages)
-    intended_chunk_count = len(chunk_groups)
 
-    if intended_chunk_count == 0:
+    if len(chunk_groups) == 0:
         mark_conversation_chunked(conversation_id)
         return 0
 
@@ -362,34 +460,28 @@ def chunk_conversation_final(conversation_id: str, user_id: str) -> int:
     user = get_user(user_id)
     user_name = user["name"] if user else "Unknown"
 
+    # Completion is measured in stored SUB-units, not turn-groups: an over-budget
+    # group produces >1 sub-unit, so comparing against len(chunk_groups) would
+    # never mark a split conversation chunked.
+    total_intended = 0
     chunks_written = 0
     for i, chunk_messages in enumerate(chunk_groups):
-        chunk_text = _format_chunk_text(chunk_messages, user_name)
-        chunk_id = f"{conversation_id}_chunk_{i}"
+        intended, written = _store_chunk_group(
+            conversation_id, user_id, i, chunk_messages, user_name
+        )
+        total_intended += intended
+        chunks_written += written
 
-        try:
-            _store_chunk(
-                chunk_id=chunk_id,
-                text=chunk_text,
-                conversation_id=conversation_id,
-                user_id=user_id,
-                message_count=len(chunk_messages),
-                chunk_index=i,
-            )
-            chunks_written += 1
-        except Exception as e:
-            logger.error(f"Failed to write chunk {chunk_id}: {e}", exc_info=True)
-
-    if chunks_written == intended_chunk_count:
+    if chunks_written == total_intended and total_intended > 0:
         mark_conversation_chunked(conversation_id)
         logger.info(
             f"Final chunking complete for conversation {conversation_id[:8]}: "
-            f"{chunks_written}/{intended_chunk_count} chunks from {len(messages)} messages"
+            f"{chunks_written}/{total_intended} sub-chunks from {len(messages)} messages"
         )
     else:
         logger.error(
             f"Final chunking incomplete for conversation {conversation_id[:8]}: "
-            f"{chunks_written}/{intended_chunk_count} chunks written; "
+            f"{chunks_written}/{total_intended} sub-chunks written; "
             "leaving conversation unchunked for recovery"
         )
 

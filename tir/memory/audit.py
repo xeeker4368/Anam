@@ -132,6 +132,14 @@ def audit_memory_integrity(limit: int = 25) -> dict:
     except Exception as exc:
         warnings.append(f"Chroma count unavailable: {type(exc).__name__}: {exc}")
 
+    # FOLLOW-UP HOOK (partial-store state): with Defect 2, an embed/vector failure
+    # now leaves a chunk in FTS but missing from Chroma (lexically searchable,
+    # vector-missing; conversation stays chunked=0). The aggregate
+    # fts_chroma_count_match flags a mismatch, but a per-conversation
+    # "chunked-but-missing-Chroma" check (mirroring
+    # chunked_conversations_missing_fts_chunk_ids above) is intentionally NOT
+    # built here — separate task. See PLAN-2026-06-28-embed-overlength-fix-optionB.
+
     if not message_id_parity_ok:
         warnings.append("Working/archive message ID parity is not clean.")
     if active_conversation_count:
