@@ -7,9 +7,12 @@ Ordering:
 1. Seed identity (soul.md)
 2. Operational guidance (OPERATIONAL_GUIDANCE.md, if present)
 3. Available tools
-4. Retrieved memories
-5. Current situation (who and when)
-5. Current conversation (the exchange so far) — handled by message history
+4. Current situation (current speaker + direct-address directive) — placed
+   immediately before retrieved memories so the current-speaker signal is the
+   nearest, strongest identity reference before the (possibly third-person-dense)
+   memory block.
+5. Retrieved memories
+6. Current conversation (the exchange so far) — handled by message history
 
 Everything except current conversation goes into the system prompt.
 Current conversation goes into the messages array.
@@ -79,13 +82,46 @@ def load_reflection_entity_context() -> dict:
     }
 
 
-def _current_situation(user_name: str) -> str:
-    """Build the current situation section."""
+def _join_names(names: list[str]) -> str:
+    """Join names for prose: 'A', 'A and B', 'A, B, and C'."""
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    return ", ".join(names[:-1]) + f", and {names[-1]}"
+
+
+def _current_situation(user_name: str, other_user_names: list[str] | None = None) -> str:
+    """Build the current-situation / direct-address section.
+
+    Active directive (not a passive description): asserts the current speaker by
+    name, instructs second-person direct address, and warns that retrieved memory
+    may reference other people who are NOT the current speaker. ``other_user_names``
+    (if cheaply available from the caller) names those other people dynamically;
+    no name is ever hardcoded — absent that list, the warning stays fully generic.
+    """
     tz = ZoneInfo(TIMEZONE)
     now = datetime.now(tz)
     formatted = now.strftime("%A, %B %d, %Y at %I:%M %p").replace(" 0", " ")
 
-    return f"[Current Situation]\n\nConversation with: {user_name}\nTime: {formatted}"
+    others = [name for name in (other_user_names or []) if name and name != user_name]
+    if others:
+        others_clause = (
+            f"Retrieved memory below may mention other people (such as "
+            f"{_join_names(others)}); they are context, not the person you are "
+            f"speaking with."
+        )
+    else:
+        others_clause = (
+            "Retrieved memory below may mention other people; they are context, "
+            "not the person you are speaking with."
+        )
+
+    return (
+        f"[Current Situation]\n\n"
+        f"You are speaking with {user_name}. Address {user_name} directly, in the "
+        f"second person. The current time is {formatted}. {others_clause}"
+    )
 
 
 def _autonomous_situation() -> str:
@@ -119,6 +155,7 @@ def build_system_prompt(
     retrieved_chunks: list[dict] | None = None,
     tool_descriptions: str | None = None,
     autonomous: bool = False,
+    other_user_names: list[str] | None = None,
 ) -> str:
     """
     Assemble the full system prompt.
@@ -145,6 +182,7 @@ def build_system_prompt(
         retrieved_chunks=retrieved_chunks,
         tool_descriptions=tool_descriptions,
         autonomous=autonomous,
+        other_user_names=other_user_names,
     )
     return prompt
 
@@ -156,6 +194,7 @@ def build_system_prompt_with_debug(
     retrieved_chunks: list[dict] | None = None,
     tool_descriptions: str | None = None,
     autonomous: bool = False,
+    other_user_names: list[str] | None = None,
 ) -> tuple[str, dict]:
     """
     Assemble the full system prompt and return best-effort section counts.
@@ -206,7 +245,17 @@ def build_system_prompt_with_debug(
         sections.append(tool_descriptions)
         section_counts["tool_descriptions_chars"] = len(tool_descriptions)
 
-    # Section 5: Retrieved memories
+    # Section 5: Current situation — placed BEFORE retrieved memories so the
+    # current-speaker directive is the nearest preceding signal to the memory
+    # block (which may be dense with third-person references to other people).
+    if autonomous:
+        situation = _autonomous_situation()
+    else:
+        situation = _current_situation(user_name, other_user_names)
+    sections.append(situation)
+    section_counts["situation_chars"] = len(situation)
+
+    # Section 6: Retrieved memories
     if retrieved_chunks is None and user_message and not is_greeting(user_message):
         # Automatic retrieval
         try:
@@ -222,14 +271,6 @@ def build_system_prompt_with_debug(
         retrieved_context = _format_retrieved_memories(retrieved_chunks)
         sections.append(retrieved_context)
         section_counts["retrieved_context_chars"] = len(retrieved_context)
-
-    # Section 6: Current situation
-    if autonomous:
-        situation = _autonomous_situation()
-    else:
-        situation = _current_situation(user_name)
-    sections.append(situation)
-    section_counts["situation_chars"] = len(situation)
 
     prompt = "\n\n".join(sections)
     known_chars = sum(section_counts.values())

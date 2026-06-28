@@ -59,12 +59,13 @@ def test_operational_guidance_is_labeled_and_ordered():
     assert "These are your own experiences and memories." not in prompt
     assert "A remembered conversation chunk." in prompt
     assert "[Current Situation]" in prompt
-    assert "Conversation with: Lyle" in prompt
+    assert "You are speaking with Lyle." in prompt
 
     assert prompt.index("You are an AI.") < prompt.index("[Operational Guidance]")
     assert prompt.index("[Operational Guidance]") < prompt.index("You have access to the following tools:")
-    assert prompt.index("You have access to the following tools:") < prompt.index("Retrieved context follows. Each item is labeled by source type.")
-    assert prompt.index("Retrieved context follows. Each item is labeled by source type.") < prompt.index("[Current Situation]")
+    # Current situation is now placed BEFORE retrieved memories.
+    assert prompt.index("You have access to the following tools:") < prompt.index("[Current Situation]")
+    assert prompt.index("[Current Situation]") < prompt.index("Retrieved context follows. Each item is labeled by source type.")
 
 
 def test_system_prompt_with_debug_preserves_existing_prompt_output():
@@ -336,7 +337,7 @@ def test_missing_operational_guidance_is_omitted():
     assert "[Operational Guidance]" not in prompt
     assert "You are an AI." in prompt
     assert "[Current Situation]" in prompt
-    assert "Conversation with: Lyle" in prompt
+    assert "You are speaking with Lyle." in prompt
 
 
 def test_behavioral_guidance_file_is_not_loaded_when_no_active_section(context_project):
@@ -549,3 +550,48 @@ def test_budget_retrieved_chunks_uses_remaining_budget_when_useful():
     assert "[retrieved chunk truncated]" in budgeted[1]["text"]
     assert metadata["truncated_chunks"] == 1
     assert metadata["used_chars"] <= 950
+
+
+def test_current_situation_is_direct_address_and_generic_without_other_names():
+    # Rephrase: active direct-address directive; generic "other people" warning
+    # when no other user names are supplied. No passive legacy wording.
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+    )
+    assert "You are speaking with Lyle." in prompt
+    assert "in the second person." in prompt
+    assert "may mention other people; they are context, not the person you are speaking with." in prompt
+    # Old passive wording is gone.
+    assert "Conversation with: Lyle" not in prompt
+
+
+def test_current_situation_injects_other_user_names_dynamically():
+    # When other known user names are supplied, they're named dynamically in the
+    # warning — no hardcoded literal in the builder.
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+        other_user_names=["Jodie", "Sam"],
+    )
+    assert "such as Jodie and Sam" in prompt
+    assert "they are context, not the person you are speaking with." in prompt
+    # The current speaker is never listed as an "other person".
+    prompt_self = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+        other_user_names=["Lyle"],
+    )
+    assert "such as" not in prompt_self  # filtered out -> generic branch
+
+
+def test_no_hardcoded_person_name_in_context_source():
+    # Guard: the prompt builder must not bake in any literal person name.
+    import inspect
+    import tir.engine.context as context_mod
+
+    source = inspect.getsource(context_mod)
+    assert "Jodie" not in source
