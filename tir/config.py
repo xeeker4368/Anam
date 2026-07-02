@@ -246,7 +246,15 @@ def get_model_timeout(role: str) -> int:
 
 # --- Chunking ---
 CHUNK_TURN_SIZE = 5          # Turns per conversation chunk
-EMBED_MAX_CHARS = 8000       # Max chars before embedding truncation
+EMBED_MAX_CHARS = 5000       # Per-embed char budget. Conservative proxy for
+# nomic-embed-text's ~2048-token context (Ollama returns HTTP 400 over it and
+# truncate=true does NOT prevent it, so the app must size input itself). 400s
+# were seen at ~8900 chars (~4.15 char/token prose); dense content (code/symbols)
+# runs ~3 char/token, where ~6000 chars already hits the limit — 5000 buys
+# headroom against that worst case. Chunks whose formatted text exceeds this are
+# split into sub-units before embedding (see tir/memory/chunking.py). Token-
+# counting is a post-launch follow-up ONLY if slip-throughs appear; do not pull
+# in a tokenizer dependency.
 
 # --- Retrieval ---
 RETRIEVAL_RESULTS = int(_config_value("retrieval", "results"))  # Candidates returned by retrieval pipeline

@@ -557,10 +557,24 @@ def stream_chat(req: ChatRequest):
             if registry and registry.has_tools()
             else None
         )
+        # Names of OTHER known users (not the current speaker), resolved
+        # dynamically so the current-situation directive can warn the model that
+        # retrieved memory may reference them — without hardcoding any name.
+        # Best-effort: on failure the directive stays fully generic.
+        try:
+            other_user_names = [
+                u["name"]
+                for u in get_all_users()
+                if u.get("name") and u["name"] != user_name
+            ]
+        except Exception as e:
+            logger.warning(f"Could not resolve other user names (non-fatal): {e}")
+            other_user_names = None
         system_prompt, prompt_breakdown = build_system_prompt_with_debug(
             user_name=user_name,
             retrieved_chunks=retrieved_chunks,
             tool_descriptions=tool_descriptions,
+            other_user_names=other_user_names,
         )
         prompt_budget_warning = (
             "prompt_chars_over_budget"
