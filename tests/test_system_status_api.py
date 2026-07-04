@@ -254,6 +254,14 @@ def test_system_capabilities_reports_available_and_disabled_features(
     assert capabilities["self_modification"]["requires_approval"] is True
     assert capabilities["self_modification"]["mode"] == "staged_only"
     assert capabilities["self_modification"]["status"] == "staged_only"
+    # New reporting-only `built` field is present in the payload (additive). Every
+    # existing field/value asserted above is unchanged — the consumer-field-
+    # stability contract the frontend System panel relies on.
+    assert capabilities["self_modification"]["built"] is True
+    assert capabilities["review_queue"]["built"] is True
+    assert capabilities["autonomous_research"]["built"] is False  # bounded != autonomous
+    assert capabilities["memory_search"]["built"] is True
+    assert capabilities["vision"]["built"] is False
     assert "configured-token" not in response.text
 
 

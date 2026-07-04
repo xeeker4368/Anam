@@ -1,11 +1,18 @@
 # FEATURE_INVENTORY.md
 
+**This is the single canonical built-state doc: what exists in the tree and its run
+evidence.** Enablement truth ("what the system is allowed to do right now") lives in
+`tir/ops/capabilities.py` and the System panel — NOT here. `built` (tree existence)
+and `implemented`/enabled (safety posture) are different questions; do not conflate.
+
 Authoritative feature/capability view of Project Anam: what is built, what to do
 before go-live, and what comes after.
 
 **Relationship to other docs:**
 - `GO_LIVE_CHECKLIST.md` = operational launch *steps and ritual* ("how").
 - This file = *capability* view: what exists, what to build pre/post ("what").
+- `docs/archive/FEATURE_MAP_2026-06-28.md` = the frozen 2026-06-28 code+prod-data
+  snapshot this was reconciled from (run-evidence tied to that date). Superseded here.
 - `ROADMAP.md` = long-term vision detail (pointed to, not duplicated).
 - `FINDINGS.md` = open defects.
 
@@ -81,6 +88,22 @@ before trusting for launch.
 - Behavioral-guidance proposal/review — advisory only, dormant pre-launch,
   operator-approval required `[verified dormant]`
 - Entity unnamed, no avatar, no assigned personality
+
+**Registry reconciliation (built ≠ enabled — aligns this doc with `capabilities.py`
+and the 2026-06-28 snapshot):**
+- **Self-modification pipeline is BUILT and has been exercised.** The
+  propose→review→apply plumbing exists (`tir/behavioral_guidance/{service,review,apply}.py`)
+  and a proposal was applied in prod (2026-05-09); applied guidance feeds the live
+  prompt. Runtime application stays staged/human-approved and dormant pre-launch —
+  so `capabilities.py` reports `self_modification` as `built: True, implemented: False,
+  mode: staged_only`. "Dormant" is the *enablement* state, not "unbuilt."
+- **Review queue is BUILT** (`tir/review/service.py`; operational reflection writes
+  items) but not surfaced as a live capability → `built: True, implemented: False`.
+- **Bounded research ≠ autonomous research.** Bounded, human-approved research is
+  built and gated off (see Research/open loops below). *Autonomous* (unsupervised,
+  self-directed) research is **not built** → `autonomous_research` is
+  `built: False, implemented: False`. Do not read "autonomous_research: not built" as
+  "no research capability exists."
 
 ## Users / household
 - Trusted Household User Mode (Lyle admin + wife); active-user display/switch

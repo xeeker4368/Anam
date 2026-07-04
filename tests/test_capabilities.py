@@ -32,6 +32,7 @@ REQUIRED_FIELDS = {
     "key",
     "label",
     "implemented",
+    "built",
     "enabled",
     "available",
     "mode",
@@ -42,6 +43,34 @@ REQUIRED_FIELDS = {
     "status",
     "reason",
     "notes",
+}
+
+# Capabilities whose plumbing EXISTS in the tree (built), regardless of whether
+# they are enabled as a live capability (implemented). Correcting the registry so
+# self_modification / review_queue no longer read as "not built" is the point of
+# this reconciliation.
+BUILT_CAPABILITIES = {
+    "memory_search",
+    "web_search",
+    "web_fetch",
+    "moltbook_read_only",
+    "backups",
+    "memory_maintenance",
+    "file_uploads",
+    "image_generation",
+    "reflection_journal",
+    "review_queue",
+    "self_modification",
+}
+
+# Genuinely not built. autonomous_research stays here on purpose: bounded research
+# is built and gated, but AUTONOMOUS research is not built (bounded != autonomous).
+NOT_BUILT_CAPABILITIES = {
+    "autonomous_research",
+    "code_sandbox",
+    "speech",
+    "vision",
+    "write_actions",
 }
 
 
@@ -89,12 +118,51 @@ def test_capability_schema_fields_and_allowed_values(monkeypatch):
         assert capability["status"] in ALLOWED_STATUSES
         assert isinstance(capability["label"], str)
         assert isinstance(capability["implemented"], bool)
+        assert isinstance(capability["built"], bool)
         assert isinstance(capability["enabled"], bool)
         assert isinstance(capability["available"], bool)
         assert isinstance(capability["requires_approval"], bool)
         assert isinstance(capability["source_of_truth"], bool)
         assert isinstance(capability["real_time"], bool)
         assert isinstance(capability["configured"], bool)
+
+
+def test_built_field_reflects_tree_existence():
+    # Sanity: the two sets partition all capabilities.
+    assert BUILT_CAPABILITIES | NOT_BUILT_CAPABILITIES == EXPECTED_CAPABILITY_KEYS
+    assert BUILT_CAPABILITIES & NOT_BUILT_CAPABILITIES == set()
+
+    capabilities = build_capabilities_status(FakeRegistry())["capabilities"]
+    for key in BUILT_CAPABILITIES:
+        assert capabilities[key]["built"] is True, f"{key} should report built=True"
+    for key in NOT_BUILT_CAPABILITIES:
+        assert capabilities[key]["built"] is False, f"{key} should report built=False"
+
+
+def test_reconciled_entries_keep_enablement_unchanged():
+    # The three corrected entries: `built` moved, enablement did NOT.
+    capabilities = build_capabilities_status(FakeRegistry())["capabilities"]
+
+    self_mod = capabilities["self_modification"]
+    assert self_mod["built"] is True
+    assert self_mod["implemented"] is False
+    assert self_mod["mode"] == "staged_only"
+    assert self_mod["status"] == "staged_only"
+    assert self_mod["enabled"] is False
+    assert self_mod["available"] is False
+
+    review = capabilities["review_queue"]
+    assert review["built"] is True
+    assert review["implemented"] is False
+    assert review["mode"] == "disabled"
+    assert review["status"] == "not_implemented"
+    assert review["enabled"] is False
+
+    autonomous = capabilities["autonomous_research"]
+    assert autonomous["built"] is False  # bounded != autonomous
+    assert autonomous["implemented"] is False
+    assert autonomous["mode"] == "disabled"
+    assert autonomous["status"] == "not_implemented"
 
 
 def test_memory_search_reports_read_only_and_available_when_tool_exists():

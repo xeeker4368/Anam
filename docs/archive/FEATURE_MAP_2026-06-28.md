@@ -1,3 +1,9 @@
+> **FROZEN DATED SNAPSHOT (archived).** Point-in-time measurement (2026-06-28) of
+> the tree + prod store. **Superseded as the living inventory by
+> `FEATURE_INVENTORY.md`** (the single canonical built-state doc). Kept here for
+> provenance — its run-evidence is tied to that date's prod store. Do not edit;
+> update `FEATURE_INVENTORY.md` instead.
+
 # Project Anam — Feature / Capability Map
 
 **Generated:** 2026-06-28, from the uploaded working tree (`Anam copy/`) and the live prod store (`data/prod/working.db`).

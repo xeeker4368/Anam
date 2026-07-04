@@ -28,11 +28,28 @@ ALLOWED_STATUSES = {
 }
 
 
+# ---------------------------------------------------------------------------
+# FIELD SEMANTICS — READ BEFORE EDITING
+#
+# This registry is a SAFETY-POSTURE declaration: "what is this system ALLOWED to
+# do right now." It is NOT a build inventory. Built/tested truth lives in
+# FEATURE_INVENTORY.md.
+#
+#   implemented — whether this capability is ENABLED as a live capability in the
+#                 current safety posture. It drives available/configured/enabled/
+#                 status. It does NOT mean "code exists in the tree." A capability
+#                 whose plumbing is fully built but gated off is implemented: False.
+#   built       — reporting-only: whether the plumbing for this capability EXISTS
+#                 in the tree today. Does NOT affect runtime status (see
+#                 _base_runtime_state, which reads only `implemented`). built != enabled.
+#                 (For research, see the autonomous_research note: bounded != autonomous.)
+# ---------------------------------------------------------------------------
 _CAPABILITY_DEFINITIONS = [
     {
         "key": "memory_search",
         "label": "Memory Search",
         "implemented": True,
+        "built": True,
         "mode": "read_only",
         "requires_approval": False,
         "source_of_truth": False,
@@ -43,6 +60,7 @@ _CAPABILITY_DEFINITIONS = [
         "key": "web_search",
         "label": "Web Search",
         "implemented": True,
+        "built": True,
         "mode": "read_only",
         "requires_approval": False,
         "source_of_truth": True,
@@ -53,6 +71,7 @@ _CAPABILITY_DEFINITIONS = [
         "key": "web_fetch",
         "label": "Web Fetch",
         "implemented": True,
+        "built": True,
         "mode": "read_only",
         "requires_approval": False,
         "source_of_truth": True,
@@ -63,6 +82,7 @@ _CAPABILITY_DEFINITIONS = [
         "key": "moltbook_read_only",
         "label": "Moltbook Read-Only",
         "implemented": True,
+        "built": True,
         "mode": "read_only",
         "requires_approval": False,
         "source_of_truth": True,
@@ -73,6 +93,7 @@ _CAPABILITY_DEFINITIONS = [
         "key": "backups",
         "label": "Backups",
         "implemented": True,
+        "built": True,
         "mode": "manual",
         "requires_approval": False,
         "source_of_truth": False,
@@ -83,6 +104,7 @@ _CAPABILITY_DEFINITIONS = [
         "key": "memory_maintenance",
         "label": "Memory Maintenance",
         "implemented": True,
+        "built": True,
         "mode": "manual",
         "requires_approval": False,
         "source_of_truth": False,
@@ -93,6 +115,7 @@ _CAPABILITY_DEFINITIONS = [
         "key": "file_uploads",
         "label": "File Uploads",
         "implemented": True,
+        "built": True,
         "mode": "manual",
         "requires_approval": False,
         "source_of_truth": False,
@@ -106,6 +129,7 @@ _CAPABILITY_DEFINITIONS = [
         "key": "image_generation",
         "label": "Image Generation",
         "implemented": True,
+        "built": True,
         "mode": "manual",
         "requires_approval": False,
         "source_of_truth": False,
@@ -119,16 +143,24 @@ _CAPABILITY_DEFINITIONS = [
         "key": "autonomous_research",
         "label": "Autonomous Research",
         "implemented": False,
+        "built": False,
         "mode": "disabled",
         "requires_approval": False,
         "source_of_truth": False,
         "real_time": False,
-        "notes": "Not implemented.",
+        "notes": (
+            "Fully autonomous, self-directed research is NOT built (built=False). "
+            "BOUNDED, human-approved research plumbing DOES exist and is gated off "
+            "(tir/research/bounded.py; nightly bounded open-loop) — a distinct, "
+            "constrained capability. Do not read this entry as 'no research "
+            "capability exists.'"
+        ),
     },
     {
         "key": "reflection_journal",
         "label": "Reflection Journal",
         "implemented": True,
+        "built": True,
         "mode": "manual",
         "requires_approval": False,
         "source_of_truth": False,
@@ -143,16 +175,23 @@ _CAPABILITY_DEFINITIONS = [
         "key": "review_queue",
         "label": "Review Queue",
         "implemented": False,
+        "built": True,
         "mode": "disabled",
         "requires_approval": False,
         "source_of_truth": False,
         "real_time": False,
-        "notes": "Not implemented.",
+        "notes": (
+            "Review-queue plumbing is BUILT (tir/review/service.py; create/list/"
+            "update review items; operational reflection writes items). Not "
+            "surfaced as a live capability. built=True; implemented=False (not "
+            "enabled)."
+        ),
     },
     {
         "key": "code_sandbox",
         "label": "Code Sandbox",
         "implemented": False,
+        "built": False,
         "mode": "disabled",
         "requires_approval": False,
         "source_of_truth": False,
@@ -163,6 +202,7 @@ _CAPABILITY_DEFINITIONS = [
         "key": "speech",
         "label": "Speech",
         "implemented": False,
+        "built": False,
         "mode": "disabled",
         "requires_approval": False,
         "source_of_truth": False,
@@ -173,6 +213,7 @@ _CAPABILITY_DEFINITIONS = [
         "key": "vision",
         "label": "Vision",
         "implemented": False,
+        "built": False,
         "mode": "disabled",
         "requires_approval": False,
         "source_of_truth": False,
@@ -183,6 +224,7 @@ _CAPABILITY_DEFINITIONS = [
         "key": "write_actions",
         "label": "Write Actions",
         "implemented": False,
+        "built": False,
         "mode": "disabled",
         "requires_approval": True,
         "source_of_truth": False,
@@ -193,11 +235,18 @@ _CAPABILITY_DEFINITIONS = [
         "key": "self_modification",
         "label": "Self-Modification",
         "implemented": False,
+        "built": True,
         "mode": "staged_only",
         "requires_approval": True,
         "source_of_truth": False,
         "real_time": False,
-        "notes": "Future self-modification must remain staged, traceable, and approved.",
+        "notes": (
+            "Staged propose->review->apply pipeline is BUILT and has been "
+            "exercised in prod (tir/behavioral_guidance/{service,review,apply}.py; "
+            "applied guidance feeds the live prompt). Remains staged_only and "
+            "human-approved — not autonomously enabled. built=True; "
+            "implemented=False (not a live autonomous capability)."
+        ),
     },
 ]
 
