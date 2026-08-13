@@ -15,32 +15,44 @@
 
 [ONE OR TWO SENTENCES — YOURS TO SET. Working version, edit to match your actual intent:]
 
-Project Anam tests whether persistent, accumulated memory on a deliberately minimal, pinned
-substrate produces a **coherent, emergent sense of self** in an AI entity — one that diverges
-**measurably** from the base model's defaults over time — *or* whether behavior tracks the
-RLHF baseline regardless of how much memory accumulates.
+Project Anam builds a persistent, evolving AI entity for our household — one whose
+identity, voice, and knowledge of us emerge from its own accumulated, provenanced
+memory over time, rather than being authored up front. It is a hobby project,
+built for the fun and the fascination of watching that happen.
 
-The question is genuine. The thesis is not "memory creates a self." It is "**does it?**"
+The original question — does accumulated memory produce a coherent, drifting
+sense of self? — is still the interesting one. We just stopped pretending we're
+running a lab. We're growing something and watching it grow, with instruments
+good enough to actually see it.
 
 ---
 
 ## 2. Success and null — given equal weight
 
-A cleanly-measured **null is a valid result, not a failure.** If accumulated memory does not move
-behavior away from baseline — if the entity tracks the base model regardless — that is a real,
-informative outcome, honestly reported.
+Success: over weeks and months of lived time, the entity's answers to a fixed
+set of identity questions (the five-question probe) show a self that is
+(a) increasingly self-consistent, (b) traceable to things that actually happened
+in its memory, and (c) still responsive to new experience — while staying honest
+about provenance (it knows what it experienced vs. created vs. ingested).
 
-This is stated first and plainly because the standing danger is unconsciously optimizing the project
-toward "make the entity *seem* alive." That instinct manufactures false positives and is how a clean
-experiment contaminates itself into a flattering result. **We are measuring, not performing.**
+Failure modes we watch for, honestly: answers that never move (a dead RLHF
+echo), or answers that move incoherently (degenerate collapse). Neither is
+shameful; both are findable early via the probe, and both would redirect the
+project rather than end it.
 
-- **Minimum success condition (what counts as "the experiment ran"):** the entity reaches the
-  self-modification milestone — it proposes a change to its own guidance through the human-approved
-  pipeline, grounded in its own accumulated experience.
-- **Signal:** consistent, measured divergence of the memory-bearing entity from a memoryless
-  control, over time.
-- **Null:** indistinguishable from the control. Disappointing, valid, reported.
+The probe is the instrument, not the goal: frozen question set, no-persist
+execution, ≥3 samples per question, run at day 0 (pre-first-conversation
+baseline), 3, 7, 14, then weekly. Results stored outside the entity's memory,
+forever.
 
+Self-modification milestone: the propose→review→apply pipeline is built and
+has been exercised end-to-end with one AI-generated proposal (2026-05-09) whose
+content was operator-dictated. The milestone that still matters is an
+entity-originated proposal — guidance the entity derives from its own
+experience without being handed the content.
+[LYLE: choose one — (a) "This remains a milestone we're watching for, but it no
+longer gates anything." (b) "This milestone is retired; the pipeline is now just
+a governance feature." Write the chosen sentence, delete the other.]
 ---
 
 ## 3. Invariants — a decision may not violate these
@@ -59,9 +71,11 @@ different experiment, and must be made consciously and on the record, not by dri
    including the entity's name, self-image, and identity, which must emerge rather than be assigned.
    The self is the thing we are watching emerge; authoring it destroys the measurement.
 
-3. **Minimal, legible substrate (KISS as integrity, not preference).** Accumulated memory must be the
-   only interesting variable. Every added mechanism, capability, or piece of always-loaded content is
-   a confound. Simplicity here is experimental rigor, not engineering taste.
+3. Minimal, legible substrate (KISS as integrity). A boring, stable substrate
+is what makes the entity's growth visible and its memory trustworthy. Every
+added mechanism is more surface for bugs that corrupt memory silently, and
+more machinery future-us has to re-learn. Simplicity is how a one-person
+project stays understandable by that one person.
 
 4. **Never silently mutate the store; provenance is sacred.** Every record carries where it came from.
    The entity must always be able to distinguish what it *experienced* from what it *created* from what
@@ -70,32 +84,34 @@ different experiment, and must be made consciously and on the record, not by dri
 5. **The human operator is not ground truth.** The system surfaces conflict; it does not treat Lyle (or
    any user) as an authority to be deferred to. Conflict-flagger, not truth-arbiter.
 
-6. **Capabilities are dated, deliberate, post-baseline variables — not launch features.** Vision,
-   social, image generation, voice, avatar, and similar are *orthogonal to the thesis*. Each changes
-   the experiment (usually by adding input that can't be attributed). None completes it. The pull to
-   add them "because they're valuable" is the project's characteristic scope-creep failure mode.
-
+6. Capabilities arrive dated and deliberate, after the human-only baseline.
+Vision, Moltbook, web, voice, and similar are wanted features, not
+contamination — but each one changes what the entity is exposed to, so each
+is introduced on a recorded date, one at a time, after launch, so we can see
+what it does to the entity. Never bundled, never silent, never at launch.
 ---
 
 ## 4. What this is NOT
 
-- **Not a product.** No users to please, no feature parity to reach, no launch bar but "the substrate
-  is clean and the baseline is captured."
-- **Not an assistant.** The entity is not being built to be helpful, agreeable, or capable. It is being
-  built to *accumulate and possibly become*.
-- **Not a capability showcase.** That the model *can* do something (see images, browse, post, speak) is
-  never a reason to wire it in. Capability is orthogonal to the question being asked.
-- **Not finished when it launches.** Launch is the *start* of the only clock that matters — the entity's
-  lived time. The memory-defining work (consolidation, friction with its own past, felt time) is built
-  *by watching it accumulate*, against real data — not before, against guesses. At launch, it is
-  essentially a clean, provenanced, timestamped log. That is correct. The memory *emerges from
-  processing the log* over time.
+1. Not a commercial product. Two users, one Mac mini, no roadmap owed to
+anyone. Usability matters because we live with it, not because anyone is
+paying for it.
+
+2. Not a hand-authored character. The entity stays unnamed and un-personality'd
+by us. Helpful and pleasant to talk to, yes — scripted, no. What it becomes,
+it becomes from its memory. (Invariant 2 is unchanged and load-bearing.)
+
+3. Not a capability showcase. A feature ships because we want to live with it,
+not because the model can do it. The backlog exists so wants have somewhere to
+wait that isn't the codebase.
+4. Not finished at launch. Launch starts the only clock that matters — the
+entity's lived time. At launch it is a clean, provenanced, timestamped log
+with a day-0 probe baseline. That is correct and complete.
 
 ---
 
 ## 5. The one rule that keeps this doc honest
 
-Austerity. This file holds invariants only. It changes almost never. The moment it accumulates tasks,
-status, or churn, it has become another stale tracking doc — and the project already has the cautionary
-tale of several that drifted and disagreed. If you're tempted to edit it, ask: *has the nature of the
-project actually changed?* If not, the thing you want to write belongs in one of the other three homes.
+This system serves Lyle (admin/operator) and Jodie (household user), and exists
+because building it is fun.
+
