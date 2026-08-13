@@ -609,9 +609,10 @@ class TestAgentLoopToolCalling:
             iter(_make_text_chunks("Here is your image")),
         ]
 
+        messages = [{"role": "user", "content": "make an image"}]
         events = _collect_events(run_agent_loop(
             system_prompt="test",
-            messages=[{"role": "user", "content": "make an image"}],
+            messages=messages,
             registry=registry,
             iteration_limit=5,
             ollama_host="http://fake",
@@ -620,9 +621,20 @@ class TestAgentLoopToolCalling:
 
         tr = [e for e in events if e["type"] == "tool_result"][0]
         assert tr["ok"] is True
+        # Streamed event + card selection keep the FULL result (Commit 1 intact).
         assert tr["selection"]["kind"] == "generated_image"
         assert tr["selection"]["artifact_id"] == "artifact-xyz"
         assert tr["selection"]["preview_url"] == "/api/artifacts/artifact-xyz/file"
+        assert "preview_url" in tr["result"]  # full rendered value on the event
+
+        # Commit 2: the model-visible tool message is the MINIMAL confirmation —
+        # no preview_url/path/JSON block to imitate as a fake result later.
+        tool_msg = [m for m in messages if m.get("role") == "tool"][0]
+        assert tool_msg["content"] == (
+            "image generated; artifact_id=artifact-xyz; shown to user in the chat UI"
+        )
+        assert "preview_url" not in tool_msg["content"]
+        assert "/api/artifacts" not in tool_msg["content"]
 
     @patch("tir.engine.agent_loop.chat_completion_stream_with_tools")
     def test_failed_image_generate_emits_no_card_selection(self, mock_stream):

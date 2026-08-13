@@ -181,7 +181,7 @@ def test_image_generation_api_success_creates_generated_image_artifact(tmp_path,
     assert len(rows) == 1
     assert rows[0]["user_id"] == env["user"]["id"]
     assert "api generated image bytes" not in rows[0]["text"]
-    assert "Generation prompt (provenance metadata): browser generated media test" in rows[0]["text"]
+    assert "Prompt: browser generated media test" in rows[0]["text"]
 
     preview = env["client"].get(f"/api/artifacts/{artifact['artifact_id']}/file")
     assert preview.status_code == 200

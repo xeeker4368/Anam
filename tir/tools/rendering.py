@@ -57,6 +57,40 @@ def frame_failed_tool_message(tool_name: str, rendered: str, envelope: dict) -> 
     )
 
 
+def summarize_generated_image_result(value: dict) -> str | None:
+    """Minimal model-visible confirmation for a successful image_generate result.
+
+    The full result dict still flows to the frontend card (via the tool_result
+    event's selection), the streamed event, and the persisted trace — only the
+    text the MODEL reads is reduced. A rich JSON block (artifact_id, path, seed,
+    preview_url, prompt, ...) is a copyable template the model imitates as a fake
+    tool result on later turns; a minimal confirmation removes that template while
+    still telling the model the generation succeeded and how to refer to it.
+    """
+    if not isinstance(value, dict):
+        return None
+    if value.get("ok") is not True or not value.get("artifact_created"):
+        return None
+    artifact_id = value.get("artifact_id")
+    if not artifact_id:
+        return None
+    return f"image generated; artifact_id={artifact_id}; shown to user in the chat UI"
+
+
+def summarize_tool_result_for_model(tool_name: str, value) -> str | None:
+    """Return a minimal model-visible summary for tools whose full result is an
+    imitable template, else None (caller falls back to the full rendered text).
+
+    Media tools only, mirroring the per-tool dispatch of
+    selection_metadata_for_tool_result / frame_failed_tool_message. Reduces ONLY
+    the model-facing tool message; the structured value, stream event, card
+    selection, and trace are unchanged.
+    """
+    if tool_name == "image_generate":
+        return summarize_generated_image_result(value)
+    return None
+
+
 def summarize_tool_failure(tool_name: str, envelope: dict) -> str:
     """One-line, tool-agnostic failure summary for logging.
 

@@ -398,9 +398,47 @@ def test_generated_image_provenance_fields_are_preserved(temp_ingestion_env):
     assert len(captured) == 1
     event = captured[0]
     assert event["metadata"]["media_kind"] == "generated_image"
-    assert "Generation prompt (provenance metadata): a careful artifact provenance test" in event["text"]
+    assert "Prompt: a careful artifact provenance test" in event["text"]
     assert "Observed description (human_confirmed_description; visual interpretation, not verified fact)" in event["text"]
     assert "generated image bytes" not in event["text"]
+    # Forgeable identity fields are NOT in the indexed prose (they live in metadata
+    # / the artifact row), so the model can't imitate them as a fake result.
+    for forgeable in ("SHA256", "Stored path", "Size:", "MIME type", "Generation seed"):
+        assert forgeable not in event["text"]
+
+
+def test_event_text_slim_keeps_semantic_content_drops_forgeable_identity():
+    from tir.memory.artifact_indexing import _event_text
+
+    generation = _event_text(
+        title="A red bird",
+        artifact_id="gen-1",
+        description=None,
+        media_metadata={
+            "media_kind": "generated_image",
+            "prompt": "a red bird on a branch",
+            "seed": 99,
+            "width": 512,
+            "height": 512,
+        },
+    )
+    assert "Artifact: A red bird (id: gen-1)" in generation
+    assert "Prompt: a red bird on a branch" in generation
+    for forgeable in ("SHA256", "Stored path", "Size", "512x512", "Generation seed", "File:"):
+        assert forgeable not in generation
+
+    upload = _event_text(
+        title="Mountain photo",
+        artifact_id="up-1",
+        description="a photo of a mountain",
+        media_metadata={"observed_description": "snowy peak at sunset"},
+    )
+    # Uploads/vision keep their semantic content (description + observed).
+    assert "Artifact: Mountain photo (id: up-1)" in upload
+    assert "Description: a photo of a mountain" in upload
+    assert "snowy peak at sunset" in upload
+    for forgeable in ("SHA256", "Stored path", "Size", "File:"):
+        assert forgeable not in upload
 
 
 def test_image_binary_bytes_are_not_indexed_into_fts(temp_ingestion_env):

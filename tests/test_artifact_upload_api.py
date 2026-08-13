@@ -238,7 +238,7 @@ def test_image_upload_accepts_media_metadata_fields(upload_env):
     assert data["indexing"]["content_chunks_written"] == 0
 
     event_text = upsert_chunk.call_args_list[-1].kwargs["text"]
-    assert "Generation prompt (provenance metadata): future generated image prompt" in event_text
+    assert "Prompt: future generated image prompt" in event_text
     assert "visual interpretation, not verified fact" in event_text
     assert "screenshot raw marker" not in event_text
 

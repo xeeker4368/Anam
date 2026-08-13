@@ -182,7 +182,7 @@ Excerpt:
 
 ## Chat / agent loop
 
-### 1. `tir/engine/agent_loop.py:79` — `_format_iteration_limit_response`
+### 1. `tir/engine/agent_loop.py:80` — `_format_iteration_limit_response`
 
 - Name: `append_arg`
 - Category: Chat / agent loop
@@ -195,7 +195,7 @@ Excerpt:
 - Iteration {...}: `{...}` {...}; result preview: {...}
 ```
 
-### 2. `tir/engine/agent_loop.py:84` — `_format_iteration_limit_response`
+### 2. `tir/engine/agent_loop.py:85` — `_format_iteration_limit_response`
 
 - Name: `append_arg`
 - Category: Chat / agent loop
@@ -208,7 +208,7 @@ Excerpt:
 - Iteration {...}: `{...}` {...}.
 ```
 
-### 3. `tir/engine/agent_loop.py:92` — `_format_iteration_limit_response`
+### 3. `tir/engine/agent_loop.py:93` — `_format_iteration_limit_response`
 
 - Name: `append_arg`
 - Category: Chat / agent loop
@@ -221,7 +221,7 @@ Excerpt:
 - {...} additional tool result(s) omitted from this summary.
 ```
 
-### 4. `tir/engine/agent_loop.py:94` — `_format_iteration_limit_response`
+### 4. `tir/engine/agent_loop.py:95` — `_format_iteration_limit_response`
 
 - Name: `append_arg`
 - Category: Chat / agent loop

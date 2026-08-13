@@ -225,8 +225,13 @@ def test_successful_generation_registers_media_artifact_and_metadata(image_gener
     rows = _fts_rows(image_generation_env["working_db"])
     assert len(rows) == 1
     assert "fake generated image bytes" not in rows[0]["text"]
-    assert "Generation prompt (provenance metadata): A source-linked generated image" in rows[0]["text"]
-    assert "Generation dimensions: 768x512" in rows[0]["text"]
+    # Slim event text keeps the prompt (semantic recall) but drops forgeable
+    # identity fields (SHA256, stored path, size, dimensions) — those live in
+    # chunk metadata / media_get, not the indexed prose.
+    assert "Prompt: A source-linked generated image" in rows[0]["text"]
+    assert "SHA256" not in rows[0]["text"]
+    assert "Stored path" not in rows[0]["text"]
+    assert "Generation dimensions" not in rows[0]["text"]
     assert captured[0]["metadata"]["media_kind"] == "generated_image"
 
 

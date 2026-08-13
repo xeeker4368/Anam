@@ -29,6 +29,7 @@ from tir.tools.rendering import (
     frame_failed_tool_message,
     render_tool_envelope,
     summarize_tool_failure,
+    summarize_tool_result_for_model,
 )
 
 logger = logging.getLogger(__name__)
@@ -266,12 +267,21 @@ def run_agent_loop(
 
                 # Feed result back into conversation for next iteration. On
                 # failure the model reads explicit framing, not buried JSON, so
-                # it cannot narrate a failed tool call as a success.
-                model_content = (
-                    rendered
-                    if effective_ok
-                    else frame_failed_tool_message(tool_name, rendered, envelope)
-                )
+                # it cannot narrate a failed tool call as a success. On success,
+                # media tools return a minimal confirmation (not the full rich
+                # result) so the model can't later imitate that block as a fake
+                # tool result — the streamed event, card selection, and trace
+                # keep the full `rendered` value; only this model message is
+                # reduced.
+                if not effective_ok:
+                    model_content = frame_failed_tool_message(
+                        tool_name, rendered, envelope
+                    )
+                else:
+                    model_content = (
+                        summarize_tool_result_for_model(tool_name, envelope.get("value"))
+                        or rendered
+                    )
                 messages.append({
                     "role": "tool",
                     "tool_name": tool_name,

@@ -157,6 +157,47 @@ def test_artifact_intent_artifact_id_ranks_artifact_first():
     assert results[0]["artifact_match_field"] == "artifact_id"
 
 
+def _slimmed_artifact_chunk():
+    """An artifact chunk with the NEW slimmed event text (no 'Artifact ID:' /
+    'File:' header lines) but full metadata — mirrors what the slimmed
+    _event_text produces alongside base_metadata."""
+    return {
+        "chunk_id": "artifact-roadmap",
+        "text": "Artifact: Project Roadmap Notes (id: artifact-1234567890)\nDescription: the roadmap.",
+        "metadata": {
+            "source_type": "artifact_document",
+            "source_trust": "thirdhand",
+            "filename": "roadmap.md",
+            "title": "Project Roadmap Notes",
+            "artifact_id": "artifact-1234567890",
+            "origin": "user_upload",
+            "source_role": "uploaded_source",
+            "created_at": "2026-05-07T11:00:00+00:00",
+        },
+        "distance": 0.2,
+    }
+
+
+def test_artifact_match_uses_metadata_not_slimmed_text():
+    # Consumer-safety for the _event_text slim: _artifact_match reads
+    # metadata[artifact_id/filename/title] FIRST; the header-text fallback is only
+    # a legacy path. With slimmed text (no 'Artifact ID:'/'File:' lines) exact
+    # matching must still work via metadata for id, filename, and title.
+    for query, expected_field in [
+        ("Open artifact-1234567890", "artifact_id"),
+        ("Do you see roadmap.md?", "filename"),
+        ("Can you find Project Roadmap Notes?", "title"),
+    ]:
+        with patch(
+            "tir.memory.retrieval.query_similar",
+            return_value=[_conversation_chunk(), _slimmed_artifact_chunk()],
+        ), patch("tir.memory.retrieval.search_bm25", return_value=[]):
+            results = retrieve(query, max_results=2, artifact_intent=True)
+        assert results[0]["chunk_id"] == "artifact-roadmap", query
+        assert results[0]["artifact_exact_match"] is True, query
+        assert results[0]["artifact_match_field"] == expected_field, query
+
+
 def test_artifact_intent_false_preserves_original_ordering():
     with patch(
         "tir.memory.retrieval.query_similar",

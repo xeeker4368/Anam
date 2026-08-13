@@ -74,41 +74,44 @@ def _chunk_text(text: str, max_chars: int = CONTENT_CHUNK_CHARS) -> list[str]:
 def _event_text(
     *,
     title: str,
-    filename: str,
-    path: str,
     artifact_id: str,
-    source: str,
-    origin: str,
-    source_role: str,
-    mime_type: str | None,
-    size_bytes: int,
-    sha256: str,
     description: str | None,
     media_metadata: dict | None = None,
 ) -> str:
+    """Build the indexed, model-visible provenance text for an artifact chunk.
+
+    Deliberately SLIM: emits only non-forgeable, semantic/recall content — the
+    title, the artifact id, and the content descriptor (generation prompt, or an
+    upload's description / observed visual interpretation). It does NOT emit the
+    forgeable identity fields (stored path, SHA256, byte size, filename, or the
+    multi-line provenance-block layout): those read as an authoritative
+    tool-result block and let the model imitate a FAKE generation result in prose
+    (fabricated artifact_id/path/SHA with no real tool call).
+
+    This affects only the indexed chunk TEXT. All dropped fields remain in the
+    chunk metadata (base_metadata) and/or the artifact DB row and are recallable
+    via media_get; retrieval ranking reads metadata, not this text. Applies to
+    ALL artifact types (uploads/screenshots/generations), keeping each type's
+    semantic content. See PLAN-2026-08-12-imagegen-confabulation-fix.md.
+    """
     media_metadata = media_metadata or {}
-    lines = [
-        f"Artifact source: {title}",
-        f"Artifact ID: {artifact_id}",
-        f"File: {filename}",
-        f"Stored path: {path}",
-        f"Source: {source}",
-        f"Origin: {display_origin(origin)}",
-        f"Source role: {display_source_role(source_role)}",
-        f"MIME type: {mime_type or 'unknown'}",
-        f"Size: {size_bytes} bytes",
-        f"SHA256: {sha256}",
-    ]
-    media_kind = media_metadata.get("media_kind")
-    if media_kind:
-        lines.append(f"Media kind: {media_kind}")
-        if description:
+    lines = [f"Artifact: {title} (id: {artifact_id})"]
+
+    prompt = media_metadata.get("prompt")
+    if prompt:
+        lines.append(f"Prompt: {prompt}")
+    negative_prompt = media_metadata.get("negative_prompt")
+    if negative_prompt:
+        lines.append(f"Negative prompt: {negative_prompt}")
+
+    if description:
+        if media_metadata.get("media_kind"):
             lines.append(
                 "Description (artifact metadata, not raw image content): "
                 f"{description}"
             )
-    elif description:
-        lines.append(f"Description: {description}")
+        else:
+            lines.append(f"Description: {description}")
 
     observed_description = media_metadata.get("observed_description")
     if observed_description:
@@ -121,36 +124,6 @@ def _event_text(
             f"({uncertainty}; visual interpretation, not verified fact): "
             f"{observed_description}"
         )
-    prompt = media_metadata.get("prompt")
-    if prompt:
-        lines.append(f"Generation prompt (provenance metadata): {prompt}")
-    negative_prompt = media_metadata.get("negative_prompt")
-    if negative_prompt:
-        lines.append(f"Negative prompt (provenance metadata): {negative_prompt}")
-    generation_backend = media_metadata.get("generation_backend")
-    generation_model = media_metadata.get("generation_model")
-    workflow_name = media_metadata.get("workflow_name")
-    workflow_id = media_metadata.get("workflow_id")
-    if generation_backend:
-        lines.append(f"Generation backend: {generation_backend}")
-    if generation_model:
-        lines.append(f"Generation model: {generation_model}")
-    if workflow_name:
-        lines.append(f"Generation workflow: {workflow_name}")
-    if workflow_id:
-        lines.append(f"Generation workflow ID: {workflow_id}")
-    if media_metadata.get("seed") not in {None, ""}:
-        lines.append(f"Generation seed: {media_metadata.get('seed')}")
-    if media_metadata.get("width") and media_metadata.get("height"):
-        lines.append(
-            "Generation dimensions: "
-            f"{media_metadata.get('width')}x{media_metadata.get('height')}"
-        )
-    interpretation_source = media_metadata.get("interpretation_source")
-    if interpretation_source:
-        lines.append(f"Interpretation source: {interpretation_source}")
-    if "human_confirmed" in media_metadata:
-        lines.append(f"Human confirmed: {bool(media_metadata.get('human_confirmed'))}")
     return "\n".join(lines)
 
 
@@ -257,15 +230,7 @@ def index_artifact_file(
             chunk_id=f"artifact_{artifact_id}_event",
             text=_event_text(
                 title=title,
-                filename=filename,
-                path=path,
                 artifact_id=artifact_id,
-                source=source,
-                origin=origin,
-                source_role=source_role,
-                mime_type=mime_type,
-                size_bytes=size_bytes,
-                sha256=sha256,
                 description=description,
                 media_metadata=media_metadata,
             ),
