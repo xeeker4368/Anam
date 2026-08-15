@@ -42,6 +42,39 @@ function ArtifactCard({ card }) {
   )
 }
 
+// Rebuilds a persisted message's artifact cards from its stored tool_trace.
+// Same source of truth as the live stream: a card comes ONLY from a structured
+// tool_results[].selection of kind "generated_image", never from message text.
+// Fail-safe-empty — a missing, unparseable, or malformed trace yields no cards
+// rather than a broken or invented one.
+function artifactsFromToolTrace(message) {
+  const raw = message && message.tool_trace
+  if (!raw) return []
+
+  let records
+  try {
+    records = typeof raw === 'string' ? JSON.parse(raw) : raw
+  } catch {
+    return []
+  }
+  if (!Array.isArray(records)) return []
+
+  const cards = []
+  records.forEach(record => {
+    if (!record || typeof record !== 'object') return
+    const results = record.tool_results
+    if (!Array.isArray(results)) return
+    results.forEach(result => {
+      if (!result || typeof result !== 'object') return
+      const selection = result.selection
+      if (selection && selection.kind === 'generated_image') {
+        cards.push(selection)
+      }
+    })
+  })
+  return cards
+}
+
 function draftStorageKey(userId, conversationId) {
   return `anam.chatDraft.${userId || 'unknown'}.${conversationId || 'new'}`
 }
@@ -357,6 +390,7 @@ function Chat({
         content: m.content,
         timestamp: m.timestamp,
         persisted: true,
+        artifacts: artifactsFromToolTrace(m),
       }))
       setMessages(prev => {
         const sameConversation = messagesConversationIdRef.current === convId
