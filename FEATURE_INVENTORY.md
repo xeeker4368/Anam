@@ -276,3 +276,6 @@ This session found three false "Completed" claims (context size, Ctrl+C, image-g
 default) because governance rules weren't loading until `CLAUDE.md` was added. Trust
 code over any doc checkbox for safety/data-integrity-relevant items. Keep this file
 current as work ships; do not spawn another roadmap to replace it.
+
+- [x] **Automated off-drive backup of runtime memory** — DONE 2026-08-13 via
+  launchd (`com.anam.backup`), destination `~/Backups/Anam`.
