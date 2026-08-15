@@ -100,6 +100,79 @@ def _selection_trace():
 @patch("tir.api.routes.retrieve")
 @patch("tir.api.routes._resolve_user")
 @patch("tir.api.routes.run_agent_loop")
+def test_stream_chat_fabricated_tool_result_is_replaced_and_not_persisted(
+    mock_loop,
+    mock_resolve_user,
+    mock_retrieve,
+    mock_update_last_seen,
+    mock_start_conversation,
+    mock_get_messages,
+    mock_save_message,
+    mock_checkpoint_conversation,
+):
+    # Model narrates a fake artifact block with ZERO tool calls (the confirmed
+    # fabrication). The gate must: (1) flush the honest message, not the block;
+    # (2) persist the honest message, not the fabrication; (3) flag the trace.
+    fabricated = (
+        "[Artifact source: anam_generated_00013_.png]\n"
+        "Artifact ID: 9b8c7d6e-5f4a-3b2c-1d0e-9f8a7b6c5d4e\n"
+        "Stored path: generated/2026/08/12/9b8c7d6e/anam_generated_00013_.png\n"
+        "SHA256: a1b2c3d4"
+    )
+    app.state.registry = FakeRegistry(has_tools=True)
+    mock_resolve_user.return_value = _fake_user()
+    mock_start_conversation.return_value = "conv-1"
+    mock_retrieve.return_value = []
+    mock_save_message.side_effect = [
+        _fake_message("user", "make a solar eclipse", "msg-user"),
+        _fake_message("assistant", "honest", "msg-assistant"),
+    ]
+    mock_get_messages.return_value = [_fake_message("user", "make a solar eclipse", "msg-user")]
+    mock_loop.return_value = iter([
+        {"type": "token", "content": fabricated},
+        {
+            "type": "done",
+            "result": FakeLoopResult(
+                final_content=fabricated,
+                tool_trace=[],
+                terminated_reason="complete",
+                iterations=1,
+            ),
+        },
+    ])
+
+    client = TestClient(app)
+    response = client.post("/api/chat/stream", json={"text": "make a solar eclipse"})
+    events = _stream_lines(response)
+
+    honest = (
+        "I wasn't able to generate that image — nothing was actually created. "
+        "Want me to try again?"
+    )
+    # (1) The client receives the honest message, never the fabricated block.
+    token_text = "".join(e["content"] for e in events if e["type"] == "token")
+    assert token_text == honest
+    assert "SHA256" not in token_text
+    assert "Artifact ID" not in token_text
+    # (2) The persisted assistant message is the honest correction, not the block.
+    assistant_save = mock_save_message.call_args_list[-1]
+    assert assistant_save.args[2] == "assistant"
+    assert assistant_save.args[3] == honest
+    assert "SHA256" not in assistant_save.args[3]
+    # (3) The debug trace flags the gate (in the timings bag, beside tool_call_count).
+    debug_update = [e for e in events if e["type"] == "debug_update"][0]
+    assert debug_update["timings"]["fabrication_gate_triggered"] == "media_artifact"
+    assert debug_update["timings"]["tool_call_count"] == 0
+
+
+@patch("tir.api.routes.checkpoint_conversation")
+@patch("tir.api.routes.save_message")
+@patch("tir.api.routes.get_conversation_messages")
+@patch("tir.api.routes.start_conversation")
+@patch("tir.api.routes.update_user_last_seen")
+@patch("tir.api.routes.retrieve")
+@patch("tir.api.routes._resolve_user")
+@patch("tir.api.routes.run_agent_loop")
 def test_stream_chat_no_tool_path_preserves_basic_events(
     mock_loop,
     mock_resolve_user,

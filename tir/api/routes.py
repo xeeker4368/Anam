@@ -69,6 +69,10 @@ from tir.engine.context import (
     is_greeting,
 )
 from tir.engine.agent_loop import run_agent_loop
+from tir.engine.fabrication_gate import (
+    detect_fabricated_tool_result,
+    honest_fabrication_message,
+)
 from tir.engine.context_budget import (
     AUTO_RETRIEVAL_RESULTS,
     PROMPT_BUDGET_WARNING_CHARS,
@@ -909,12 +913,34 @@ def stream_chat(req: ChatRequest):
         assistant_msg = None
         assistant_content = ""
         should_persist_assistant = False
+        fabrication_gate_category = None
         if loop_result is None:
             logger.warning(
                 "Agent loop returned no result; no assistant message was persisted"
             )
         elif loop_result.terminated_reason == "complete":
             assistant_content = loop_result.final_content or ""
+            # Fabrication gate: the model produced a tool-result-shaped response
+            # (e.g. a fake artifact block) without ever calling the tool
+            # (tool_call_count == 0). Fail honestly and do NOT persist the
+            # fabrication — persisting it re-poisons context for the next turn.
+            # Replaces the buffered token stream (nothing has flushed yet).
+            fabrication_gate_category = detect_fabricated_tool_result(
+                assistant_content, tool_call_count
+            )
+            if fabrication_gate_category:
+                logger.warning(
+                    "Fabrication gate triggered (category=%s): model narrated a "
+                    "'%s' tool result with zero tool calls; replacing with honest "
+                    "message and not persisting the fabrication.",
+                    fabrication_gate_category,
+                    fabrication_gate_category,
+                )
+                assistant_content = honest_fabrication_message(fabrication_gate_category)
+                buffered_events = [
+                    event for event in buffered_events if event.get("type") != "token"
+                ]
+                buffered_events.append({"type": "token", "content": assistant_content})
             should_persist_assistant = bool(assistant_content.strip())
             combined_tool_trace = prefetch_tool_trace + (loop_result.tool_trace or [])
             if should_persist_assistant and combined_tool_trace:
@@ -969,6 +995,7 @@ def stream_chat(req: ChatRequest):
         post_model_timings = {
             "agent_loop_total_ms": agent_loop_total_ms,
             "tool_call_count": tool_call_count,
+            "fabrication_gate_triggered": fabrication_gate_category,
             "url_prefetch_ms": url_prefetch_ms,
             "save_assistant_message_ms": save_assistant_message_ms,
             "chunking_ms": chunking_ms,
@@ -1004,6 +1031,7 @@ def stream_chat(req: ChatRequest):
             "history_message_count": len(model_messages),
             "history_db_message_count": history_db_message_count,
             "tool_call_count": tool_call_count,
+            "fabrication_gate_triggered": fabrication_gate_category,
             "loop_iterations": (
                 loop_result.iterations
                 if loop_result is not None
