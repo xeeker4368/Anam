@@ -50,9 +50,17 @@ has been exercised end-to-end with one AI-generated proposal (2026-05-09) whose
 content was operator-dictated. The milestone that still matters is an
 entity-originated proposal — guidance the entity derives from its own
 experience without being handed the content.
-[LYLE: choose one — (a) "This remains a milestone we're watching for, but it no
-longer gates anything." (b) "This milestone is retired; the pipeline is now just
-a governance feature." Write the chosen sentence, delete the other.]
+
+Self-modification milestone: the propose→review→apply pipeline is built and
+has been exercised end-to-end with one AI-generated proposal (2026-05-09)
+whose content was operator-dictated. The milestone that still matters is an
+entity-originated proposal — guidance the entity derives from its own
+experience without being handed the content. We're still watching for that,
+and it'll be genuinely interesting if it happens. But this project doesn't
+have a "done" state to gate — it's meant to keep growing for as long as it's
+fun to keep growing it. This milestone doesn't unlock anything or mark
+anything finished; it's one more thing worth noticing, same as everything
+else here.
 ---
 
 ## 3. Invariants — a decision may not violate these

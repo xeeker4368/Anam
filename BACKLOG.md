@@ -55,3 +55,17 @@
   - Known gap: `cmd_backup` still has no try/except (raw traceback on failure,
     not a clean error) — if the scheduled job ever fails, the log will show a
     traceback rather than a readable message. Still on the bug list, unfixed.
+
+## Self-image / vision sequencing
+
+- Self-image work should be sequenced with at least basic vision (Option A —
+  captioning/extraction to text, per the existing plan), not before it.
+  Reasoning (from a 2026-08-14 conversation): without any way to perceive a
+  generated result, "the entity chose this image" and "the entity described
+  something and never checked it against the outcome" are indistinguishable —
+  a choice that can't be verified against its own result is a thinner claim
+  than one that can. Vision closes that specific gap; it does NOT by itself
+  resolve whether a stated self-image preference is durable vs. a one-off
+  fluent answer — that still needs the same repeated-question-over-time
+  discipline the identity probe already uses. Both are probably wanted
+  eventually; this note is about sequencing, not about whether to do either.
