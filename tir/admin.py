@@ -16,6 +16,8 @@ Commands:
     memory-repair    Repair ended unchunked conversations
     memory-checkpoint-active
                     Checkpoint active conversations into retrieval
+    artifact-backfill
+                    Re-render pre-slim artifact event chunks (dry run by default)
     backup           Back up runtime state
     restore          Restore runtime state from a backup
     backup-restore-verify
@@ -68,6 +70,7 @@ from tir.memory.db import (
     upsert_channel_auth,
     update_user_role,
 )
+from tir.memory.artifact_backfill import backfill_artifact_event_chunks
 from tir.memory.audit import (
     audit_memory_integrity,
     checkpoint_active_conversations,
@@ -379,6 +382,55 @@ def _print_memory_checkpoint_active(summary: dict):
             print(f"  {failure['conversation_id']}: {failure['error']}")
 
 
+def _print_artifact_backfill(summary: dict):
+    """Print a readable artifact event chunk backfill summary."""
+    print("Artifact event chunk backfill")
+    print(f"Dry run: {summary['dry_run']}")
+    print(f"Event chunks scanned: {summary['scanned']}")
+    print(f"Already slim (skipped, not candidates): {summary['already_slim']}")
+    print(f"Old-shape candidates: {summary['eligible']}")
+    if summary["limit"] is not None:
+        print(f"Processed (limit {summary['limit']}): {summary['processed']}")
+
+    verb = "Would rewrite" if summary["dry_run"] else "Rewritten"
+    print(f"{verb}: {summary['rewritten']}")
+    print(f"Unchanged: {summary['unchanged']}")
+    print(f"Skipped: {summary['skipped']}")
+    print(f"Failed: {summary['failed']}")
+
+    before = summary["counts_before"]
+    after = summary["counts_after"]
+    print(
+        "Chroma documents: "
+        f"{before['chroma_documents']} -> {after['chroma_documents']}"
+    )
+    print(f"FTS rows: {before['fts_rows']} -> {after['fts_rows']}")
+    if (
+        before["chroma_documents"] != after["chroma_documents"]
+        or before["fts_rows"] != after["fts_rows"]
+    ):
+        print("WARNING: chunk counts changed. This run should only change text.")
+
+    for entry in summary["entries"]:
+        status = entry["status"]
+        if status in {"skipped", "failed"}:
+            print(f"\n[{status}] {entry['chunk_id']} — {entry.get('reason', '')}")
+            continue
+        if status == "unchanged":
+            print(f"\n[unchanged] {entry['chunk_id']}")
+            continue
+        print(
+            f"\n[{status}] {entry['chunk_id']} "
+            f"({entry['old_chars']} -> {entry['new_chars']} chars)"
+        )
+        print("  --- old text ---")
+        for line in entry["old_text"].splitlines():
+            print(f"  | {line}")
+        print("  --- new text ---")
+        for line in entry["new_text"].splitlines():
+            print(f"  | {line}")
+
+
 def _print_backup_summary(summary: dict):
     """Print a readable backup summary."""
     manifest = summary["manifest"]
@@ -532,6 +584,15 @@ def cmd_memory_checkpoint_active(args):
         dry_run=args.dry_run,
     )
     _print_memory_checkpoint_active(summary)
+
+
+def cmd_artifact_backfill(args):
+    """Re-render pre-slim artifact event chunks in place."""
+    summary = backfill_artifact_event_chunks(
+        dry_run=not args.apply,
+        limit=args.limit,
+    )
+    _print_artifact_backfill(summary)
 
 
 def cmd_backup(args):
@@ -1522,6 +1583,21 @@ def main():
     p.add_argument("--limit", type=int, default=None, help="Max conversations to checkpoint")
     p.add_argument("--dry-run", action="store_true", help="Report checkpoint targets only")
 
+    # artifact-backfill
+    # Note: dry run is the DEFAULT here and writing is opt-in via --apply, which
+    # inverts the --dry-run convention used by memory-repair above. Deliberate:
+    # this command rewrites stored memory text, so the safe mode is the default.
+    p = sub.add_parser(
+        "artifact-backfill",
+        help="Re-render pre-slim artifact event chunks (dry run by default)",
+    )
+    p.add_argument("--limit", type=int, default=None, help="Max chunks to process")
+    p.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write the re-rendered text (default is dry run, writes nothing)",
+    )
+
     # backup
     p = sub.add_parser("backup", help="Back up runtime state")
     p.add_argument(
@@ -1973,6 +2049,7 @@ def main():
         "memory-audit": cmd_memory_audit,
         "memory-repair": cmd_memory_repair,
         "memory-checkpoint-active": cmd_memory_checkpoint_active,
+        "artifact-backfill": cmd_artifact_backfill,
         "backup": cmd_backup,
         "restore": cmd_restore,
         "backup-restore-verify": cmd_backup_restore_verify,
