@@ -18,6 +18,8 @@ Commands:
                     Checkpoint active conversations into retrieval
     artifact-backfill
                     Re-render pre-slim artifact event chunks (dry run by default)
+    artifact-orphan-purge
+                    Delete leaked artifact chunks with no artifacts row (dry run by default)
     backup           Back up runtime state
     restore          Restore runtime state from a backup
     backup-restore-verify
@@ -71,6 +73,7 @@ from tir.memory.db import (
     update_user_role,
 )
 from tir.memory.artifact_backfill import backfill_artifact_event_chunks
+from tir.memory.artifact_orphan_purge import purge_orphan_artifact_chunks
 from tir.memory.audit import (
     audit_memory_integrity,
     checkpoint_active_conversations,
@@ -431,6 +434,53 @@ def _print_artifact_backfill(summary: dict):
             print(f"  | {line}")
 
 
+def _print_artifact_orphan_purge(summary: dict):
+    """Print a readable orphan artifact chunk purge summary."""
+    print("Orphan artifact chunk purge")
+    print(f"Dry run: {summary['dry_run']}")
+    print(f"Artifact chunks scanned: {summary['scanned']}")
+    print(f"With an artifacts row (kept): {summary['has_artifact_row']}")
+    print(f"Orphaned (no artifacts row): {summary['orphans_found']}")
+    print(f"Needs review (NOT deleted): {summary['needs_review']}")
+    print(f"Deletable: {summary['deletable']}")
+    if summary["limit"] is not None:
+        print(f"Processed (limit {summary['limit']}): {summary['processed']}")
+
+    verb = "Would delete" if summary["dry_run"] else "Deleted"
+    print(f"{verb}: {summary['deleted'] if not summary['dry_run'] else summary['processed']}")
+    if not summary["dry_run"]:
+        print(f"Partial (one store only): {summary['partial']}")
+        print(f"Failed: {summary['failed']}")
+
+    before = summary["counts_before"]
+    after = summary["counts_after"]
+    print(
+        "Chroma documents: "
+        f"{before['chroma_documents']} -> {after['chroma_documents']}"
+    )
+    print(f"FTS rows: {before['fts_rows']} -> {after['fts_rows']}")
+    if before["fts_rows"] != after["fts_rows"]:
+        print("WARNING: FTS row count changed. Expected Chroma-only deletions.")
+    if summary["partial"]:
+        print("WARNING: partial deletions occurred. See the entries below.")
+
+    for entry in summary["entries"]:
+        status = entry["status"]
+        line = (
+            f"\n[{status}] {entry['chunk_id']}\n"
+            f"  artifact_id: {entry['artifact_id']}\n"
+            f"  title:       {entry['title']!r}\n"
+            f"  created_at:  {entry['created_at']}\n"
+            f"  chunk_kind:  {entry['chunk_kind']}"
+        )
+        if entry.get("reason"):
+            line += f"\n  reason:      {entry['reason']}"
+        if entry.get("text_preview"):
+            preview = entry["text_preview"].replace("\n", " | ")
+            line += f"\n  text:        {preview}"
+        print(line)
+
+
 def _print_backup_summary(summary: dict):
     """Print a readable backup summary."""
     manifest = summary["manifest"]
@@ -593,6 +643,15 @@ def cmd_artifact_backfill(args):
         limit=args.limit,
     )
     _print_artifact_backfill(summary)
+
+
+def cmd_artifact_orphan_purge(args):
+    """Delete leaked artifact chunks that have no artifacts row."""
+    summary = purge_orphan_artifact_chunks(
+        dry_run=not args.apply,
+        limit=args.limit,
+    )
+    _print_artifact_orphan_purge(summary)
 
 
 def cmd_backup(args):
@@ -1598,6 +1657,19 @@ def main():
         help="Write the re-rendered text (default is dry run, writes nothing)",
     )
 
+    # artifact-orphan-purge
+    # Dry run is the default here too; --apply opts into an IRREVERSIBLE delete.
+    p = sub.add_parser(
+        "artifact-orphan-purge",
+        help="Delete leaked artifact chunks with no artifacts row (dry run by default)",
+    )
+    p.add_argument("--limit", type=int, default=None, help="Max chunks to process")
+    p.add_argument(
+        "--apply",
+        action="store_true",
+        help="Delete the selected chunks (default is dry run, deletes nothing)",
+    )
+
     # backup
     p = sub.add_parser("backup", help="Back up runtime state")
     p.add_argument(
@@ -2050,6 +2122,7 @@ def main():
         "memory-repair": cmd_memory_repair,
         "memory-checkpoint-active": cmd_memory_checkpoint_active,
         "artifact-backfill": cmd_artifact_backfill,
+        "artifact-orphan-purge": cmd_artifact_orphan_purge,
         "backup": cmd_backup,
         "restore": cmd_restore,
         "backup-restore-verify": cmd_backup_restore_verify,

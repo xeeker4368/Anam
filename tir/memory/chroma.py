@@ -272,6 +272,34 @@ def delete_chunks_by_prefix(
         logger.info(f"Deleted {len(matching)} chunks with prefix '{prefix[:12]}...'")
 
 
+def delete_chunks_by_ids(
+    ids: list[str],
+    chroma_path: str | None = None,
+) -> dict[str, bool]:
+    """Delete chunks by exact id, verifying each removal by re-reading.
+
+    Returns {chunk_id: removed?} — one entry per requested id.
+
+    The verification is not defensive padding. `collection.delete()` reports
+    `{"deleted": 1}` even for an id that does not exist and was not deleted
+    (measured against the vendored chromadb), so its return value cannot
+    distinguish "removed it" from "there was nothing to remove" from "the write
+    did not land". The only trustworthy signal is reading the id back and
+    finding nothing, which is what this does.
+
+    Deletes one id at a time so the caller can attribute an outcome to a
+    specific chunk. Exceptions propagate; the caller decides the error policy.
+    """
+    collection = _get_collection(chroma_path)
+
+    removed = {}
+    for chunk_id in ids:
+        collection.delete(ids=[chunk_id])
+        remaining = collection.get(ids=[chunk_id], include=[])
+        removed[chunk_id] = not (remaining.get("ids") or [])
+    return removed
+
+
 # ---------------------------------------------------------------------------
 # Query
 # ---------------------------------------------------------------------------
