@@ -17,9 +17,24 @@ import logging
 import requests
 import chromadb
 
-from tir.config import CHROMA_DIR, EMBED_MODEL, EXPECTED_EMBEDDING_DIM, OLLAMA_HOST
+from tir import config
+from tir.config import EMBED_MODEL, EXPECTED_EMBEDDING_DIM, OLLAMA_HOST
 
 logger = logging.getLogger(__name__)
+
+# Compatibility alias only — a snapshot taken at import time.
+# NOTHING in this module resolves a store path through it: `from tir.config
+# import CHROMA_DIR` binds a *separate* name here, so patching
+# `tir.config.CHROMA_DIR` would never reach it and every chroma_path default
+# would keep pointing at the real store (this is exactly how the test suite
+# came to write into data/prod). Path resolution goes through
+# `_resolve_chroma_path()` below, which reads `config.CHROMA_DIR` at call time.
+CHROMA_DIR = config.CHROMA_DIR
+
+
+def _resolve_chroma_path(chroma_path: str | None) -> str:
+    """Return the explicit path, else the CURRENT configured store path."""
+    return chroma_path if chroma_path is not None else config.CHROMA_DIR
 
 # Single source of truth for the collection identity, shared by the live
 # accessor and the go-live empty/teardown seam below.
@@ -32,21 +47,32 @@ COLLECTION_METADATA = {"hnsw:space": "cosine"}
 
 _client = None
 _collection = None
+_collection_path = None
 
 
 class EmbeddingDimensionError(ValueError):
     """Raised when an embedding cannot be safely stored in ChromaDB."""
 
 
-def _get_collection(chroma_path: str = CHROMA_DIR) -> chromadb.Collection:
-    """Get or create the tir_memory collection. Cached after first call."""
-    global _client, _collection
-    if _collection is None:
-        _client = chromadb.PersistentClient(path=chroma_path)
+def _get_collection(chroma_path: str | None = None) -> chromadb.Collection:
+    """Get or create the tir_memory collection, cached per store path.
+
+    The cache is keyed on the path it was bound to. Previously the cache was
+    unconditional, so once anything had opened a collection the `chroma_path`
+    argument was silently discarded — a caller asking for store B could be
+    handed store A's collection. Rebinding on a changed path makes the argument
+    an instruction rather than a suggestion. Production uses exactly one path,
+    so this never rebinds there.
+    """
+    global _client, _collection, _collection_path
+    resolved = _resolve_chroma_path(chroma_path)
+    if _collection is None or _collection_path != resolved:
+        _client = chromadb.PersistentClient(path=resolved)
         _collection = _client.get_or_create_collection(
             name=COLLECTION_NAME,
             metadata=COLLECTION_METADATA,
         )
+        _collection_path = resolved
         logger.info(
             f"ChromaDB collection 'tir_memory' ready, {_collection.count()} chunks"
         )
@@ -55,9 +81,10 @@ def _get_collection(chroma_path: str = CHROMA_DIR) -> chromadb.Collection:
 
 def reset_client():
     """Reset the cached client. Used in tests and after path changes."""
-    global _client, _collection
+    global _client, _collection, _collection_path
     _client = None
     _collection = None
+    _collection_path = None
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +184,7 @@ def upsert_chunk(
     text: str,
     metadata: dict,
     embedding: list[float] | None = None,
-    chroma_path: str = CHROMA_DIR,
+    chroma_path: str | None = None,
     ollama_host: str = OLLAMA_HOST,
 ):
     """
@@ -172,7 +199,8 @@ def upsert_chunk(
         metadata: Dict of metadata (conversation_id, source_type, etc.).
             All values must be str, int, float, or bool — no None values.
         embedding: Pre-computed embedding, or None to compute here.
-        chroma_path: Path to ChromaDB persistent store.
+        chroma_path: Path to ChromaDB persistent store, or None for the
+            currently configured store.
         ollama_host: Ollama server URL.
     """
     if embedding is None:
@@ -194,7 +222,7 @@ def upsert_chunk(
 def delete_chunk_records_by_index(
     conversation_id: str,
     chunk_index: int,
-    chroma_path: str = CHROMA_DIR,
+    chroma_path: str | None = None,
 ):
     """Delete every chunk record for one (conversation_id, chunk_index).
 
@@ -219,7 +247,7 @@ def delete_chunk_records_by_index(
 
 def delete_chunks_by_prefix(
     prefix: str,
-    chroma_path: str = CHROMA_DIR,
+    chroma_path: str | None = None,
 ):
     """
     Delete all chunks whose ID starts with prefix.
@@ -251,7 +279,7 @@ def delete_chunks_by_prefix(
 def query_similar(
     query_text: str,
     n_results: int = 30,
-    chroma_path: str = CHROMA_DIR,
+    chroma_path: str | None = None,
     ollama_host: str = OLLAMA_HOST,
 ) -> list[dict]:
     """
@@ -304,13 +332,13 @@ def query_similar(
     return chunks
 
 
-def get_collection_count(chroma_path: str = CHROMA_DIR) -> int:
+def get_collection_count(chroma_path: str | None = None) -> int:
     """Return the number of chunks in the collection."""
     collection = _get_collection(chroma_path)
     return collection.count()
 
 
-def empty_collection(chroma_path: str = CHROMA_DIR) -> dict:
+def empty_collection(chroma_path: str | None = None) -> dict:
     """Empty the vector collection by deleting and recreating it empty.
 
     This is the "empty" half of an empty + repopulate seam: a future
@@ -320,7 +348,7 @@ def empty_collection(chroma_path: str = CHROMA_DIR) -> dict:
     The module-level client cache is reset afterward so the next accessor
     reopens against the freshly recreated (empty) collection.
     """
-    client = chromadb.PersistentClient(path=chroma_path)
+    client = chromadb.PersistentClient(path=_resolve_chroma_path(chroma_path))
     try:
         existing = client.get_or_create_collection(
             name=COLLECTION_NAME,
