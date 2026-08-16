@@ -1,102 +1,96 @@
-# ACTIVE_TASK.md
+# Task (draft — promote to ACTIVE_TASK.md after the test-isolation patch is committed)
 
-## Current Active Area
+# Task: Purge the orphaned `fake-output.png` event chunks from the live store
 
-Pre-go-live cleanup and stabilization.
+## Context
 
-The project is no longer primarily adding features. Current work is reducing frontend refresh/state complexity, cleaning small correctness issues, and preparing for final go-live reset/config/smoke testing.
+The test suite spent roughly seven weeks writing fixture chunks into
+`data/prod/chromadb`. That leak is now fixed and guarded
+(`PLAN-2026-08-16-chroma-test-isolation.md`, changelog
+`2026-08-16-chroma-test-isolation.md`): a full suite run leaves the production
+store byte-identical, verified twice against an isolated tree. **The store no
+longer grows — but nothing was removed.** This task removes what accumulated.
 
-## Just Completed
+`PLAN-2026-08-15-artifact-backfill.md` deliberately skipped these chunks rather
+than re-rendering them (`reason: no_artifact_row`): they cannot be re-derived,
+because there is no source row to re-derive from. Deleting is the correct
+treatment where re-rendering was not — they are test output that was never
+anyone's experience, so removing them protects the raw stream rather than
+eroding it.
 
-Completed patch:
-- `Frontend Hook Stability + Refresh Narrowing v1`
-- Commit: `5407e2a`
+**Sequencing is load-bearing and already satisfied:** the leak fix must be
+committed first, or the store refills on the next `pytest` run.
 
-Changes:
-- Stabilized App.jsx refresh callbacks.
-- Fixed App.jsx hook dependency warnings.
-- Split artifact/open-loop refresh paths.
-- Chat completion refreshes conversations only.
-- Upload/image generation refreshes artifacts only.
-- Removed leftover `console.log('Closed:', data)`.
-- Build/lint/diff-check passed.
+## Measured target set (2026-08-16, read-only)
 
-Recent completed major features:
-- Web UI polish.
-- iPhone/mobile fixes.
-- LAN startup and cleanup hardening.
-- Chat-callable media tools.
-- Image generation UI/API/CLI.
-- Scheduler/nightly tick.
-- Local runtime tooling hygiene.
-- Backup/restore verification and restore hardening.
+| measure | value |
+|---|---|
+| Chroma documents total | 305 |
+| `artifact_*_event` chunks | 71 |
+| **orphaned (no `artifacts` row)** | **50** |
+| of those, pre-slim old shape | 34 |
+| distinct titles among orphans | **1** — `fake-output.png` |
+| orphans present in FTS | **0** — this is a Chroma-only delete |
+| created_at range | 2026-06-25 → 2026-08-15 |
 
-## Immediate Next Steps
+Every orphan is the `FakeBackend` fixture from `tests/test_image_generation.py`.
+Expected end state: 305 → 255 documents, 71 → 21 event chunks, FTS unchanged at
+255 rows.
 
-1. Manually verify latest frontend cleanup:
-   - one browser tab only
-   - send chat message
-   - confirm chat completion does not refresh health/artifacts/open-loops
-   - switch tabs idle and during stream
-   - verify no user-visible issue
+## Mode
 
-2. Run:
-   ```bash
-   cd "/Volumes/Dock Storage/Anam"
-   git status --short
-   git log --oneline -8
-   git push
-   ```
+PLAN MODE. Investigate, then produce `PLAN-<date>-orphan-chunk-purge.md` in the
+same format as the previous two plans (NORTH_STAR check, exact diff scope, open
+questions, out-of-scope list). Paste the plan back before writing code.
 
-3. Next recommended implementation patch:
-   - `Pre-Go-Live Small Correctness Cleanup v1`
+## Investigate and answer in the plan (do not assume)
 
-   Scope:
-   - Deduplicate greeting detection.
-   - Fix scheduler `pre_live_or_live` hardcode.
-   - Add warning log for no assistant persistence.
-   - Add clarifying comments for scheduler future image/Moltbook settings.
+1. **Selector safety.** Define the delete selector and prove it cannot match a
+   real record. "No `artifacts` row" is the necessary condition; is
+   `title == "fake-output.png"` a useful *additional* guard, or does requiring it
+   risk leaving genuine orphans behind? State which is primary. Re-measure at
+   run time rather than trusting the numbers above — the store is live.
+2. **Are there orphaned artifact *content* chunks too?** Today's count says the
+   50 orphans are all `chunk_kind=event` and `artifact_document` chunks total
+   162. Confirm whether any `artifact_*_chunk_N` records are also orphaned, and
+   whether they belong in this purge or need separate treatment.
+3. **Deletion mechanism.** `tir/memory/chroma.py` already has
+   `delete_chunks_by_prefix` and `delete_chunk_records_by_index`; neither fits an
+   id-list delete. Decide between a new narrow helper and calling
+   `collection.delete(ids=[...])` from a maintenance module. Cite the actual
+   implementations — and note that `_get_collection` now rebinds on a changed
+   path, so a maintenance command can target a store explicitly.
+4. **FTS symmetry.** Measured today: zero orphans have FTS rows, so this is
+   Chroma-only. Re-verify at run time and state what happens if that changes —
+   an orphan *with* an FTS row must not be half-deleted.
+5. **Does anything reference these chunk ids?** Check `tool_trace`, message
+   content, and the artifact card hydration path before deleting. If a real
+   conversation references a fabricated artifact id, deleting the chunk does not
+   remove that reference — state the consequence rather than discovering it later.
 
-4. Then plan:
-   - `Runtime Tracked File Hygiene — PLAN ONLY`
+## Requirements
 
-5. Then:
-   - `Chat Pending Merge Identity Fix — PLAN ONLY`
+- **Dry run is the default**, `--apply` opts into writing — same shape as
+  `artifact-backfill`.
+- **Back up first** (`python -m tir.admin backup`). Not git-recoverable.
+- **Report every id deleted**, with title and created_at — no silent bulk delete.
+- **Before/after counts** for both stores; FTS must be unchanged.
+- Existing tests keep passing (baseline: **947**), and the new test file must not
+  trip the `tests/conftest.py` isolation guard.
+- Re-running must be safe and cheap (second run deletes nothing).
+- If deletion is not fully atomic across the id list, a partial failure must be
+  reported accurately (which ids succeeded, which failed, and why) — never
+  presented as a complete success when it wasn't.
 
-6. Then:
-   - `Chat Media Tool Result Rendering v1`
 
-## Unresolved Questions
+## Out of scope
 
-- Final Gemma temperature: 0.20 or 0.25.
-- Whether to modify `soul.md` wording before go-live.
-- Whether go-live uses image generation chat tool enabled by default or only manually via env.
-- Whether scheduler should be manual-only at launch or later launchd/cron.
-- Whether CORS should remain proxy-only or gain configurable LAN origins.
-- Whether to untrack `data/prod/*` before go-live.
-
-## Current Known Gotchas
-
-- Do not re-run model smoke prompts inside current Anam memory and treat results as clean; memory is contaminated by prior tests.
-- `data/prod/*` is tracked and remains dirty; do not commit it accidentally.
-- `config/local.toml` is local-only; do not commit.
-- `ComfyUI/` and `config/comfyui/` are local; do not commit.
-- Chat/image generation requires:
-  ```bash
-  ANAM_IMAGE_GENERATION_ENABLED=true
-  ANAM_IMAGE_GENERATION_ALLOW_AGENT_TOOL=true
-  ```
-- `start.sh --with-comfyui` may need `COMFYUI_PYTHON` set to the correct ComfyUI environment.
-- Backend should remain localhost-only in LAN mode; iPhone reaches backend through Vite proxy.
-- Recent frontend resume/polling work was overcomplicated; avoid adding more recovery layers without diagnosis.
-- Normal `gemma4:26b` is preferred over MLX because image support matters.
-- Qwen/Mistral were slow due to prompt prefill on Anam-sized prompts.
-
-## Do Not Repeat These Mistakes
-
-- Do not assume tab switching means stream failure.
-- Do not add polling unless there is a real failure path.
-- Do not solve UI state bugs by adding broad refreshes.
-- Do not let Chat trigger broad App refreshes.
-- Do not change model because of philosophical discomfort without testing local performance.
-- Do not treat `soul.md` echoing as model hallucination.
+- The relevance-floor / retrieval-ranking work.
+- Re-running or extending the artifact backfill.
+- `routes.py`'s import-time `CHAT_DEBUG_TRACE_PATH` snapshot (noted as a
+  follow-up in the isolation changelog).
+- `OLLAMA_HOST` / `EMBED_MODEL`, and `index_artifact_file`'s exception handling.
+- Deleting anything that is not an orphaned artifact chunk — in particular, the
+  fabricated artifact blocks sitting in real `assistant` messages
+  (conversations `0b6acc0e`, `6428649f`) are raw lived experience and are **not**
+  part of this task. They need their own decision.

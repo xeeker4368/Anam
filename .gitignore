@@ -45,3 +45,4 @@ workspace/journals/
 
 # Local review notes
 docs/reviews/
+.claude/
