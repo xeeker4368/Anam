@@ -602,6 +602,7 @@ def test_stream_chat_includes_previous_assistant_response_for_immediate_history_
 
     assert response.status_code == 200
     assert events[0]["retrieval_skipped"] is True
+    assert events[0]["retrieval_status"] == "skipped"
     assert events[0]["retrieval_policy"] == {
         "mode": "skip_memory",
         "reason": "immediate_conversation_reference",
@@ -1150,6 +1151,7 @@ def test_stream_chat_normal_retrieval_still_runs(
 
     assert response.status_code == 200
     assert events[0]["retrieval_skipped"] is False
+    assert events[0]["retrieval_status"] == "attempted"
     assert events[0]["retrieval_policy"] == {
         "mode": "normal",
         "reason": "normal",

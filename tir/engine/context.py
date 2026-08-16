@@ -34,6 +34,37 @@ logger = logging.getLogger(__name__)
 
 BEHAVIORAL_GUIDANCE_DORMANT_STATUS = "dormant_before_go_live"
 
+# --- Retrieval outcome, as a tri-state -------------------------------------
+#
+# An empty chunk list is ambiguous on its own: retrieval may have been skipped
+# (greeting / skip_memory policy), may have raised, or may genuinely have found
+# nothing above the relevance floor. Those three need different handling, and
+# collapsing them is what let the entity answer as though a memory did not exist
+# when it had simply not been given one. The caller that actually runs retrieval
+# reports which happened.
+RETRIEVAL_SKIPPED = "skipped"
+RETRIEVAL_ATTEMPTED = "attempted"
+RETRIEVAL_FAILED = "failed"
+
+# Deliberately a statement about the SEARCH, never about the past. "Nothing
+# matched" is evidence about retrieval; it is not evidence that the thing never
+# happened, and the entity must not be able to read it as the latter.
+NO_MATCHING_MEMORY_MARKER = (
+    "[Memory search ran for this message and returned nothing above the "
+    "relevance threshold. That is a fact about the search, not about the past: "
+    "no closely-matching memory was retrieved, which is not the same as the "
+    "thing never having happened.]"
+)
+
+# A failed search is not an empty search. Presenting them identically would be
+# the retrieval-layer version of reporting a failed tool call as a success —
+# the same honesty rule OPERATIONAL_GUIDANCE.md already applies to tools.
+MEMORY_SEARCH_ERROR_MARKER = (
+    "[Memory search encountered an error for this message and returned no "
+    "results. This is a failure of the search itself, not evidence about what "
+    "is or is not in memory — nothing was actually looked up.]"
+)
+
 
 def _load_soul() -> str:
     """Load the seed identity from soul.md."""
@@ -156,6 +187,7 @@ def build_system_prompt(
     tool_descriptions: str | None = None,
     autonomous: bool = False,
     other_user_names: list[str] | None = None,
+    retrieval_status: str | None = None,
 ) -> str:
     """
     Assemble the full system prompt.
@@ -183,6 +215,7 @@ def build_system_prompt(
         tool_descriptions=tool_descriptions,
         autonomous=autonomous,
         other_user_names=other_user_names,
+        retrieval_status=retrieval_status,
     )
     return prompt
 
@@ -195,6 +228,7 @@ def build_system_prompt_with_debug(
     tool_descriptions: str | None = None,
     autonomous: bool = False,
     other_user_names: list[str] | None = None,
+    retrieval_status: str | None = None,
 ) -> tuple[str, dict]:
     """
     Assemble the full system prompt and return best-effort section counts.
@@ -271,6 +305,12 @@ def build_system_prompt_with_debug(
         retrieved_context = _format_retrieved_memories(retrieved_chunks)
         sections.append(retrieved_context)
         section_counts["retrieved_context_chars"] = len(retrieved_context)
+    elif retrieval_status == RETRIEVAL_FAILED:
+        sections.append(MEMORY_SEARCH_ERROR_MARKER)
+        section_counts["retrieval_marker_chars"] = len(MEMORY_SEARCH_ERROR_MARKER)
+    elif retrieval_status == RETRIEVAL_ATTEMPTED:
+        sections.append(NO_MATCHING_MEMORY_MARKER)
+        section_counts["retrieval_marker_chars"] = len(NO_MATCHING_MEMORY_MARKER)
 
     prompt = "\n\n".join(sections)
     known_chars = sum(section_counts.values())

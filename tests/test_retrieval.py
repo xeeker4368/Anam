@@ -250,3 +250,150 @@ def test_generic_one_word_title_does_not_get_strong_title_boost():
     artifact_result = next(result for result in results if result["chunk_id"] == "artifact-roadmap")
     assert artifact_result["artifact_exact_match"] is False
     assert artifact_result["artifact_boost"] == 1.25
+
+
+# ---------------------------------------------------------------------------
+# Relevance floor (PLAN-2026-08-16-relevance-floor.md)
+# ---------------------------------------------------------------------------
+
+def _vector_chunk(chunk_id, distance):
+    return {
+        "chunk_id": chunk_id,
+        "text": f"text for {chunk_id}",
+        "metadata": {
+            "source_type": "conversation",
+            "source_trust": "firsthand",
+            "created_at": "2026-05-07T10:00:00+00:00",
+        },
+        "distance": distance,
+    }
+
+
+def _bm25_chunk(chunk_id, score):
+    return {
+        "chunk_id": chunk_id,
+        "text": f"lexical text for {chunk_id}",
+        "source_type": "conversation",
+        "source_trust": "firsthand",
+        "created_at": "2026-05-07T10:00:00+00:00",
+        "bm25_score": score,
+    }
+
+
+def test_vector_candidates_above_the_distance_floor_are_dropped():
+    with patch(
+        "tir.memory.retrieval.query_similar",
+        return_value=[_vector_chunk("near", 0.30), _vector_chunk("far", 0.55)],
+    ), patch("tir.memory.retrieval.search_bm25", return_value=[]):
+        results = retrieve("some query about things", max_results=5)
+
+    assert [r["chunk_id"] for r in results] == ["near"]
+
+
+def test_retrieve_returns_empty_when_nothing_clears_either_floor():
+    """A valid outcome, and the one the zero-result marker exists to describe."""
+    with patch(
+        "tir.memory.retrieval.query_similar",
+        return_value=[_vector_chunk("far", 0.61)],
+    ), patch("tir.memory.retrieval.search_bm25", return_value=[]):
+        results = retrieve("nothing relevant here at all", max_results=5)
+
+    assert results == []
+
+
+def test_bm25_only_chunk_is_exempt_from_the_distance_floor():
+    """An exact lexical match is evidence independent of semantic distance."""
+    with patch(
+        "tir.memory.retrieval.query_similar",
+        return_value=[_vector_chunk("far", 0.75)],
+    ), patch(
+        "tir.memory.retrieval.search_bm25",
+        return_value=[_bm25_chunk("lexical-hit", -30.0)],
+    ), patch("tir.memory.retrieval._bm25_floor_applies", return_value=True):
+        results = retrieve("distinctive phrase", max_results=5)
+
+    assert [r["chunk_id"] for r in results] == ["lexical-hit"]
+    assert results[0]["vector_distance"] is None
+    assert results[0]["vector_rank"] is None
+
+
+def test_weak_lexical_candidates_are_dropped_by_the_per_term_floor():
+    # Two query terms survive sanitization, so the floor is score/2 <= -2.5.
+    with patch(
+        "tir.memory.retrieval.query_similar", return_value=[]
+    ), patch(
+        "tir.memory.retrieval.search_bm25",
+        return_value=[_bm25_chunk("strong", -12.0), _bm25_chunk("weak", -2.0)],
+    ), patch("tir.memory.retrieval._bm25_floor_applies", return_value=True):
+        results = retrieve("distinctive phrase", max_results=5)
+
+    assert [r["chunk_id"] for r in results] == ["strong"]
+
+
+def test_per_term_floor_does_not_penalise_a_single_term_query():
+    """An absolute floor killed exact-filename recall; per-term must not."""
+    with patch(
+        "tir.memory.retrieval.query_similar", return_value=[]
+    ), patch(
+        "tir.memory.retrieval.search_bm25",
+        return_value=[_bm25_chunk("filename-hit", -7.8)],
+    ), patch("tir.memory.retrieval._bm25_floor_applies", return_value=True):
+        results = retrieve("anam_generated_00013_.png", max_results=5)
+
+    assert [r["chunk_id"] for r in results] == ["filename-hit"]
+
+
+def test_lexical_floor_is_skipped_on_a_small_corpus():
+    """BM25 is IDF-driven; in a near-empty index even a perfect match scores ~0."""
+    with patch(
+        "tir.memory.retrieval.query_similar", return_value=[]
+    ), patch(
+        "tir.memory.retrieval.search_bm25",
+        return_value=[_bm25_chunk("new-store-hit", -0.000001)],
+    ), patch("tir.memory.retrieval._bm25_floor_applies", return_value=False):
+        results = retrieve("uniquemarkerword", max_results=5)
+
+    assert [r["chunk_id"] for r in results] == ["new-store-hit"]
+
+
+def test_lexical_candidate_without_a_score_fails_open():
+    with patch(
+        "tir.memory.retrieval.query_similar", return_value=[]
+    ), patch(
+        "tir.memory.retrieval.search_bm25",
+        return_value=[{"chunk_id": "unscored", "text": "t", "source_type": "conversation"}],
+    ), patch("tir.memory.retrieval._bm25_floor_applies", return_value=True):
+        results = retrieve("distinctive phrase", max_results=5)
+
+    assert [r["chunk_id"] for r in results] == ["unscored"]
+
+
+def test_stopwords_are_dropped_from_the_fts_query():
+    from tir.memory.retrieval import _sanitize_fts5_query
+
+    assert _sanitize_fts5_query("what did we decide about the roof repair?") == (
+        '"decide" OR "roof" OR "repair?"'
+    )
+
+
+def test_content_words_survive_even_when_a_phrase_contains_stopwords():
+    from tir.memory.retrieval import _sanitize_fts5_query
+
+    sanitized = _sanitize_fts5_query("The Architecture of Thought")
+    assert '"Architecture"' in sanitized
+    assert '"Thought"' in sanitized
+    assert '"of"' not in sanitized
+
+
+def test_all_stopword_query_yields_no_fts_query_and_skips_the_bm25_leg():
+    from tir.memory.retrieval import _sanitize_fts5_query
+
+    assert _sanitize_fts5_query("a of the") == ""
+
+    with patch(
+        "tir.memory.retrieval.query_similar", return_value=[_vector_chunk("v", 0.2)]
+    ), patch("tir.memory.retrieval.search_bm25") as mock_bm25:
+        results = retrieve("a of the", max_results=5)
+
+    mock_bm25.assert_not_called()
+    assert [r["chunk_id"] for r in results] == ["v"]

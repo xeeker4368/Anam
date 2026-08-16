@@ -14,6 +14,18 @@
 ## Code hygiene
 
 - Delete `_FALLBACK_CONFIG` duplicate in tir/config.py; crash loudly if defaults.toml missing. (Two copies of one truth; caused the 2026-07 model-edit confusion.)
+- Dead branch: `tir/engine/context.py:259` — the internal auto-retrieval block
+  (`if retrieved_chunks is None and user_message and not is_greeting(...)`) is
+  unreachable in production and unexercised by the suite. Verified 2026-08-16
+  against a complete caller table: `routes.py` always passes `retrieved_chunks`
+  (initialised to `[]`, never `None`) so the first clause short-circuits;
+  `scripts/probe.py` passes both `user_message` and pre-retrieved chunks
+  deliberately; no test passes `user_message` at all. Instrumented the branch
+  and ran the full suite — **zero firings**. Real retrieval lives at
+  `routes.py:541-563`. Deleting it is a separate deliberate call (it is the only
+  in-tree example of the one-call context+retrieval shape), so it was left in
+  place during the relevance-floor work — noted here for the Chat.jsx/App.jsx-style
+  cleanup pass.
 
 ## Memory / recovery
 

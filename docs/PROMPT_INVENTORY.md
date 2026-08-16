@@ -22,7 +22,7 @@ Excerpt:
 dormant_before_go_live
 ```
 
-### 2. `tir/engine/context.py:55` — `_load_operational_guidance`
+### 2. `tir/engine/context.py:86` — `_load_operational_guidance`
 
 - Name: `return_value`
 - Category: Runtime context / identity
@@ -37,7 +37,7 @@ Excerpt:
 {...}
 ```
 
-### 3. `tir/engine/context.py:121` — `_current_situation`
+### 3. `tir/engine/context.py:152` — `_current_situation`
 
 - Name: `return_value`
 - Category: Runtime context / identity
@@ -52,7 +52,7 @@ Excerpt:
 You are speaking with {...}. Address {...} directly, in the second person. The current time is {...}. {...}
 ```
 
-### 4. `tir/engine/context.py:133` — `_autonomous_situation`
+### 4. `tir/engine/context.py:164` — `_autonomous_situation`
 
 - Name: `return_value`
 - Category: Runtime context / identity
@@ -68,7 +68,7 @@ Mode: autonomous work session
 Time: {...}
 ```
 
-### 5. `tir/engine/context.py:308` — `_format_retrieved_memories`
+### 5. `tir/engine/context.py:348` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -82,7 +82,7 @@ Excerpt:
 {...}
 ```
 
-### 6. `tir/engine/context.py:312` — `_format_retrieved_memories`
+### 6. `tir/engine/context.py:352` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -96,7 +96,7 @@ Excerpt:
 {...}
 ```
 
-### 7. `tir/engine/context.py:324` — `_format_retrieved_memories`
+### 7. `tir/engine/context.py:364` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -110,7 +110,7 @@ Excerpt:
 {...}
 ```
 
-### 8. `tir/engine/context.py:328` — `_format_retrieved_memories`
+### 8. `tir/engine/context.py:368` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -124,7 +124,7 @@ Excerpt:
 {...}
 ```
 
-### 9. `tir/engine/context.py:332` — `_format_retrieved_memories`
+### 9. `tir/engine/context.py:372` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -138,7 +138,7 @@ Excerpt:
 {...}
 ```
 
-### 10. `tir/engine/context.py:338` — `_format_retrieved_memories`
+### 10. `tir/engine/context.py:378` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -152,7 +152,7 @@ Excerpt:
 {...}
 ```
 
-### 11. `tir/engine/context.py:347` — `_format_retrieved_memories`
+### 11. `tir/engine/context.py:387` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -166,7 +166,7 @@ Excerpt:
 {...}
 ```
 
-### 12. `tir/engine/context.py:351` — `_format_retrieved_memories`
+### 12. `tir/engine/context.py:391` — `_format_retrieved_memories`
 
 - Name: `append_arg`
 - Category: Runtime context / identity
@@ -726,7 +726,7 @@ Review bounded operational/system activity and return only a strict JSON object.
 
 ## Other prompt-like strings
 
-### 1. `tir/api/routes.py:949` — `generate`
+### 1. `tir/api/routes.py:961` — `generate`
 
 - Name: `empty_message`
 - Category: Other prompt-like strings
@@ -739,7 +739,7 @@ Excerpt:
 I received your message but couldn't generate a response.
 ```
 
-### 2. `tir/api/routes.py:968` — `generate`
+### 2. `tir/api/routes.py:980` — `generate`
 
 - Name: `error_message`
 - Category: Other prompt-like strings

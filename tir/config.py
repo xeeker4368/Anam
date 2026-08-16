@@ -258,7 +258,46 @@ EMBED_MAX_CHARS = 5000       # Per-embed char budget. Conservative proxy for
 
 # --- Retrieval ---
 RETRIEVAL_RESULTS = int(_config_value("retrieval", "results"))  # Candidates returned by retrieval pipeline
-DISTANCE_THRESHOLD = 0.8     # Max cosine distance for vector results
+# Max cosine distance for vector results. Chunks above this are dropped from the
+# vector leg BEFORE fusion; BM25-only matches are unaffected (see retrieval.py).
+#
+# FIRST-CUT VALUE, not a settled constant. Measured 2026-08-15/16 across two
+# probes (image-generation prompts and conversational recall) against a ~255
+# chunk store: on-topic best-hit distances topped out at 0.3876, off-topic and
+# near-miss bottomed out at 0.4164, so the whole usable gap was [0.3876, 0.4164]
+# and 0.40 sits at its midpoint. The margin is TIGHT — one legitimate on-topic
+# query cleared by only 0.0124 — so an awkwardly phrased real query can lose its
+# vector leg. Re-probe and revisit once the corpus is meaningfully larger; the
+# BM25-only exemption and the zero-result marker exist partly to keep a miss
+# survivable and visible rather than silent. See PLAN-2026-08-16-relevance-floor.md.
+DISTANCE_THRESHOLD = 0.40
+
+# Lexical relevance floor, expressed PER MATCHED QUERY TERM. A candidate is
+# dropped when bm25_score / term_count is above (less negative than) this.
+#
+# Per-term rather than absolute, because FTS5 `rank` is not normalized: its
+# magnitude scales with how many query terms matched, so an absolute floor
+# silently penalises short queries. Measured on the live store, an absolute
+# -9.0 floor would have dropped the exact-filename query
+# "anam_generated_00013_.png" (-7.768) and the single-term "rainbow" (-5.613) —
+# i.e. it would have destroyed exactly the exact-match lexical recall the
+# BM25-only exemption exists to protect. Normalising per term fixes that:
+# on-topic per-term scores run -3.05 to -7.77, off-topic only -0.94 to -1.97,
+# and -2.5 is the midpoint of that gap.
+#
+# STILL THE MORE FRAGILE OF THE TWO FLOORS. Even normalised, bm25 rank depends
+# on corpus statistics, so this is calibrated to the store as of 2026-08-16 and
+# is the first thing to suspect if legitimate lexical recall degrades.
+BM25_SCORE_PER_TERM_THRESHOLD = -2.5
+
+# Below this many indexed chunks the lexical floor is not applied at all.
+# BM25 is IDF-driven, so in a near-empty index even a perfect unique-term match
+# scores ~0 (measured: -0.000001 in a 1-chunk store, -5.54 for the same match at
+# 201 chunks). Applying the floor there would suppress essentially all lexical
+# recall — including immediately after a go-live wipe, when the store is
+# smallest and every memory is new.
+BM25_FLOOR_MIN_CORPUS_CHUNKS = 50
+
 RRF_K = 60                   # RRF fusion constant
 TRUST_WEIGHTS = {
     "firsthand": 1.0,

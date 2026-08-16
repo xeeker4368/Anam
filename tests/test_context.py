@@ -595,3 +595,112 @@ def test_no_hardcoded_person_name_in_context_source():
 
     source = inspect.getsource(context_mod)
     assert "Jodie" not in source
+
+
+# ---------------------------------------------------------------------------
+# Retrieval outcome markers (PLAN-2026-08-16-relevance-floor.md)
+# ---------------------------------------------------------------------------
+
+def test_zero_result_marker_appears_when_retrieval_ran_and_found_nothing():
+    from tir.engine.context import NO_MATCHING_MEMORY_MARKER, RETRIEVAL_ATTEMPTED
+
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+        retrieval_status=RETRIEVAL_ATTEMPTED,
+    )
+
+    assert NO_MATCHING_MEMORY_MARKER in prompt
+    # A statement about the search, never a claim about the past.
+    assert "not the same as the thing never having happened" in prompt
+
+
+def test_error_marker_is_distinct_from_the_zero_result_marker():
+    from tir.engine.context import (
+        MEMORY_SEARCH_ERROR_MARKER,
+        NO_MATCHING_MEMORY_MARKER,
+        RETRIEVAL_FAILED,
+    )
+
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+        retrieval_status=RETRIEVAL_FAILED,
+    )
+
+    assert MEMORY_SEARCH_ERROR_MARKER in prompt
+    assert NO_MATCHING_MEMORY_MARKER not in prompt
+    assert "failure of the search itself" in prompt
+
+
+def test_no_marker_when_retrieval_was_skipped():
+    from tir.engine.context import (
+        MEMORY_SEARCH_ERROR_MARKER,
+        NO_MATCHING_MEMORY_MARKER,
+        RETRIEVAL_SKIPPED,
+    )
+
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+        retrieval_status=RETRIEVAL_SKIPPED,
+    )
+
+    assert NO_MATCHING_MEMORY_MARKER not in prompt
+    assert MEMORY_SEARCH_ERROR_MARKER not in prompt
+
+
+def test_no_marker_by_default_when_status_is_not_reported():
+    from tir.engine.context import MEMORY_SEARCH_ERROR_MARKER, NO_MATCHING_MEMORY_MARKER
+
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+    )
+
+    assert NO_MATCHING_MEMORY_MARKER not in prompt
+    assert MEMORY_SEARCH_ERROR_MARKER not in prompt
+
+
+def test_no_marker_when_chunks_were_retrieved():
+    from tir.engine.context import (
+        MEMORY_SEARCH_ERROR_MARKER,
+        NO_MATCHING_MEMORY_MARKER,
+        RETRIEVAL_ATTEMPTED,
+    )
+
+    prompt = build_system_prompt(
+        user_name="Lyle",
+        retrieved_chunks=[
+            {
+                "text": "A remembered conversation chunk.",
+                "metadata": {
+                    "source_type": "conversation",
+                    "created_at": "2026-04-28T12:00:00+00:00",
+                },
+            }
+        ],
+        tool_descriptions=None,
+        retrieval_status=RETRIEVAL_ATTEMPTED,
+    )
+
+    assert NO_MATCHING_MEMORY_MARKER not in prompt
+    assert MEMORY_SEARCH_ERROR_MARKER not in prompt
+    assert "A remembered conversation chunk." in prompt
+
+
+def test_marker_chars_are_reported_in_the_prompt_breakdown():
+    from tir.engine.context import NO_MATCHING_MEMORY_MARKER, RETRIEVAL_ATTEMPTED
+
+    _prompt, breakdown = build_system_prompt_with_debug(
+        user_name="Lyle",
+        retrieved_chunks=[],
+        tool_descriptions=None,
+        retrieval_status=RETRIEVAL_ATTEMPTED,
+    )
+
+    assert breakdown["retrieval_marker_chars"] == len(NO_MATCHING_MEMORY_MARKER)

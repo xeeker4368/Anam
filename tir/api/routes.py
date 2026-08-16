@@ -65,6 +65,9 @@ from tir.memory.chunking import (
     close_conversation,
 )
 from tir.engine.context import (
+    RETRIEVAL_ATTEMPTED,
+    RETRIEVAL_FAILED,
+    RETRIEVAL_SKIPPED,
     build_system_prompt_with_debug,
     is_greeting,
 )
@@ -538,6 +541,11 @@ def stream_chat(req: ChatRequest):
             or retrieval_policy["mode"] == "skip_memory"
         )
 
+        # Tri-state, not a boolean: an empty chunk list alone cannot distinguish
+        # "never ran" from "ran and failed" from "ran and found nothing", and
+        # those need different things said in the prompt. This is the only place
+        # that knows which happened, so it is the only place that can report it.
+        retrieval_status = RETRIEVAL_SKIPPED
         if not retrieval_skipped:
             try:
                 retrieved_chunks = retrieve(
@@ -549,8 +557,10 @@ def stream_chat(req: ChatRequest):
                 retrieved_chunks, retrieval_budget = budget_retrieved_chunks(
                     retrieved_chunks
                 )
+                retrieval_status = RETRIEVAL_ATTEMPTED
             except Exception as e:
                 logger.warning(f"Retrieval failed: {e}")
+                retrieval_status = RETRIEVAL_FAILED
         timings["retrieval_ms"] = elapsed_ms(phase_start)
 
         # --- Build system prompt ---
@@ -579,6 +589,7 @@ def stream_chat(req: ChatRequest):
             retrieved_chunks=retrieved_chunks,
             tool_descriptions=tool_descriptions,
             other_user_names=other_user_names,
+            retrieval_status=retrieval_status,
         )
         prompt_budget_warning = (
             "prompt_chars_over_budget"
@@ -722,6 +733,7 @@ def stream_chat(req: ChatRequest):
             "conversation_started_reason": conversation_started_reason,
             "user_message_id": user_msg["id"],
             "retrieval_skipped": retrieval_skipped,
+            "retrieval_status": retrieval_status,
             "retrieval_policy": retrieval_policy,
             "artifact_intent": artifact_intent,
             "retrieval_budget": retrieval_budget,
@@ -1028,6 +1040,10 @@ def stream_chat(req: ChatRequest):
             "model_options": safe_chat_model_options(get_model_options("chat")),
             "prompt_chars": prompt_breakdown.get("total_chars"),
             "retrieved_chunk_count": len(retrieved_chunks),
+            # Persisted alongside the count because 0 chunks is ambiguous on its
+            # own, and this file is what later diagnosis actually reads — the
+            # streamed debug event is gone by then.
+            "retrieval_status": retrieval_status,
             "history_message_count": len(model_messages),
             "history_db_message_count": history_db_message_count,
             "tool_call_count": tool_call_count,
