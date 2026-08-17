@@ -190,6 +190,7 @@ def _store_chunk(
     chunk_index: int,
     source_type: str = "conversation",
     source_trust: str = "firsthand",
+    created_at: str | None = None,
 ):
     """Store a chunk in both ChromaDB and FTS5.
 
@@ -206,8 +207,14 @@ def _store_chunk(
         chunk_index: 0-indexed position within the conversation.
         source_type: Type of source (default "conversation").
         source_trust: Trust level (default "firsthand").
+        created_at: Explicit chunk timestamp, or None (default) to stamp now.
+            Only a corrective re-render of an EXISTING chunk should pass this:
+            `created_at` is rendered to the model as `[Conversation — {ts}]`,
+            so restamping a re-rendered chunk would present an old exchange as
+            freshly created. Every ordinary caller leaves this None and gets
+            the current time, exactly as before.
     """
-    now = datetime.now(timezone.utc).isoformat()
+    now = created_at if created_at is not None else datetime.now(timezone.utc).isoformat()
 
     metadata = {
         "conversation_id": conversation_id,
@@ -259,6 +266,7 @@ def _store_chunk_group(
     chunk_index: int,
     chunk_messages: list[dict],
     user_name: str,
+    created_at: str | None = None,
 ) -> tuple[int, int]:
     """Store one turn-group, splitting it into embed-sized sub-units if needed.
 
@@ -272,6 +280,9 @@ def _store_chunk_group(
     (conversation_id, chunk_index) from both stores, so a changed split shape as
     a tail grows leaves no orphan, and re-running on frozen content reproduces the
     same stored set.
+
+    ``created_at`` is passed through to every sub-unit; None (the default, and
+    what every ordinary caller uses) stamps the current time. See ``_store_chunk``.
     """
     sub_units = _split_chunk_for_embedding(chunk_messages, user_name)
     base = f"{conversation_id}_chunk_{chunk_index}"
@@ -294,6 +305,7 @@ def _store_chunk_group(
                 user_id=user_id,
                 message_count=message_count,
                 chunk_index=chunk_index,
+                created_at=created_at,
             )
             written += 1
         except Exception as e:
