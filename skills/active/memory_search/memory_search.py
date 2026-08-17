@@ -24,7 +24,22 @@ def memory_search(query: str) -> str:
     results = retrieve(query=query, max_results=5)
 
     if not results:
-        return "No indexed prior records found for that query."
+        # A statement about the SEARCH, never about the past. The previous
+        # wording ("No indexed prior records found") reads as "no such record
+        # exists", which is the conflation the automatic path's tri-state
+        # marker was built to prevent — and this fires far more often since
+        # the relevance floor shipped.
+        #
+        # Deliberately says only what this call site can actually observe:
+        # `retrieve()` returns an empty list identically whether nothing
+        # cleared the relevance floor OR both search legs failed, so any
+        # stronger claim (e.g. "nothing scored above the threshold") would be
+        # false in the failure case. See changelog/2026-08-17-memory-search-wording.md.
+        return (
+            "The memory search returned no results for that query. That is a "
+            "fact about the search, not about the past — nothing closely "
+            "matching was returned, which is not the same as nothing existing."
+        )
 
     formatted = []
     for index, item in enumerate(results, start=1):

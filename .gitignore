@@ -46,3 +46,5 @@ workspace/journals/
 # Local review notes
 docs/reviews/
 .claude/
+dry_run_output.txt
+*.dryrun.txt # in case future dry-run redirects use a different name

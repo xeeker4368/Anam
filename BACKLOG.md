@@ -31,6 +31,14 @@
 
 - Source chunk `created_at` from the chunk's message timestamps (not `datetime.now()`) in the chunking pipeline, so `memory-repair` preserves original provenance. Currently recovery stamps recovery-time on the chunk envelope (display-only, not ranking) — acceptable for the pre-wipe throwaway orphans, NOT acceptable if memory-repair is ever run on post-launch data. Plan properly (touches `_store_chunk`/`_store_chunk_group`/`chunk_conversation_final`; affects live behavior or needs a recovery-only param) BEFORE any post-launch recovery.
 
+- `retrieve()` cannot distinguish search-backend failure from a genuine empty
+  result; makes `RETRIEVAL_FAILED` unreachable on both `memory_search` and the
+  automatic path — see `changelog/2026-08-17-memory-search-wording.md`. Both
+  legs are individually try/excepted and degrade to `[]`, so a total failure
+  (Ollama down + FTS error) is reported to the entity as "nothing matched".
+  Verified by execution, not inference. Defect in the 08-16 relevance-floor
+  work, not in the wording fix that surfaced it.
+
 ## Image generation
 
 - Quality tuning (brass-helmet fidelity): verify Anam passes prompt intact into ComfyUI workflow first (our bug if not), then checkpoint/workflow tuning (not our bug). TIMEBOX IT.

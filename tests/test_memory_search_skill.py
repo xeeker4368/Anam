@@ -59,4 +59,8 @@ def test_memory_search_formats_results(mock_retrieve):
 def test_memory_search_empty_results(mock_retrieve):
     mock_retrieve.return_value = []
 
-    assert memory_search("nothing") == "No indexed prior records found for that query."
+    assert memory_search("nothing") == (
+        "The memory search returned no results for that query. That is a "
+        "fact about the search, not about the past — nothing closely "
+        "matching was returned, which is not the same as nothing existing."
+    )
