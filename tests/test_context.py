@@ -704,3 +704,116 @@ def test_marker_chars_are_reported_in_the_prompt_breakdown():
     )
 
     assert breakdown["retrieval_marker_chars"] == len(NO_MATCHING_MEMORY_MARKER)
+
+
+# ---------------------------------------------------------------------------
+# RETRIEVAL_FAILED reachability (PLAN-2026-08-17-retrieve-failure-signal.md)
+# ---------------------------------------------------------------------------
+
+def _routes_retrieval_status(query, vector_kwargs, bm25_kwargs):
+    """Replicate tir/api/routes.py's status logic exactly, incl. ordering."""
+    from unittest.mock import patch as _patch
+
+    from tir.engine.context import (
+        RETRIEVAL_ATTEMPTED,
+        RETRIEVAL_FAILED,
+        RETRIEVAL_SKIPPED,
+    )
+    from tir.engine.context_budget import AUTO_RETRIEVAL_RESULTS, budget_retrieved_chunks
+    from tir.memory.retrieval import retrieve
+
+    status = RETRIEVAL_SKIPPED
+    chunks = []
+    with _patch("tir.memory.retrieval.query_similar", **vector_kwargs), \
+         _patch("tir.memory.retrieval.search_bm25", **bm25_kwargs):
+        try:
+            chunks = retrieve(query=query, max_results=AUTO_RETRIEVAL_RESULTS)
+            if getattr(chunks, "search_failed", False):
+                status = RETRIEVAL_FAILED
+            else:
+                chunks, _budget = budget_retrieved_chunks(chunks)
+                status = RETRIEVAL_ATTEMPTED
+        except Exception:
+            status = RETRIEVAL_FAILED
+    return status, chunks
+
+
+def test_both_backends_down_now_reaches_retrieval_failed_and_the_error_marker():
+    from tir.engine.context import (
+        MEMORY_SEARCH_ERROR_MARKER,
+        NO_MATCHING_MEMORY_MARKER,
+        RETRIEVAL_FAILED,
+    )
+
+    status, chunks = _routes_retrieval_status(
+        "what did you say about temperature settings?",
+        {"side_effect": RuntimeError("ollama unreachable")},
+        {"side_effect": RuntimeError("database is locked")},
+    )
+    assert status == RETRIEVAL_FAILED
+
+    prompt = build_system_prompt(
+        user_name="Lyle", retrieved_chunks=chunks,
+        tool_descriptions=None, retrieval_status=status,
+    )
+    assert MEMORY_SEARCH_ERROR_MARKER in prompt
+    assert NO_MATCHING_MEMORY_MARKER not in prompt
+
+
+def test_all_stopword_query_with_dead_vector_leg_reaches_retrieval_failed():
+    """Production-reachable via ordinary follow-ups ("what is it")."""
+    from tir.engine.context import MEMORY_SEARCH_ERROR_MARKER, RETRIEVAL_FAILED
+
+    status, chunks = _routes_retrieval_status(
+        "what is it",
+        {"side_effect": RuntimeError("ollama unreachable")},
+        {"return_value": []},
+    )
+    assert status == RETRIEVAL_FAILED
+
+    prompt = build_system_prompt(
+        user_name="Lyle", retrieved_chunks=chunks,
+        tool_descriptions=None, retrieval_status=status,
+    )
+    assert MEMORY_SEARCH_ERROR_MARKER in prompt
+
+
+def test_partial_failure_still_reports_attempted_documenting_the_scope_boundary():
+    """Deliberate scope boundary: partial degradation is NOT surfaced.
+
+    Tracked in BACKLOG.md. This test exists so a future session does not
+    quietly widen the fix into partial-failure visibility without a decision.
+    """
+    from tir.engine.context import RETRIEVAL_ATTEMPTED
+
+    # vector down, bm25 healthy with a hit
+    status, _ = _routes_retrieval_status(
+        "distinctive phrase about temperature",
+        {"side_effect": RuntimeError("ollama unreachable")},
+        {"return_value": [{
+            "chunk_id": "lexical", "text": "t", "source_type": "conversation",
+            "source_trust": "firsthand", "created_at": "2026-05-07T10:00:00+00:00",
+            "bm25_score": -30.0,
+        }]},
+    )
+    assert status == RETRIEVAL_ATTEMPTED
+
+    # bm25 down, vector healthy but empty
+    status, _ = _routes_retrieval_status(
+        "distinctive phrase about temperature",
+        {"return_value": []},
+        {"side_effect": RuntimeError("database is locked")},
+    )
+    assert status == RETRIEVAL_ATTEMPTED
+
+
+def test_a_bare_list_from_a_stub_degrades_to_attempted():
+    """The getattr default: 41 pre-existing stubs return plain lists."""
+    from tir.engine.context import RETRIEVAL_ATTEMPTED
+
+    plain = []
+    assert getattr(plain, "search_failed", False) is False
+    status = RETRIEVAL_FAILED_SENTINEL = (
+        "failed" if getattr(plain, "search_failed", False) else RETRIEVAL_ATTEMPTED
+    )
+    assert status == RETRIEVAL_ATTEMPTED

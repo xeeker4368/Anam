@@ -554,11 +554,24 @@ def stream_chat(req: ChatRequest):
                     max_results=AUTO_RETRIEVAL_RESULTS,
                     artifact_intent=artifact_intent,
                 )
-                retrieved_chunks, retrieval_budget = budget_retrieved_chunks(
-                    retrieved_chunks
-                )
-                retrieval_status = RETRIEVAL_ATTEMPTED
+                # MUST read search_failed BEFORE budget_retrieved_chunks(),
+                # which returns a plain list and silently loses this attribute.
+                # Reordering these two lines reintroduces the bug with no test
+                # failure, because the getattr default is False.
+                # getattr, not attribute access: a test stub or future caller
+                # may hand back a bare list, and that should degrade to "not
+                # failed" rather than raising.
+                if getattr(retrieved_chunks, "search_failed", False):
+                    retrieval_status = RETRIEVAL_FAILED
+                else:
+                    retrieved_chunks, retrieval_budget = budget_retrieved_chunks(
+                        retrieved_chunks
+                    )
+                    retrieval_status = RETRIEVAL_ATTEMPTED
             except Exception as e:
+                # Belt and suspenders: retrieve() swallows its own backend
+                # errors, so this now guards everything AROUND it (e.g. a fault
+                # in budget_retrieved_chunks), not the search legs themselves.
                 logger.warning(f"Retrieval failed: {e}")
                 retrieval_status = RETRIEVAL_FAILED
         timings["retrieval_ms"] = elapsed_ms(phase_start)

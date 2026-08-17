@@ -726,7 +726,7 @@ Review bounded operational/system activity and return only a strict JSON object.
 
 ## Other prompt-like strings
 
-### 1. `tir/api/routes.py:961` — `generate`
+### 1. `tir/api/routes.py:974` — `generate`
 
 - Name: `empty_message`
 - Category: Other prompt-like strings
@@ -739,7 +739,7 @@ Excerpt:
 I received your message but couldn't generate a response.
 ```
 
-### 2. `tir/api/routes.py:980` — `generate`
+### 2. `tir/api/routes.py:993` — `generate`
 
 - Name: `error_message`
 - Category: Other prompt-like strings

@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 from tir.engine.context_debug import build_context_debug
@@ -397,3 +398,94 @@ def test_all_stopword_query_yields_no_fts_query_and_skips_the_bm25_leg():
 
     mock_bm25.assert_not_called()
     assert [r["chunk_id"] for r in results] == ["v"]
+
+
+# ---------------------------------------------------------------------------
+# Total-search-failure signal (PLAN-2026-08-17-retrieve-failure-signal.md)
+# ---------------------------------------------------------------------------
+
+def test_both_legs_fail_sets_search_failed():
+    with patch("tir.memory.retrieval.query_similar", side_effect=RuntimeError("ollama down")), \
+         patch("tir.memory.retrieval.search_bm25", side_effect=RuntimeError("db locked")):
+        results = retrieve("distinctive phrase about temperature", max_results=5)
+
+    assert results.search_failed is True
+    assert list(results) == []
+
+
+def test_one_leg_fails_other_succeeds_is_not_a_search_failure():
+    with patch("tir.memory.retrieval.query_similar", side_effect=RuntimeError("ollama down")), \
+         patch("tir.memory.retrieval.search_bm25",
+               return_value=[_bm25_chunk("lexical-hit", -30.0)]), \
+         patch("tir.memory.retrieval._bm25_floor_applies", return_value=True):
+        results = retrieve("distinctive phrase", max_results=5)
+
+    assert results.search_failed is False
+    assert [r["chunk_id"] for r in results] == ["lexical-hit"]
+
+
+def test_genuine_empty_with_both_legs_healthy_is_not_a_search_failure():
+    with patch("tir.memory.retrieval.query_similar", return_value=[]), \
+         patch("tir.memory.retrieval.search_bm25", return_value=[]):
+        results = retrieve("distinctive phrase", max_results=5)
+
+    assert results.search_failed is False
+    assert list(results) == []
+
+
+def test_all_stopword_query_with_failing_vector_leg_is_a_search_failure():
+    """The only attempted leg died, so nothing was searched.
+
+    BM25 is skipped entirely for an all-stopword query, and a skipped leg is
+    neither a success nor a failure. Predicating on `vector_failed and
+    bm25_failed` would report this healthy — production-reachable via ordinary
+    follow-ups like "what is it" / "what about it".
+    """
+    with patch("tir.memory.retrieval.query_similar", side_effect=RuntimeError("ollama down")), \
+         patch("tir.memory.retrieval.search_bm25") as mock_bm25:
+        results = retrieve("what is it", max_results=5)
+
+    mock_bm25.assert_not_called()
+    assert results.search_failed is True
+    assert list(results) == []
+
+
+def test_all_stopword_query_with_healthy_vector_leg_is_not_a_search_failure():
+    """The companion case: a pure all-stopword query is a legitimate empty."""
+    with patch("tir.memory.retrieval.query_similar", return_value=[]), \
+         patch("tir.memory.retrieval.search_bm25") as mock_bm25:
+        results = retrieve("what is it", max_results=5)
+
+    mock_bm25.assert_not_called()
+    assert results.search_failed is False
+
+
+def test_empty_query_is_not_a_search_failure():
+    results = retrieve("   ", max_results=5)
+    assert results.search_failed is False
+    assert list(results) == []
+
+
+def test_every_return_path_carries_the_attribute():
+    """Guardrail: slicing/sorted/list all drop it, so each return must construct it."""
+    with patch("tir.memory.retrieval.query_similar",
+               return_value=[_vector_chunk("near", 0.30)]), \
+         patch("tir.memory.retrieval.search_bm25", return_value=[]):
+        populated = retrieve("distinctive phrase", max_results=5)
+    assert hasattr(populated, "search_failed")          # success path (sliced)
+    assert hasattr(retrieve("   "), "search_failed")     # empty-query path
+
+    with patch("tir.memory.retrieval.query_similar", return_value=[]), \
+         patch("tir.memory.retrieval.search_bm25", return_value=[]):
+        assert hasattr(retrieve("distinctive phrase"), "search_failed")  # empty path
+
+
+def test_retrieval_result_behaves_like_a_plain_list_for_existing_callers():
+    from tir.memory.retrieval import RetrievalResult
+
+    result = RetrievalResult([{"chunk_id": "a"}], search_failed=False)
+    assert len(result) == 1
+    assert bool(result) is True
+    assert bool(RetrievalResult([])) is False
+    assert [c["chunk_id"] for c in result] == ["a"]
+    assert json.dumps(list(result)) == '[{"chunk_id": "a"}]'

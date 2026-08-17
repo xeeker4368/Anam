@@ -28,6 +28,30 @@ from tir.memory.db import get_connection, search_bm25
 logger = logging.getLogger(__name__)
 
 
+class RetrievalResult(list):
+    """The retrieved chunks, plus whether the search itself failed outright.
+
+    A plain `list` in every way callers already use — iteration, `len()`,
+    truthiness, indexing, `in`, JSON serialization — so the four callers that
+    only ever check emptiness need no change. Only the automatic path in
+    `tir/api/routes.py` reads the extra attribute.
+
+    `search_failed` exists because an empty result is otherwise ambiguous:
+    `retrieve()` swallows backend exceptions per leg, so "both search backends
+    are down" and "nothing matched" were indistinguishable, and the entity was
+    told a search had run and found nothing when in fact no search completed.
+
+    CAUTION: `search_failed` does NOT survive list operations that build a new
+    list — slicing, `sorted()`, `list()`, and `+` all return a plain `list` and
+    silently drop it. Read it directly off `retrieve()`'s return value before
+    passing that value anywhere else.
+    """
+
+    def __init__(self, chunks=(), search_failed: bool = False):
+        super().__init__(chunks)
+        self.search_failed = search_failed
+
+
 _ARTIFACT_SOURCE_TYPE = "artifact_document"
 _ARTIFACT_BASE_BOOST = 1.25
 _ARTIFACT_STRONG_BOOST = 2.25
@@ -432,7 +456,20 @@ def retrieve(
         Empty list if nothing matches (valid outcome).
     """
     if not query or not query.strip():
-        return []
+        # No legs attempted, so this is not a search failure — it is a caller
+        # handing us nothing to search for.
+        return RetrievalResult([], search_failed=False)
+
+    # Leg bookkeeping for `search_failed`. Tracked as attempted/succeeded
+    # rather than failed/failed: the BM25 leg is SKIPPED entirely for an
+    # all-stopword query, and a skipped leg must not count as a success. If the
+    # vector leg is then the only leg attempted and it raises, nothing was
+    # searched at all — which is a total failure even though only one leg
+    # "failed". ("what is it", "what about it" and similar follow-ups reach
+    # here with an empty FTS query, so this is production-reachable.)
+    vector_attempted = True  # the vector leg is always attempted
+    vector_succeeded = False
+    bm25_succeeded = False
 
     # --- Vector search (ChromaDB) ---
     try:
@@ -440,6 +477,7 @@ def retrieve(
             query_text=query,
             n_results=top_k_per_signal,
         )
+        vector_succeeded = True
     except Exception as e:
         logger.warning(f"Vector search failed, falling back to BM25 only: {e}")
         vector_raw = []
@@ -473,18 +511,22 @@ def retrieve(
 
     # --- BM25 search (FTS5) ---
     fts5_query = _sanitize_fts5_query(query)
-    if fts5_query:
+    bm25_attempted = bool(fts5_query)
+    if bm25_attempted:
         try:
             bm25_raw = search_bm25(
                 query=fts5_query,
                 n_results=top_k_per_signal,
                 exclude_conversation_id=active_conversation_id,
             )
+            bm25_succeeded = True
         except Exception as e:
             logger.warning(f"BM25 search failed, falling back to vector only: {e}")
             bm25_raw = []
     else:
         # Query was entirely function words; the vector leg answers alone.
+        # NOT attempted — so it can neither succeed nor fail, and must not be
+        # counted as either when deciding `search_failed` below.
         bm25_raw = []
 
     # Lexical relevance floor. FTS5 bm25 rank is negative, more negative =
@@ -510,9 +552,16 @@ def retrieve(
         bm25_score_per_term_threshold=bm25_score_per_term_threshold,
     )
 
+    # A search "failed" when every leg that was actually attempted raised, and
+    # none succeeded. Not `vector_failed and bm25_failed` — that reports healthy
+    # when the only attempted leg is the one that died.
+    any_attempted = vector_attempted or bm25_attempted
+    any_succeeded = vector_succeeded or bm25_succeeded
+    search_failed = any_attempted and not any_succeeded
+
     # --- Handle edge cases ---
     if not vector_filtered and not bm25_raw:
-        return []
+        return RetrievalResult([], search_failed=search_failed)
 
     # --- RRF fusion ---
     fused = _fuse_rrf(vector_filtered, bm25_raw, k=rrf_k)
@@ -528,4 +577,7 @@ def retrieve(
 
     # --- Re-sort by adjusted score and trim ---
     fused.sort(key=lambda x: x["adjusted_score"], reverse=True)
-    return fused[:max_results]
+    # Wrapped explicitly rather than relying on the default: `fused[:max_results]`
+    # is a slice, which returns a plain list and would drop `search_failed`
+    # entirely. Every return path in this function constructs the type on purpose.
+    return RetrievalResult(fused[:max_results], search_failed=search_failed)
